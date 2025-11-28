@@ -1,45 +1,97 @@
+# -----------------------
 # Miscellaneous
+# -----------------------
 *.class
 *.log
 *.pyc
 *.swp
 .DS_Store
 .atom/
-.build/
 .buildlog/
 .history
 .svn/
-.swiftpm/
-migrate_working_dir/
 
-# IntelliJ related
+# -----------------------
+# Android Studio / IntelliJ
+# -----------------------
 *.iml
 *.ipr
 *.iws
 .idea/
+# Android Studio captures folder
+captures/
+.externalNativeBuild
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
+# -----------------------
+# VS Code
+# -----------------------
+.vscode/
 
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
+# -----------------------
+# Flutter/Dart/Pub
+# -----------------------
 .dart_tool/
+.packages
+.pub/
+build/
 .flutter-plugins
 .flutter-plugins-dependencies
-.pub-cache/
-.pub/
-/build/
 
-# Symbolication related
-app.*.symbols
+# -----------------------
+# FIREBASE & FIRESTORE (Important!)
+# -----------------------
+# Android Firebase Config
+android/app/google-services.json
 
-# Obfuscation related
-app.*.map.json
+# iOS Firebase Config
+ios/Runner/GoogleService-Info.plist
 
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
+# If you use the FlutterFire CLI, you might want to ignore this too
+# strictly speaking it is not a secret, but good to keep clean if you regenerate often
+# lib/firebase_options.dart
+
+# -----------------------
+# Android
+# -----------------------
+android/local.properties
+android/gradlew.bat
+android/.gradle
+android/app/build
+android/app/src/main/assets/public.pem
+
+# Keyfiles (CRITICAL SECURITY)
+*.keystore
+*.jks
+key.properties
+android/key.properties
+
+# -----------------------
+# iOS
+# -----------------------
+ios/Flutter/App.framework
+ios/Flutter/Flutter.framework
+ios/Flutter/Generated.xcconfig
+ios/Flutter/app.flx
+ios/Flutter/app.zip
+ios/Flutter/flutter_assets/
+ios/Flutter/flutter_export_environment.sh
+ios/ServiceDefinitions.json
+ios/Runner/GeneratedPluginRegistrant.*
+ios/Pods/
+ios/.symlinks/
+ios/Podfile.lock
+
+# -----------------------
+# Web & Desktop
+# -----------------------
+lib/generated_plugin_registrant.dart
+macos/Flutter/ephemeral/
+macos/Pods/
+macos/.symlinks/
+windows/flutter/ephemeral/
+linux/flutter/ephemeral/
+
+# -----------------------
+# Environment Variables
+# -----------------------
+.env
