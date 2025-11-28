@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>API_KEY</key>
+	<string>AIzaSyDwv3vAjji5WHv75y_Gt83cgJ0iWghD7B4</string>
+	<key>GCM_SENDER_ID</key>
+	<string>57761475438</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.example.focusMate</string>
+	<key>PROJECT_ID</key>
+	<string>focusmate-ea9fc</string>
+	<key>STORAGE_BUCKET</key>
+	<string>focusmate-ea9fc.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:57761475438:ios:971c35b19adf3aec02af7f</string>
+</dict>
+</plist>
