@@ -232,6 +232,14 @@ class _HomeState extends State<Home> {
           ],
         ),
         actions: [
+          // Test Blocking button
+          IconButton(
+            icon: const Icon(Icons.bug_report, color: Colors.orange),
+            tooltip: 'Test App Blocking',
+            onPressed: () {
+              Navigator.pushNamed(context, '/test_blocking');
+            },
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Stack(

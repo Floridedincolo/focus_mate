@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.example.focus_mate"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 34
     ndkVersion = "27.0.12077973"
 
     compileOptions {
@@ -21,8 +21,8 @@ android {
 
     defaultConfig {
         applicationId = "com.example.focus_mate"
-        minSdk = 23
-        targetSdk = flutter.targetSdkVersion
+        minSdk = 29
+        targetSdk = 33
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }

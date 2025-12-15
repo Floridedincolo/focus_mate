@@ -242,6 +242,15 @@ class _ProfileState extends State<Profile> {
                       ),
                     ),
                     const SizedBox(height: 10),
+                    GestureDetector(
+                      onTap: () => Navigator.pushNamed(context, '/permissions'),
+                      child: _buildPreferenceRow(
+                        icon: Icons.security,
+                        label: "App Blocking Permissions",
+                        trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white70, size: 15),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
                     _buildPreferenceRow(
                       icon: Icons.apps,
                       label: "App Blacklist & Whitelist",
