@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">focus_mate</string>
+    <string name="accessibility_service_description">Accessibility service for blocking apps</string>
+</resources>
