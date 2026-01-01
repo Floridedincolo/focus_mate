@@ -1,8 +1,28 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.focus_mate">
+    package="com.example.focus_mate"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Overlay permission goes here -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- Allow the app to query specific packages (required on Android 11+) -->
+    <queries>
+        <!-- Explicit package queries so getApplicationIcon/loadIcon won't fail -->
+        <package android:name="com.google.android.youtube" />
+        <package android:name="com.android.settings" />
+        <package android:name="com.android.chrome" />
+        <!-- add more packages you plan to inspect here -->
+
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
+
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
+        </intent>
+    </queries>
 
     <application
         android:label="focus_mate"
@@ -49,10 +69,4 @@
             android:value="2" />
     </application>
 
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.PROCESS_TEXT"/>
-            <data android:mimeType="text/plain"/>
-        </intent>
-    </queries>
 </manifest>
