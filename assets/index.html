@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        :root {
+            --bg-color: #121212;
+            --card-bg: #1E1E1E;
+            --accent-blue: #448AFF;
+            --accent-purple: #9C27B0; /* Culoarea din imaginea ta pt profil */
+            --text-primary: #FFFFFF;
+            --text-secondary: #AAAAAA;
+            --nav-bg: #1A1A1A;
+        }
+
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #222;
+            font-family: 'Roboto', sans-serif;
+        }
+
+        /* Phone Frame */
+        .phone-frame {
+            width: 360px;
+            height: 720px;
+            background-color: var(--bg-color);
+            border-radius: 30px;
+            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+            border: 8px solid #080808;
+            position: relative;
+            overflow: hidden;
+            color: var(--text-primary);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .status-bar {
+            height: 30px;
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 20px;
+            font-size: 12px;
+            font-weight: bold;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        /* Content Area */
+        .content-area {
+            flex: 1;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        /* Pages */
+        .page {
+            padding: 20px;
+            display: none;
+            animation: fadeIn 0.2s ease-in-out;
+        }
+        .page.active { display: block; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.98); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        /* --- HOME PAGE STYLES --- */
+        .calendar-strip {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        .cal-day {
+            background: #222;
+            border-radius: 8px;
+            padding: 10px 8px;
+            text-align: center;
+            width: 35px;
+        }
+        .cal-day.active {
+            background: var(--accent-blue);
+            color: white;
+            border: 1px solid #669df6;
+        }
+        .task-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 12px;
+            border-left: 4px solid var(--accent-blue);
+        }
+
+        /* --- FOCUS PAGE STYLES --- */
+        .focus-header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            margin: -20px -20px 20px -20px;
+            padding: 40px 20px 20px 20px;
+            border-bottom-left-radius: 20px;
+            border-bottom-right-radius: 20px;
+        }
+        .rule-card {
+            background: var(--card-bg);
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* --- BOTTOM NAVIGATION --- */
+        .bottom-nav {
+            height: 70px;
+            background-color: var(--nav-bg);
+            border-top: 1px solid #333;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding-bottom: 10px; /* Safe area for swipe bar */
+            position: relative;
+            z-index: 10;
+        }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: var(--text-secondary);
+            font-size: 10px;
+            cursor: pointer;
+            width: 60px;
+        }
+        .nav-item.active {
+            color: var(--accent-blue);
+        }
+        .nav-icon {
+            font-size: 24px;
+            margin-bottom: 4px;
+        }
+
+        /* FAB (Floating Action Button) - Centered Style */
+        .fab-container {
+            position: relative;
+            top: -25px;
+        }
+        .fab {
+            width: 56px;
+            height: 56px;
+            background-color: var(--accent-blue);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 30px;
+            box-shadow: 0 4px 10px rgba(68, 138, 255, 0.4);
+            border: 4px solid var(--bg-color); /* Creates the "gap" effect */
+            cursor: pointer;
+            color: white;
+        }
+
+        h1 { margin: 0 0 10px 0; font-size: 22px; }
+        h2 { font-size: 16px; color: #888; margin-top:0; font-weight: normal;}
+
+    </style>
+</head>
+<body>
+
+<div class="phone-frame">
+    <div class="status-bar">
+        <span>9:41</span>
+        <span>📶 🔋</span>
+    </div>
+
+    <div class="content-area">
+
+        <div id="page-home" class="page active">
+            <h1>Today's Plan</h1>
+            <h2>Saturday, 3rd January</h2>
+
+            <div class="calendar-strip">
+                <div class="cal-day"><div>2</div><small>Fri</small></div>
+                <div class="cal-day active"><div>3</div><small>Sat</small></div>
+                <div class="cal-day"><div>4</div><small>Sun</small></div>
+                <div class="cal-day"><div>5</div><small>Mon</small></div>
+                <div class="cal-day"><div>6</div><small>Tue</small></div>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <div style="background: #333; flex: 1; padding: 10px; border-radius: 10px; text-align: center;">
+                    <div style="color: var(--accent-blue); font-weight: bold; font-size: 18px;">4</div>
+                    <div style="font-size: 10px; color: #888;">Remaining</div>
+                </div>
+                <div style="background: #333; flex: 1; padding: 10px; border-radius: 10px; text-align: center;">
+                    <div style="color: #00C853; font-weight: bold; font-size: 18px;">0</div>
+                    <div style="font-size: 10px; color: #888;">Completed</div>
+                </div>
+            </div>
+
+            <div class="task-card">
+                <div style="font-weight: bold;">weeklytask1</div>
+                <div style="font-size: 12px; color: #888; margin-top: 5px;">9:12 AM - 9:12 PM</div>
+            </div>
+            <div class="task-card">
+                <div style="font-weight: bold;">Deep Work Session</div>
+                <div style="font-size: 12px; color: #888; margin-top: 5px;">Focus Mode: High</div>
+            </div>
+            <div class="task-card">
+                <div style="font-weight: bold;">Read 10 pages</div>
+                <div style="font-size: 12px; color: #888; margin-top: 5px;">10:00 PM - 10:30 PM</div>
+            </div>
+        </div>
+
+        <div id="page-focus" class="page">
+            <div class="focus-header">
+                <h1 style="color: white;">Focus Control</h1>
+                <p style="color: #ccc; font-size: 14px; margin: 0;">Manage your distractions</p>
+            </div>
+
+            <div class="rule-card">
+                <div>
+                    <div style="font-weight: bold;">Deep Work</div>
+                    <div style="font-size: 11px; color: #888;">Blocks 24 apps (Social & Games)</div>
+                </div>
+                <div style="background: #333; padding: 5px 10px; border-radius: 15px; font-size: 12px;">Edit</div>
+            </div>
+
+            <div class="rule-card">
+                <div>
+                    <div style="font-weight: bold;">Sleep Mode</div>
+                    <div style="font-size: 11px; color: #888;">Blocks everything except Phone</div>
+                </div>
+                <div style="background: #333; padding: 5px 10px; border-radius: 15px; font-size: 12px;">Edit</div>
+            </div>
+
+            <div style="margin-top: 20px; text-align: center; color: #666; font-size: 12px;">
+                <p>Usage stats permission: Active ✅</p>
+            </div>
+        </div>
+
+        <div id="page-stats" class="page">
+            <h1>Statistics</h1>
+            <div style="height: 200px; background: #333; border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-bottom: 20px;">
+                Chart Placeholder
+            </div>
+            <div class="task-card">
+                <div>Total Focus Time</div>
+                <div style="font-size: 24px; color: var(--accent-blue); font-weight: bold;">12h 30m</div>
+            </div>
+        </div>
+
+        <div id="page-profile" class="page">
+            <div style="text-align: center; margin-bottom: 30px; margin-top: 20px;">
+                <div style="width: 80px; height: 80px; background: #444; border-radius: 50%; margin: 0 auto 10px auto;"></div>
+                <h2>Teodor Marciuc</h2>
+                <div style="font-size: 12px; color: #888;">teo@example.com</div>
+            </div>
+
+            <div class="rule-card">Settings</div>
+            <div class="rule-card">Notifications</div>
+            <div class="rule-card">About</div>
+        </div>
+
+    </div>
+
+    <div class="bottom-nav">
+        <div class="nav-item active" onclick="navTo('home', this)">
+            <div class="nav-icon">🏠</div>
+            <span>Home</span>
+        </div>
+
+        <div class="nav-item" onclick="navTo('focus', this)">
+            <div class="nav-icon">🛡️</div>
+            <span>Focus</span>
+        </div>
+
+        <div class="fab-container">
+            <div class="fab" onclick="alert('Open Create Task')">+</div>
+        </div>
+
+        <div class="nav-item" onclick="navTo('stats', this)">
+            <div class="nav-icon">📊</div>
+            <span>Stats</span>
+        </div>
+
+        <div class="nav-item" onclick="navTo('profile', this)">
+            <div class="nav-icon">👤</div>
+            <span>Profile</span>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    function navTo(pageId, element) {
+        // Remove active class from all nav items
+        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+
+        // Add active class to clicked item
+        if(element) element.classList.add('active');
+
+        // Hide all pages
+        document.querySelectorAll('.page').forEach(p => {
+            p.classList.remove('active');
+        });
+
+        // Show target page
+        document.getElementById('page-' + pageId).classList.add('active');
+    }
+</script>
+
+</body>
+</html>

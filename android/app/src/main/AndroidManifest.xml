@@ -4,14 +4,21 @@
 
     <!-- Overlay permission goes here -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
     <!-- Allow the app to query specific packages (required on Android 11+) -->
     <queries>
         <!-- Explicit package queries so getApplicationIcon/loadIcon won't fail -->
         <package android:name="com.google.android.youtube" />
         <package android:name="com.android.settings" />
         <package android:name="com.android.chrome" />
-        <!-- add more packages you plan to inspect here -->
+
+        <!-- Allow querying ALL apps with launcher intent (social media, games, etc.) -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
 
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
@@ -32,7 +39,8 @@
         <service
             android:name=".AppBlockService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
-            android:exported="false">
+            android:exported="true"
+            android:enabled="true">
 
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />

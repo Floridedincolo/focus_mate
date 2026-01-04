@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:focus_mate/pages/focus_page.dart';
 import 'package:focus_mate/pages/home.dart';
 import 'package:focus_mate/pages/add_task.dart';
 import 'pages/profile.dart';
 import 'package:focus_mate/firebase_options.dart';
 import 'package:flutter/services.dart'; // pentru EventChannel
+import 'services/accessibility_service.dart'; // ✅ Import nou
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,6 +21,15 @@ void main() async {
     persistenceEnabled: true,
     cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
   );
+
+  // ✅ Verifică Accessibility Service la pornire
+  final isAccessibilityEnabled = await AccessibilityService.isEnabled();
+  if (!isAccessibilityEnabled) {
+    print('⚠️ Accessibility Service NU este activ!');
+    // Se va deschide automat setările când se apasă butonul din UI
+  } else {
+    print('✅ Accessibility Service este ACTIV și funcțional!');
+  }
 
   // ✅ Ascultă evenimentele de la AccessibilityService
   final accessibilityChannel = EventChannel('accessibility_events');
@@ -45,6 +56,8 @@ void main() async {
       routes: {
         '/profile': (context) => Profile(),
         '/add_task': (context) => AddTaskMenu(),
+        '/focus_page': (context) => FocusPage(),
+        '/home': (context) => Home(),
       },
     ),
   );

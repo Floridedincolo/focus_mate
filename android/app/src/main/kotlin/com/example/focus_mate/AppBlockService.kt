@@ -24,6 +24,9 @@ import android.graphics.drawable.GradientDrawable
 import android.widget.LinearLayout.LayoutParams
 import android.widget.Button
 import android.view.animation.AccelerateDecelerateInterpolator
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
+import android.content.SharedPreferences
 
 class AppBlockService : AccessibilityService() {
 
@@ -32,23 +35,98 @@ class AppBlockService : AccessibilityService() {
     private var overlayShown = false
     private var lastActionTime = 0L
 
-    private val blockedApps = listOf("com.google.android.youtube")
+    private var blockedApps: MutableSet<String> = mutableSetOf()
+    private var updateReceiver: BroadcastReceiver? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        try {
+            loadBlockedApps()
+            registerUpdateReceiver()
+            Log.d("AppAccessibilityService", "✅ Accessibility Service initialized successfully")
+        } catch (e: Exception) {
+            Log.e("AppAccessibilityService", "❌ Error in onCreate: ${e.message}", e)
+        }
+    }
+
+    private fun loadBlockedApps() {
+        val prefs: SharedPreferences = getSharedPreferences("focus_mate_prefs", Context.MODE_PRIVATE)
+        blockedApps = prefs.getStringSet("blocked_apps", setOf())?.toMutableSet() ?: mutableSetOf()
+        Log.d("AppAccessibilityService", "📋 Loaded ${blockedApps.size} blocked apps from SharedPreferences")
+        blockedApps.forEach {
+            Log.d("AppAccessibilityService", "  - Blocked: $it")
+        }
+    }
+
+    private fun registerUpdateReceiver() {
+        updateReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action == "com.example.focus_mate.UPDATE_BLOCKED_APPS") {
+                    val apps = intent.getStringArrayListExtra("apps")
+                    if (apps != null) {
+                        blockedApps = apps.toMutableSet()
+                        Log.d("AppAccessibilityService", "🔄 Updated blocked apps via broadcast: ${blockedApps.size} apps")
+                        blockedApps.forEach {
+                            Log.d("AppAccessibilityService", "  - Now blocking: $it")
+                        }
+
+                        // ✅ SALVEAZĂ ÎN SharedPreferences
+                        val prefs = getSharedPreferences("focus_mate_prefs", Context.MODE_PRIVATE)
+                        prefs.edit().putStringSet("blocked_apps", blockedApps).apply()
+                        Log.d("AppAccessibilityService", "💾 Saved ${blockedApps.size} apps to SharedPreferences")
+                    }
+                }
+            }
+        }
+
+        val filter = IntentFilter("com.example.focus_mate.UPDATE_BLOCKED_APPS")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(updateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(updateReceiver, filter)
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try {
+            updateReceiver?.let {
+                unregisterReceiver(it)
+                updateReceiver = null
+            }
+            removeOverlay()
+            Log.d("AppAccessibilityService", "🔴 Service destroyed - cleanup completed")
+        } catch (e: Exception) {
+            Log.e("AppAccessibilityService", "❌ Error in onDestroy: ${e.message}", e)
+        }
+    }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null) return
-        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        try {
+            if (event == null) return
+            if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
 
-        val packageName = event.packageName?.toString() ?: return
-        Log.d("AppAccessibilityService", "Foreground app: $packageName")
+            val packageName = event.packageName?.toString() ?: return
+            Log.d("AppAccessibilityService", "Foreground app: $packageName")
+            Log.d("AppAccessibilityService", "Blocked apps list: $blockedApps")
+            Log.d("AppAccessibilityService", "Is blocked? ${blockedApps.contains(packageName)}")
 
-        if (blockedApps.contains(packageName)) {
-            val now = System.currentTimeMillis()
-            if (now - lastActionTime < 1000) return
-            lastActionTime = now
+            if (blockedApps.contains(packageName)) {
+                val now = System.currentTimeMillis()
+                if (now - lastActionTime < 1000) return
+                lastActionTime = now
 
-            Log.d("AppAccessibilityService", "Blocked app detected → HOME + OVERLAY")
-            sendUserToHome()
-            showOverlay(packageName)
+                Log.d("AppAccessibilityService", "🚫 Blocked app detected → HOME + OVERLAY")
+                // Mai întâi afișăm overlay-ul
+                showOverlay(packageName)
+                // Apoi trimitem user-ul acasă cu delay
+                Handler(Looper.getMainLooper()).postDelayed({
+                    sendUserToHome()
+                }, 100)
+            }
+        } catch (e: Exception) {
+            Log.e("AppAccessibilityService", "❌ Error in onAccessibilityEvent: ${e.message}", e)
+            // Nu aruncăm excepția mai departe - serviciul trebuie să continue să funcționeze
         }
     }
 
@@ -60,251 +138,180 @@ class AppBlockService : AccessibilityService() {
         startActivity(intent)
     }
 
-    // Try multiple strategies to get app icon and label
     private fun loadAppIconAndLabel(pkg: String): Pair<Drawable?, String?> {
         var icon: Drawable? = null
         var label: String? = null
 
         try {
             icon = packageManager.getApplicationIcon(pkg)
-            try {
-                val ai = packageManager.getApplicationInfo(pkg, 0)
-                label = packageManager.getApplicationLabel(ai)?.toString()
-            } catch (_: Exception) { }
-            Log.d("AppAccessibilityService", "packageManager.getApplicationIcon -> success for $pkg")
+            label = packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0))?.toString()
             return Pair(icon, label)
-        } catch (e: Exception) {
-            Log.w("AppAccessibilityService", "getApplicationIcon failed: ${e.message}")
-        }
+        } catch (_: Exception) {}
 
         try {
             val ai = packageManager.getApplicationInfo(pkg, PackageManager.GET_META_DATA)
             icon = ai.loadIcon(packageManager)
             label = ai.loadLabel(packageManager)?.toString()
-            Log.d("AppAccessibilityService", "ApplicationInfo.loadIcon -> success for $pkg")
             return Pair(icon, label)
-        } catch (e: Exception) {
-            Log.w("AppAccessibilityService", "ApplicationInfo.loadIcon failed: ${e.message}")
-        }
+        } catch (_: Exception) {}
 
         try {
             val pkgContext = createPackageContext(pkg, Context.CONTEXT_IGNORE_SECURITY or Context.CONTEXT_INCLUDE_CODE)
-            try {
-                icon = pkgContext.packageManager.getApplicationIcon(pkg)
-                val ai = pkgContext.packageManager.getApplicationInfo(pkg, 0)
-                label = pkgContext.packageManager.getApplicationLabel(ai)?.toString()
-                Log.d("AppAccessibilityService", "createPackageContext -> success for $pkg")
-                return Pair(icon, label)
-            } catch (e: Exception) {
-                Log.w("AppAccessibilityService", "packageContext.getApplicationIcon failed: ${e.message}")
-            }
-        } catch (e: Exception) {
-            Log.w("AppAccessibilityService", "createPackageContext failed: ${e.message}")
-        }
+            icon = pkgContext.packageManager.getApplicationIcon(pkg)
+            label = pkgContext.packageManager.getApplicationLabel(pkgContext.packageManager.getApplicationInfo(pkg, 0))?.toString()
+            return Pair(icon, label)
+        } catch (_: Exception) {}
 
         return Pair(null, null)
     }
 
-    // Modern, aesthetic overlay design
     private fun showOverlay(packageName: String) {
         if (overlayShown) return
 
-        // Request overlay permission for THIS app (our package) if missing
+        // 1️⃣ Permisiune overlay
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-            Log.w("AppAccessibilityService", "No overlay permission. Requesting user to grant it for this app.")
-            val myPkg = this.packageName
-            val it = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
-                data = android.net.Uri.parse("package:$myPkg")
+            Log.w("FocusMate", "Lipsă permisiune overlay.")
+            val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
+                data = android.net.Uri.parse("package:${this@AppBlockService.packageName}")
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             }
-            try {
-                startActivity(it)
-            } catch (e: Exception) {
-                Log.w("AppAccessibilityService", "Failed to start overlay permission intent: ${e.message}")
-            }
+            startActivity(intent)
             return
         }
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-
-        // Backdrop full-screen dim (Darker for better focus)
-        val backdrop = FrameLayout(this)
-        backdrop.setBackgroundColor(Color.parseColor("#D9000000")) // ~85% opacity black
-
         val scale = resources.displayMetrics.density
-        val (iconDrawable, appLabel) = loadAppIconAndLabel(packageName)
-        val appName = appLabel ?: "Blocked App"
 
-        // Main Card Container
+        val (iconDrawable, appLabel) = loadAppIconAndLabel(packageName)
+        val appName = appLabel ?: "Aplicație"
+
+        val backdrop = FrameLayout(this).apply {
+            setBackgroundColor(Color.parseColor("#AA000000"))
+            isClickable = true
+            isFocusable = true
+        }
+
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-
-            // Modern white card with rounded corners
             val bg = GradientDrawable().apply {
-                cornerRadius = 32f * scale
-                setColor(Color.WHITE)
+                cornerRadius = 36f * scale
+                setColor(Color.parseColor("#22FFFFFF"))
+                setStroke((1 * scale).toInt(), Color.parseColor("#33FFFFFF"))
             }
             background = bg
-
-            // Padding inside the card
-            setPadding((32 * scale).toInt(), (40 * scale).toInt(), (32 * scale).toInt(), (32 * scale).toInt())
-
-            // Elevation
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                elevation = 24f * scale
-            }
-
-            // Layout params for the card itself (width match parent with margins handled by parent frame)
+            setPadding((32 * scale).toInt(), (48 * scale).toInt(), (32 * scale).toInt(), (40 * scale).toInt())
             layoutParams = FrameLayout.LayoutParams(
-                (300 * scale).toInt(), // Fixed width for consistency
+                (320 * scale).toInt(),
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER
             )
         }
 
-        // 1. Icon Container (Soft background circle)
-        val iconSize = (80 * scale).toInt()
-        val iconContainer = FrameLayout(this).apply {
-            val bg = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#F3F4F6")) // Very light gray/blue
-            }
-            background = bg
-            layoutParams = LinearLayout.LayoutParams(iconSize, iconSize).apply {
+        val iconView = ImageView(this).apply {
+            setImageDrawable(iconDrawable)
+            layoutParams = LinearLayout.LayoutParams((72 * scale).toInt(), (72 * scale).toInt()).apply {
                 bottomMargin = (24 * scale).toInt()
             }
         }
+        card.addView(iconView)
 
-        // 2. The App Icon
-        if (iconDrawable != null) {
-            val iconView = ImageView(this).apply {
-                setImageDrawable(iconDrawable)
-                layoutParams = FrameLayout.LayoutParams((48 * scale).toInt(), (48 * scale).toInt(), Gravity.CENTER)
-            }
-            iconContainer.addView(iconView)
-        } else {
-            // Fallback letter
-            val letter = appName.firstOrNull()?.toString()?.uppercase() ?: "?"
-            val letterView = TextView(this).apply {
-                text = letter
-                textSize = 32f
-                setTextColor(Color.parseColor("#6B7280")) // Cool gray
-                gravity = Gravity.CENTER
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-            }
-            iconContainer.addView(letterView)
-        }
-        card.addView(iconContainer)
-
-        // 3. "Stay Focused" Label (Small, uppercase, tracking)
-        val subtitle = TextView(this).apply {
-            text = "FOCUS MODE ACTIVE"
-            textSize = 12f
-            setTextColor(Color.parseColor("#9CA3AF")) // Light gray
+        val title = TextView(this).apply {
+            text = "Ești sigur?"
+            textSize = 24f
+            setTextColor(Color.WHITE)
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
             gravity = Gravity.CENTER
-            letterSpacing = 0.15f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
             layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
                 bottomMargin = (8 * scale).toInt()
             }
         }
-        card.addView(subtitle)
-
-        // 4. App Name Title
-        val title = TextView(this).apply {
-            text = appName
-            textSize = 24f
-            setTextColor(Color.parseColor("#111827")) // Almost black
-            gravity = Gravity.CENTER
-            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
-            layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = (12 * scale).toInt()
-            }
-        }
         card.addView(title)
 
-        // 5. Motivational Message
-        val message = TextView(this).apply {
-            text = "This app is blocked to help you reach your goals."
+        val subtitle = TextView(this).apply {
+            text = "Ai deschis $appName.\nTrage aer în piept și alege focusul."
             textSize = 15f
-            setTextColor(Color.parseColor("#6B7280")) // Cool gray
+            setTextColor(Color.parseColor("#CCFFFFFF"))
             gravity = Gravity.CENTER
-            // setLineSpacing(8f, 1f) // Optional: improve readability
+            setLineSpacing(4f, 1.2f)
             layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = (32 * scale).toInt()
+                bottomMargin = (36 * scale).toInt()
             }
         }
-        card.addView(message)
+        card.addView(subtitle)
 
-        // 6. Action Button (Pill shaped, gradient or solid color)
-        val button = Button(this).apply {
-            text = "Go back to focus"
-            textSize = 16f
-            setTextColor(Color.WHITE)
+        val btnExit = Button(this).apply {
+            text = "Mă întorc la treabă"
+            setTextColor(Color.BLACK)
             isAllCaps = false
-            stateListAnimator = null // Remove default shadow for cleaner look
-
+            textSize = 16f
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
             val btnBg = GradientDrawable().apply {
-                cornerRadius = 100f * scale // Pill shape
-                setColor(Color.parseColor("#2563EB")) // Modern Blue
+                cornerRadius = 24f * scale
+                setColor(Color.WHITE)
             }
             background = btnBg
-
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (56 * scale).toInt())
-
+            elevation = 8f * scale
+            layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, (58 * scale).toInt()).apply {
+                bottomMargin = (16 * scale).toInt()
+            }
             setOnClickListener { removeOverlay() }
         }
-        card.addView(button)
+        card.addView(btnExit)
 
-        // Add card to backdrop
-        backdrop.addView(card)
-
-        val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_PHONE
+        val btnContinue = TextView(this).apply {
+            text = "Am nevoie de 2 minute"
+            textSize = 14f
+            setTextColor(Color.parseColor("#88FFFFFF"))
+            gravity = Gravity.CENTER
+            setPadding(0, (12 * scale).toInt(), 0, (12 * scale).toInt())
+            setOnClickListener {
+                this.text = "Așteaptă 5 secunde..."
+                this.isEnabled = false
+                Handler(Looper.getMainLooper()).postDelayed({
+                    removeOverlay()
+                }, 5000)
+            }
         }
+        card.addView(btnContinue)
+
+        backdrop.addView(card)
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
-            layoutType,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-            WindowManager.LayoutParams.FLAG_DIM_BEHIND, // Ensure dimming works if supported
+                    WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
+                    WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM,
             PixelFormat.TRANSLUCENT
         )
-        params.gravity = Gravity.CENTER
-        params.dimAmount = 0.5f // Additional system dim
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            params.blurBehindRadius = 60
+            params.flags = params.flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
+        }
 
         try {
             windowManager?.addView(backdrop, params)
             overlayView = backdrop
             overlayShown = true
-            Log.d("AppAccessibilityService", "Overlay displayed for $packageName")
 
-            // Animation: Slide up and Fade in
             card.alpha = 0f
-            card.translationY = 100f * scale
+            card.scaleX = 0.85f
+            card.scaleY = 0.85f
             card.animate()
                 .alpha(1f)
-                .translationY(0f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(450)
                 .setInterpolator(AccelerateDecelerateInterpolator())
-                .setDuration(400)
                 .start()
 
         } catch (e: Exception) {
-            Log.e("AppAccessibilityService", "Failed to add overlay view: ${e.message}")
+            Log.e("FocusMate", "Nu s-a putut afișa overlay-ul: ${e.message}")
             overlayShown = false
-            overlayView = null
-            return
         }
-
-        // Auto-remove after delay (optional, maybe longer now since it looks nice)
-        Handler(Looper.getMainLooper()).postDelayed({ removeOverlay() }, 4000)
     }
 
     private fun removeOverlay() {
@@ -313,9 +320,7 @@ class AppBlockService : AccessibilityService() {
             windowManager?.removeViewImmediate(overlayView)
         } catch (e: Exception) {
             Log.w("AppAccessibilityService", "Error removing overlay: ${e.message}")
-            try {
-                if (overlayView != null) windowManager?.removeView(overlayView)
-            } catch (_: Exception) { }
+            try { if (overlayView != null) windowManager?.removeView(overlayView) } catch (_: Exception) {}
         }
         overlayView = null
         overlayShown = false
