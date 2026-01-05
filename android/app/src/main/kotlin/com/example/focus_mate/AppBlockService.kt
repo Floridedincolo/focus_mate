@@ -217,32 +217,36 @@ class AppBlockService : AccessibilityService() {
         }
         card.addView(iconView)
 
+        // TODO: În viitor, înlocuiește "Focus Mate" cu numele taskului curent
+        // Exemplu: "by Complete Math Homework" sau "by Study for Exam"
+        val currentTaskName = "Focus Mate" // Placeholder - va fi înlocuit cu task real
+
         val title = TextView(this).apply {
-            text = "Ești sigur?"
-            textSize = 24f
+            text = "$appName is blocked"
+            textSize = 22f
             setTextColor(Color.WHITE)
             typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = (8 * scale).toInt()
+                bottomMargin = (12 * scale).toInt()
             }
         }
         card.addView(title)
 
         val subtitle = TextView(this).apply {
-            text = "Ai deschis $appName.\nTrage aer în piept și alege focusul."
-            textSize = 15f
-            setTextColor(Color.parseColor("#CCFFFFFF"))
+            text = "by $currentTaskName"
+            textSize = 16f
+            setTextColor(Color.parseColor("#AAFFFFFF"))
             gravity = Gravity.CENTER
-            setLineSpacing(4f, 1.2f)
+            typeface = android.graphics.Typeface.create("sans-serif-light", android.graphics.Typeface.NORMAL)
             layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = (36 * scale).toInt()
+                bottomMargin = (32 * scale).toInt()
             }
         }
         card.addView(subtitle)
 
         val btnExit = Button(this).apply {
-            text = "Mă întorc la treabă"
+            text = "Go Back"
             setTextColor(Color.BLACK)
             isAllCaps = false
             textSize = 16f
@@ -261,20 +265,20 @@ class AppBlockService : AccessibilityService() {
         card.addView(btnExit)
 
         val btnContinue = TextView(this).apply {
-            text = "Am nevoie de 2 minute"
+            text = "I need 2 minutes"
             textSize = 14f
             setTextColor(Color.parseColor("#88FFFFFF"))
             gravity = Gravity.CENTER
             setPadding(0, (12 * scale).toInt(), 0, (12 * scale).toInt())
             setOnClickListener {
-                this.text = "Așteaptă 5 secunde..."
+                this.text = "Wait 5 seconds..."
                 this.isEnabled = false
                 Handler(Looper.getMainLooper()).postDelayed({
                     removeOverlay()
                 }, 5000)
             }
         }
-        card.addView(btnContinue)
+        //card.addView(btnContinue)
 
         backdrop.addView(card)
 
