@@ -1,7 +1,6 @@
 // lib/pages/home.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
 
 import '../models/task.dart';
 import '../models/calendar_icon_data.dart';
@@ -9,7 +8,7 @@ import '../widgets/calendar_icon_widget.dart';
 import '../widgets/task_item.dart';
 import '../services/firestore_service.dart';
 import '../extensions/task_filter.dart';
-import 'package:focus_mate/firebase_options.dart';
+
 class Home extends StatefulWidget {
   const Home({super.key});
 
@@ -23,7 +22,6 @@ class _HomeState extends State<Home> {
   late DateTime firstDate;
   late DateTime lastDate;
   late String currentDateText;
-  late int _selectedIndex;
   final ScrollController _scrollController = ScrollController();
   late List<CalendarIconData> calendarIcons;
 
@@ -55,15 +53,13 @@ class _HomeState extends State<Home> {
     'Saturday',
     'Sunday',
   ];
-  final bottomBarColor = const Color(0xFF1A1A1A); // Culoarea barei de jos
-  final accentColor = Colors.blueAccent;
+
   @override
   void initState() {
     super.initState();
     todayDate = DateTime.now();
     selectedDate = todayDate;
     currentDateText = "Today";
-    _selectedIndex=0;
     int totalDays = 203;
     firstDate = todayDate.subtract(Duration(days: totalDays ~/ 2));
     lastDate = todayDate.add(Duration(days: totalDays ~/ 2));
@@ -453,35 +449,6 @@ class _HomeState extends State<Home> {
           ),
         ],
       ),
-        floatingActionButton: FloatingActionButton(
-          backgroundColor: accentColor,
-          shape: const CircleBorder(),
-          elevation: 2,
-          onPressed: () => Navigator.pushNamed(context, '/add_task'),
-          child: const Icon(Icons.add, color: Colors.white, size: 28),
-        ),
-
-        floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-        bottomNavigationBar: BottomAppBar(
-          color: bottomBarColor,
-          shape: const CircularNotchedRectangle(),
-          notchMargin: 8.0,
-          clipBehavior: Clip.antiAlias,
-          height: 60,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _buildBottomNavItem(0, Icons.home_outlined, Icons.home, "Home"),
-                _buildBottomNavItem(1, Icons.shield_outlined, Icons.shield, "Focus"),
-                const SizedBox(width: 48), // Spațiu pentru FAB
-                _buildBottomNavItem(2, Icons.bar_chart_outlined, Icons.bar_chart, "Stats"),
-                _buildBottomNavItem(3, Icons.person_outline, Icons.person, "Profile"),
-              ],
-            ),
-          ),
-        )
     );
   }
 
@@ -505,57 +472,4 @@ class _HomeState extends State<Home> {
       ),
     );
   }
-  Widget _buildBottomNavItem(int index, IconData icon, IconData activeIcon, String label) {
-    bool isSelected = _selectedIndex == index;
-    return InkWell(
-      onTap: () {
-        setState(() {
-          _selectedIndex = index;
-        });
-
-        // Navigare în funcție de index
-        switch (index) {
-          case 0: // Home
-            Navigator.pushNamed(context, '/home');
-            break;
-          case 1: // Focus Mode
-            Navigator.pushNamed(context, '/focus_page');
-            break;
-          case 2: // Stats
-            // Nu există încă pagina de stats
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Stats page coming soon!'),
-                duration: Duration(seconds: 1),
-              ),
-            );
-            break;
-          case 3: // Profile
-            Navigator.pushNamed(context, '/profile');
-            break;
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 0, horizontal: 1),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              isSelected ? activeIcon : icon,
-              color: isSelected ? Colors.blueAccent : Colors.grey,
-              size: 22,
-            ),
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? Colors.blueAccent : Colors.grey,
-                fontSize: 10,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }}
+}

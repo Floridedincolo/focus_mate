@@ -118,20 +118,11 @@ class _ProfileState extends State<Profile> {
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
       appBar: AppBar(
-        leading: ElevatedButton(
-          onPressed: () => Navigator.pop(context),
-          style: OutlinedButton.styleFrom(
-            shape: const CircleBorder(),
-            backgroundColor: const Color(0xFF1A1A1A),
-            padding: const EdgeInsets.all(10),
-          ),
-          child: const Icon(Icons.arrow_back_ios_new_sharp, color: Colors.white70),
-        ),
         backgroundColor: const Color(0xFF0D0D0D),
         elevation: 0,
+        automaticallyImplyLeading: false,
         title: Row(
           children: [
-            const SizedBox(width: 5),
             const Text(
               "Profile",
               style: TextStyle(

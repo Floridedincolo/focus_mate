@@ -33,5 +33,24 @@ class AccessibilityService {
     }
     return true;
   }
-}
 
+  /// ✅ Verifică dacă permisiunea de overlay este acordată
+  static Future<bool> canDrawOverlays() async {
+    try {
+      final bool canDraw = await _channel.invokeMethod('canDrawOverlays');
+      return canDraw;
+    } catch (e) {
+      print('❌ Error checking overlay permission: $e');
+      return false;
+    }
+  }
+
+  /// 🔓 Deschide setările pentru permisiunea de overlay
+  static Future<void> requestOverlayPermission() async {
+    try {
+      await _channel.invokeMethod('requestOverlayPermission');
+    } catch (e) {
+      print('❌ Error requesting overlay permission: $e');
+    }
+  }
+}

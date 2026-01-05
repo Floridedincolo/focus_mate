@@ -19,6 +19,7 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
 
   // --- ACCESSIBILITY SERVICE STATUS ---
   bool _isAccessibilityEnabled = false;
+  bool _hasOverlayPermission = false;
 
 
   @override
@@ -27,6 +28,7 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this); // ✅ Ascultă schimbările de lifecycle
     _loadBlockedApps();
     _checkAccessibilityService(); // ✅ Verifică imediat la pornire
+    _checkOverlayPermission(); // ✅ Verifică permisiunea overlay
   }
 
     @override
@@ -42,6 +44,7 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
       // Delay pentru a lăsa sistemul să se stabilizeze după revenirea în foreground
       Future.delayed(const Duration(milliseconds: 1000), () async {
         await _checkAccessibilityService();
+        await _checkOverlayPermission();
       });
     }
   }
@@ -60,6 +63,23 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
         print("✅ Accessibility Service este ACTIV și funcțional!");
       } else {
         print("⚠️ Accessibility Service NU este activ!");
+      }
+    }
+  }
+
+  // ✅ Verifică permisiunea overlay
+  Future<void> _checkOverlayPermission() async {
+    final canDraw = await AccessibilityService.canDrawOverlays();
+
+    if (mounted) {
+      setState(() {
+        _hasOverlayPermission = canDraw;
+      });
+
+      if (canDraw) {
+        print("✅ Overlay permission este ACTIVĂ!");
+      } else {
+        print("⚠️ Overlay permission NU este activă!");
       }
     }
   }
@@ -243,7 +263,7 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
                 if (!_isAccessibilityEnabled)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    margin: const EdgeInsets.only(bottom: 20),
+                    margin: const EdgeInsets.only(bottom: 12),
                     decoration: BoxDecoration(
                       color: Colors.orange.withAlpha(26),
                       border: Border.all(color: Colors.orange, width: 2),
@@ -294,9 +314,62 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
                     ),
                   ),
 
+                // ✅ BANNER OVERLAY PERMISSION (compact)
+                if (!_hasOverlayPermission)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withAlpha(26),
+                      border: Border.all(color: Colors.red, width: 2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.block, color: Colors.red, size: 24),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                "Overlay lipsă",
+                                style: TextStyle(
+                                  color: Colors.red,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                "Activează 'Display over other apps'",
+                                style: TextStyle(color: Colors.grey[400], fontSize: 11),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        ElevatedButton(
+                          onPressed: () async {
+                            await AccessibilityService.requestOverlayPermission();
+                            // După ce userul revine din setări, verifică din nou
+                            await Future.delayed(const Duration(milliseconds: 500));
+                            await _checkOverlayPermission();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: const Text("Enable", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                        ),
+                      ],
+                    ),
+                  ),
 
-
-
+                const SizedBox(height: 20),
 
                 // --- LISTA APLICAȚII BLOCATE (REAL) ---
                 GestureDetector(
@@ -354,55 +427,9 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
                     ),
                   ),
                 ),
-                const SizedBox(height: 100), // Spațiu pentru bottom navigation
+                const SizedBox(height: 20),
               ],
             ),
-          ),
-        ),
-      ),
-      // ✅ BOTTOM NAVIGATION BAR
-      bottomNavigationBar: Container(
-        margin: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1E1E1E),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: BottomNavigationBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            selectedItemColor: Colors.blueAccent,
-            unselectedItemColor: Colors.grey[600],
-            type: BottomNavigationBarType.fixed,
-            currentIndex: 1, // Focus page index
-            onTap: (index) {
-              switch (index) {
-                case 0:
-                  Navigator.pushReplacementNamed(context, '/home');
-                  break;
-                case 1:
-                  // Already on focus page
-                  break;
-                case 2:
-                  Navigator.pushReplacementNamed(context, '/profile');
-                  break;
-              }
-            },
-            items: const [
-              BottomNavigationBarItem(
-                icon: Icon(Icons.home_rounded, size: 24),
-                label: 'Home',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.shield_rounded, size: 24),
-                label: 'Focus',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.person_rounded, size: 24),
-                label: 'Profile',
-              ),
-            ],
           ),
         ),
       ),

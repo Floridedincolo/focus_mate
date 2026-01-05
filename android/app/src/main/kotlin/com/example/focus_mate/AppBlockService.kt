@@ -166,18 +166,19 @@ class AppBlockService : AccessibilityService() {
     }
 
     private fun showOverlay(packageName: String) {
-        if (overlayShown) return
-
-        // 1️⃣ Permisiune overlay
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-            Log.w("FocusMate", "Lipsă permisiune overlay.")
-            val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
-                data = android.net.Uri.parse("package:${this@AppBlockService.packageName}")
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            }
-            startActivity(intent)
+        if (overlayShown) {
+            Log.d("AppAccessibilityService", "⚠️ Overlay already shown, skipping")
             return
         }
+
+        // 1️⃣ Verifică permisiunea overlay
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            Log.e("AppAccessibilityService", "❌ OVERLAY PERMISSION MISSING! Cannot show overlay.")
+            Log.e("AppAccessibilityService", "⚠️ Please enable 'Display over other apps' permission in Settings → Apps → FocusMate → Permissions")
+            return
+        }
+
+        Log.d("AppAccessibilityService", "✅ Overlay permission granted, showing overlay for: $packageName")
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         val scale = resources.displayMetrics.density

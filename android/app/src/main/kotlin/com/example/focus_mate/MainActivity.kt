@@ -186,6 +186,30 @@ class MainActivity : FlutterActivity() {
                     promptEnableAccessibility()
                     result.success(null)
                 }
+                "canDrawOverlays" -> {
+                    val canDraw = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        Settings.canDrawOverlays(this)
+                    } else {
+                        true
+                    }
+                    result.success(canDraw)
+                }
+                "requestOverlayPermission" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        val intent = Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            android.net.Uri.parse("package:$packageName")
+                        )
+                        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        startActivity(intent)
+                        Toast.makeText(
+                            this,
+                            "Activează 'Display over other apps' pentru FocusMate",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    result.success(null)
+                }
                 else -> result.notImplemented()
             }
         }

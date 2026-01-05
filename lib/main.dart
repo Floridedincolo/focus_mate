@@ -4,6 +4,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:focus_mate/pages/focus_page.dart';
 import 'package:focus_mate/pages/home.dart';
 import 'package:focus_mate/pages/add_task.dart';
+import 'package:focus_mate/pages/main_page.dart';
+import 'package:focus_mate/pages/stats_page.dart';
 import 'pages/profile.dart';
 import 'package:focus_mate/firebase_options.dart';
 import 'package:flutter/services.dart'; // pentru EventChannel
@@ -52,12 +54,14 @@ void main() async {
   runApp(
     MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: Home(),
+      home: const MainPage(),
       routes: {
-        '/profile': (context) => Profile(),
-        '/add_task': (context) => AddTaskMenu(),
-        '/focus_page': (context) => FocusPage(),
-        '/home': (context) => Home(),
+        '/profile': (context) => const Profile(),
+        '/add_task': (context) => const AddTaskMenu(),
+        '/focus_page': (context) => const FocusPage(),
+        '/home': (context) => const Home(),
+        '/stats': (context) => const StatsPage(),
+        '/main': (context) => const MainPage(),
       },
     ),
   );
