@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
@@ -29,14 +30,45 @@ class MainActivity : FlutterActivity() {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
                     eventSink = events
 
+                    // Trimite starea inițială imediat
+                    val enabled = isAccessibilityServiceEnabled(AppBlockService::class.java)
+                    val canDraw = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        Settings.canDrawOverlays(this@MainActivity)
+                    } else {
+                        true
+                    }
+                    val blocked = getBlockedApps().toList()
+
+                    val payload = HashMap<String, Any?>()
+                    payload["event"] = "initialState"
+                    payload["accessibilityEnabled"] = enabled
+                    payload["canDrawOverlays"] = canDraw
+                    payload["blockedApps"] = blocked
+                    events?.success(payload)
+
+                    // Receiver pentru actualizări din serviciul de blocare
                     myReceiver = object : BroadcastReceiver() {
                         override fun onReceive(context: Context?, intent: Intent?) {
-                            val pkg = intent?.getStringExtra("package")
-                            pkg?.let { eventSink?.success(it) }
+                            when (intent?.action) {
+                                "com.block_app.ACTION_SHOW_OVERLAY" -> {
+                                    val pkg = intent.getStringExtra("package")
+                                    pkg?.let { eventSink?.success(it) }
+                                }
+                                "com.example.focus_mate.UPDATE_BLOCKED_APPS" -> {
+                                    val apps = intent.getStringArrayListExtra("apps") ?: ArrayList(getBlockedApps())
+                                    val updatePayload = HashMap<String, Any?>()
+                                    updatePayload["event"] = "blockedAppsUpdated"
+                                    updatePayload["blockedApps"] = apps
+                                    eventSink?.success(updatePayload)
+                                }
+                            }
                         }
                     }
 
-                    val filter = IntentFilter("com.block_app.ACTION_SHOW_OVERLAY")
+                    val filter = IntentFilter().apply {
+                        addAction("com.block_app.ACTION_SHOW_OVERLAY")
+                        addAction("com.example.focus_mate.UPDATE_BLOCKED_APPS")
+                    }
 
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                         registerReceiver(myReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
@@ -47,7 +79,7 @@ class MainActivity : FlutterActivity() {
 
                 override fun onCancel(arguments: Any?) {
                     myReceiver?.let {
-                        unregisterReceiver(it)
+                        try { unregisterReceiver(it) } catch (_: Exception) { }
                         myReceiver = null
                     }
                     eventSink = null
@@ -221,10 +253,20 @@ class MainActivity : FlutterActivity() {
         editor.putStringSet("blocked_apps", apps.toSet())
         editor.apply()
 
-        // Notifică serviciul de accessibility despre schimbare
+        // Notifică serviciul de accessibility despre schimbare (broadcast EXPLICIT pentru Android 12+)
         val intent = Intent("com.example.focus_mate.UPDATE_BLOCKED_APPS")
+        intent.setPackage(packageName) // ✅ Face broadcast-ul EXPLICIT
         intent.putStringArrayListExtra("apps", ArrayList(apps))
         sendBroadcast(intent)
+        Log.d("MainActivity", "📤 Sent UPDATE_BLOCKED_APPS broadcast with ${apps.size} apps")
+
+        // Dacă Flutter e conectat la EventChannel, trimitem direct update-ul pentru a fi instant
+        eventSink?.let { sink ->
+            val updatePayload = HashMap<String, Any?>()
+            updatePayload["event"] = "blockedAppsUpdated"
+            updatePayload["blockedApps"] = ArrayList(apps)
+            try { sink.success(updatePayload) } catch (_: Exception) { }
+        }
     }
 
     private fun getBlockedApps(): Set<String> {
@@ -274,4 +316,3 @@ class MainActivity : FlutterActivity() {
         })
     }
 }
-

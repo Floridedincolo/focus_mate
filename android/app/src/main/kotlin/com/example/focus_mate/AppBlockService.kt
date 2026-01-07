@@ -37,15 +37,30 @@ class AppBlockService : AccessibilityService() {
 
     private var blockedApps: MutableSet<String> = mutableSetOf()
     private var updateReceiver: BroadcastReceiver? = null
+    private var prefsListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
 
-    override fun onCreate() {
-        super.onCreate()
+    override fun onServiceConnected() {
+        super.onServiceConnected()
         try {
             loadBlockedApps()
-            registerUpdateReceiver()
-            Log.d("AppAccessibilityService", "✅ Accessibility Service initialized successfully")
+            // Înregistrăm receiver-ul AICI pentru a asigura că este activ când serviciul este conectat
+            if (updateReceiver == null) {
+                registerUpdateReceiver()
+            }
+            // Înregistrăm un listener pentru SharedPreferences ca fallback robust
+            val prefs = getSharedPreferences("focus_mate_prefs", Context.MODE_PRIVATE)
+            prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPrefs, key ->
+                if (key == "blocked_apps") {
+                    Log.d("AppAccessibilityService", "🔔 SharedPreferences change detected for key: $key")
+                    val oldSize = blockedApps.size
+                    loadBlockedApps()
+                    Log.d("AppAccessibilityService", "🔄 Blocked apps refreshed via prefs listener: $oldSize → ${blockedApps.size} apps")
+                }
+            }
+            prefsListener?.let { prefs.registerOnSharedPreferenceChangeListener(it) }
+            Log.d("AppAccessibilityService", "🔌 Service connected – blocked apps reloaded, receiver registered")
         } catch (e: Exception) {
-            Log.e("AppAccessibilityService", "❌ Error in onCreate: ${e.message}", e)
+            Log.e("AppAccessibilityService", "❌ Error in onServiceConnected: ${e.message}", e)
         }
     }
 
@@ -62,18 +77,15 @@ class AppBlockService : AccessibilityService() {
         updateReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 if (intent?.action == "com.example.focus_mate.UPDATE_BLOCKED_APPS") {
-                    val apps = intent.getStringArrayListExtra("apps")
-                    if (apps != null) {
-                        blockedApps = apps.toMutableSet()
-                        Log.d("AppAccessibilityService", "🔄 Updated blocked apps via broadcast: ${blockedApps.size} apps")
-                        blockedApps.forEach {
-                            Log.d("AppAccessibilityService", "  - Now blocking: $it")
-                        }
-
-                        // ✅ SALVEAZĂ ÎN SharedPreferences
-                        val prefs = getSharedPreferences("focus_mate_prefs", Context.MODE_PRIVATE)
-                        prefs.edit().putStringSet("blocked_apps", blockedApps).apply()
-                        Log.d("AppAccessibilityService", "💾 Saved ${blockedApps.size} apps to SharedPreferences")
+                    Log.d("AppAccessibilityService", "📡 Received UPDATE_BLOCKED_APPS broadcast")
+                    val oldSize = blockedApps.size
+                    loadBlockedApps()
+                    Log.d(
+                        "AppAccessibilityService",
+                        "🔄 Blocked apps refreshed: $oldSize → ${blockedApps.size} apps"
+                    )
+                    blockedApps.forEach {
+                        Log.d("AppAccessibilityService", "  ✓ Now blocking: $it")
                     }
                 }
             }
@@ -85,6 +97,7 @@ class AppBlockService : AccessibilityService() {
         } else {
             registerReceiver(updateReceiver, filter)
         }
+        Log.d("AppAccessibilityService", "✅ BroadcastReceiver registered for UPDATE_BLOCKED_APPS")
     }
 
     override fun onDestroy() {
@@ -94,6 +107,12 @@ class AppBlockService : AccessibilityService() {
                 unregisterReceiver(it)
                 updateReceiver = null
             }
+            // Unregister prefs listener
+            try {
+                val prefs = getSharedPreferences("focus_mate_prefs", Context.MODE_PRIVATE)
+                prefsListener?.let { prefs.unregisterOnSharedPreferenceChangeListener(it) }
+                prefsListener = null
+            } catch (_: Exception) { }
             removeOverlay()
             Log.d("AppAccessibilityService", "🔴 Service destroyed - cleanup completed")
         } catch (e: Exception) {
@@ -103,6 +122,10 @@ class AppBlockService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         try {
+            if (blockedApps.isEmpty()) {
+                loadBlockedApps()
+            }
+
             if (event == null) return
             if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
 
