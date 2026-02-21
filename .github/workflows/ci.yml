@@ -7,25 +7,27 @@ on:
     branches: [ main ]
 
 jobs:
-  analyze-and-test:
+  test:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          flutter-version: '3.24.0'
+          cache: true
 
-      - name: Flutter pub get
+      - name: Install dependencies
         run: flutter pub get
 
-      - name: Dart analyze
-        run: flutter analyze
+      - name: Run analyzer
+        run: dart analyze
 
       - name: Check formatting
-        run: flutter format --set-exit-if-changed .
+        run: dart format --set-exit-if-changed .
 
       - name: Run tests
-        run: flutter test
+        run: dart test
 
