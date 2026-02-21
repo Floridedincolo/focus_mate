@@ -61,7 +61,7 @@ if(picked!=null){
               borderSide: BorderSide.none,
             ),
           ),
-          style: TextStyle(color: Colors.white),
+          style: const TextStyle(color: Colors.white),
         ),
       )
     );
