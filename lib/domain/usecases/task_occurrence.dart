@@ -5,7 +5,8 @@ import 'package:focus_mate/models/repeatTypes.dart';
 /// This extracted logic can be unit tested easily and reused.
 bool occursOnTask(Task task, DateTime date) {
   final targetDay = date.weekday;
-  final isSameDay = date.year == task.startDate.year &&
+  final isSameDay =
+      date.year == task.startDate.year &&
       date.month == task.startDate.month &&
       date.day == task.startDate.day;
 
@@ -28,7 +29,7 @@ bool occursOnTask(Task task, DateTime date) {
         "Thursday",
         "Friday",
         "Saturday",
-        "Sunday"
+        "Sunday",
       ];
       return task.days[weekdays[targetDay - 1]] == true &&
           !date.isBefore(task.startDate);
@@ -36,4 +37,3 @@ bool occursOnTask(Task task, DateTime date) {
       return false;
   }
 }
-

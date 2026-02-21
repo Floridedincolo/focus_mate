@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 class DatePickerField extends StatefulWidget {
   final DateTime? initialDate;
   final void Function(DateTime) onDateSelected;
@@ -54,7 +55,8 @@ class _DatePickerFieldState extends State<DatePickerField> {
           widget.onDateSelected(picked);
         }
       },
-      child: AbsorbPointer(//absorb pointer ca copii sa nu primeasca inputu de click
+      child: AbsorbPointer(
+        //absorb pointer ca copii sa nu primeasca inputu de click
         child: TextField(
           readOnly: true,
           controller: TextEditingController(

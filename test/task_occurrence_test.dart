@@ -18,8 +18,14 @@ void main() {
       expect(occursOnTask(task, startDate), isTrue);
 
       // Task does not occur on other dates
-      expect(occursOnTask(task, startDate.add(const Duration(days: 1))), isFalse);
-      expect(occursOnTask(task, startDate.subtract(const Duration(days: 1))), isFalse);
+      expect(
+        occursOnTask(task, startDate.add(const Duration(days: 1))),
+        isFalse,
+      );
+      expect(
+        occursOnTask(task, startDate.subtract(const Duration(days: 1))),
+        isFalse,
+      );
     });
 
     test('daily task occurs every day from start date onwards', () {
@@ -36,11 +42,20 @@ void main() {
       expect(occursOnTask(task, startDate), isTrue);
 
       // Task occurs on future dates
-      expect(occursOnTask(task, startDate.add(const Duration(days: 1))), isTrue);
-      expect(occursOnTask(task, startDate.add(const Duration(days: 10))), isTrue);
+      expect(
+        occursOnTask(task, startDate.add(const Duration(days: 1))),
+        isTrue,
+      );
+      expect(
+        occursOnTask(task, startDate.add(const Duration(days: 10))),
+        isTrue,
+      );
 
       // Task does not occur before start date
-      expect(occursOnTask(task, startDate.subtract(const Duration(days: 1))), isFalse);
+      expect(
+        occursOnTask(task, startDate.subtract(const Duration(days: 1))),
+        isFalse,
+      );
     });
 
     test('weekly task occurs on same day of week every 7 days', () {
@@ -58,16 +73,28 @@ void main() {
       expect(occursOnTask(task, startDate), isTrue);
 
       // Task occurs 7 days later (also Thursday)
-      expect(occursOnTask(task, startDate.add(const Duration(days: 7))), isTrue);
+      expect(
+        occursOnTask(task, startDate.add(const Duration(days: 7))),
+        isTrue,
+      );
 
       // Task occurs 14 days later (also Thursday)
-      expect(occursOnTask(task, startDate.add(const Duration(days: 14))), isTrue);
+      expect(
+        occursOnTask(task, startDate.add(const Duration(days: 14))),
+        isTrue,
+      );
 
       // Task does NOT occur 1 day later (Friday)
-      expect(occursOnTask(task, startDate.add(const Duration(days: 1))), isFalse);
+      expect(
+        occursOnTask(task, startDate.add(const Duration(days: 1))),
+        isFalse,
+      );
 
       // Task does NOT occur before start date
-      expect(occursOnTask(task, startDate.subtract(const Duration(days: 1))), isFalse);
+      expect(
+        occursOnTask(task, startDate.subtract(const Duration(days: 1))),
+        isFalse,
+      );
     });
 
     test('custom task occurs on specified weekdays from start date', () {
@@ -135,4 +162,3 @@ void main() {
     });
   });
 }
-

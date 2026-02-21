@@ -29,4 +29,3 @@ abstract class TaskRepository {
   /// Returns the updated streak count.
   Future<int> clearCompletion(Task task, DateTime date);
 }
-

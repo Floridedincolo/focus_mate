@@ -29,8 +29,10 @@ class _ReminderPickerDialogState extends State<ReminderPickerDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Add Reminder",
-              style: TextStyle(color: Colors.white, fontSize: 22)),
+          const Text(
+            "Add Reminder",
+            style: TextStyle(color: Colors.white, fontSize: 22),
+          ),
           const SizedBox(height: 20),
 
           // pick time
@@ -66,20 +68,22 @@ class _ReminderPickerDialogState extends State<ReminderPickerDialog> {
           ),
 
           const SizedBox(height: 20),
-          const Text("Notify on days",
-              style: TextStyle(color: Colors.white, fontSize: 18)),
+          const Text(
+            "Notify on days",
+            style: TextStyle(color: Colors.white, fontSize: 18),
+          ),
           const SizedBox(height: 10),
 
           Wrap(
             spacing: 8,
             children: _days.keys.map((day) {
               return FilterChip(
-                label: Text(day,
-                    style:
-                    const TextStyle(color: Colors.white, fontSize: 15)),
+                label: Text(
+                  day,
+                  style: const TextStyle(color: Colors.white, fontSize: 15),
+                ),
                 selected: _days[day]!,
-                onSelected: (selected) =>
-                    setState(() => _days[day] = selected),
+                onSelected: (selected) => setState(() => _days[day] = selected),
                 backgroundColor: const Color(0xFF1A1A1A),
                 selectedColor: Colors.blueAccent,
               );
@@ -97,8 +101,9 @@ class _ReminderPickerDialogState extends State<ReminderPickerDialog> {
               filled: true,
               fillColor: const Color(0xFF1A1A1A),
               border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide.none),
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide.none,
+              ),
             ),
           ),
 
@@ -127,9 +132,9 @@ class _ReminderPickerDialogState extends State<ReminderPickerDialog> {
                   backgroundColor: Colors.blueAccent,
                 ),
                 child: const Text("Save"),
-              )
+              ),
             ],
-          )
+          ),
         ],
       ),
     );

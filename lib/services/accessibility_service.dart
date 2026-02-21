@@ -2,7 +2,9 @@ import 'package:flutter/services.dart';
 
 /// 📱 Serviciu pentru verificarea și gestionarea Accessibility Service-ului
 class AccessibilityService {
-  static const MethodChannel _channel = MethodChannel('focus_mate/accessibility');
+  static const MethodChannel _channel = MethodChannel(
+    'focus_mate/accessibility',
+  );
 
   ///  Verifică dacă Accessibility Service este activ
   static Future<bool> isEnabled() async {

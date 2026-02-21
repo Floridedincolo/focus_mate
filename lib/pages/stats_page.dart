@@ -47,10 +47,7 @@ class _StatsPageState extends State<StatsPage> {
               child: Text(
                 'Track your productivity, completed tasks, and focus time here.',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white54,
-                  fontSize: 16,
-                ),
+                style: TextStyle(color: Colors.white54, fontSize: 16),
               ),
             ),
           ],

@@ -83,5 +83,4 @@ class DefaultFirebaseOptions {
     authDomain: 'focusmate-ea9fc.firebaseapp.com',
     storageBucket: 'focusmate-ea9fc.firebasestorage.app',
   );
-
 }

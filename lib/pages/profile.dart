@@ -91,8 +91,9 @@ class _ProfileState extends State<Profile> {
 
       for (final entry in completionsPerDay.entries) {
         final date = DateTime.parse(entry.key);
-        final expectedTasks =
-            tasks.where((t) => t.occursOn(date) && !t.archived).length;
+        final expectedTasks = tasks
+            .where((t) => t.occursOn(date) && !t.archived)
+            .length;
 
         final completedCount = entry.value;
 
@@ -103,15 +104,15 @@ class _ProfileState extends State<Profile> {
 
       setState(() {
         activeTasks = tasks.where((t) => !t.archived).length;
-        totalCompletions =
-            completions.where((c) => c['status'] == 'completed').length;
+        totalCompletions = completions
+            .where((c) => c['status'] == 'completed')
+            .length;
         flawlessDays = flawlessDays;
       });
     } catch (e) {
       debugPrint('Error loading stats: $e');
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -137,12 +138,19 @@ class _ProfileState extends State<Profile> {
               onPressed: () {},
               style: TextButton.styleFrom(
                 backgroundColor: const Color(0xFF1A1A1A),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
               ),
               child: const Row(
                 children: [
                   Text("English", style: TextStyle(color: Colors.white70)),
-                  Icon(Icons.arrow_drop_down, color: Colors.white70, size: 20.0),
+                  Icon(
+                    Icons.arrow_drop_down,
+                    color: Colors.white70,
+                    size: 20.0,
+                  ),
                 ],
               ),
             ),
@@ -168,26 +176,47 @@ class _ProfileState extends State<Profile> {
                 borderRadius: BorderRadius.circular(15.0),
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 20.0, horizontal: 20.0),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 20.0,
+                  horizontal: 20.0,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    const CircleAvatar(radius: 50.0, backgroundColor: Colors.white12),
+                    const CircleAvatar(
+                      radius: 50.0,
+                      backgroundColor: Colors.white12,
+                    ),
                     const SizedBox(height: 10),
                     const Text(
                       "Teodor Marciuc",
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20.0),
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 20.0,
+                      ),
                     ),
                     const SizedBox(height: 5),
-                    const Text("teo@example.com", style: TextStyle(color: Colors.white70)),
-                    const Divider(color: Colors.white24, thickness: 0.5, height: 30.0),
+                    const Text(
+                      "teo@example.com",
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                    const Divider(
+                      color: Colors.white24,
+                      thickness: 0.5,
+                      height: 30.0,
+                    ),
 
                     Container(
                       alignment: Alignment.centerLeft,
                       margin: const EdgeInsets.fromLTRB(0, 10, 0, 15),
                       child: const Text(
                         "Quick Stats",
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20.0),
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 20.0,
+                        ),
                       ),
                     ),
 
@@ -199,16 +228,44 @@ class _ProfileState extends State<Profile> {
                           runSpacing: 12,
                           alignment: WrapAlignment.center,
                           children: [
-                            _buildStatCard(Icons.check_circle, "$activeTasks",
-                                "Active Tasks", Colors.greenAccent, cardWidth),
-                            _buildStatCard(Icons.star, "$flawlessDays",
-                                "Flawless Days", Colors.amber, cardWidth),
-                            _buildStatCard(Icons.local_fire_department,
-                                "$totalCompletions", "Completions", Colors.orange, cardWidth),
-                            _buildStatCard(Icons.access_time, "12h",
-                                "Focus Hours", Colors.lightBlueAccent, cardWidth),
-                            _buildSimpleCard(Icons.calendar_month, "Full Schedule", cardWidth),
-                            _buildSimpleCard(Icons.pie_chart, "Weekly Stats", cardWidth),
+                            _buildStatCard(
+                              Icons.check_circle,
+                              "$activeTasks",
+                              "Active Tasks",
+                              Colors.greenAccent,
+                              cardWidth,
+                            ),
+                            _buildStatCard(
+                              Icons.star,
+                              "$flawlessDays",
+                              "Flawless Days",
+                              Colors.amber,
+                              cardWidth,
+                            ),
+                            _buildStatCard(
+                              Icons.local_fire_department,
+                              "$totalCompletions",
+                              "Completions",
+                              Colors.orange,
+                              cardWidth,
+                            ),
+                            _buildStatCard(
+                              Icons.access_time,
+                              "12h",
+                              "Focus Hours",
+                              Colors.lightBlueAccent,
+                              cardWidth,
+                            ),
+                            _buildSimpleCard(
+                              Icons.calendar_month,
+                              "Full Schedule",
+                              cardWidth,
+                            ),
+                            _buildSimpleCard(
+                              Icons.pie_chart,
+                              "Weekly Stats",
+                              cardWidth,
+                            ),
                           ],
                         );
                       },
@@ -224,11 +281,29 @@ class _ProfileState extends State<Profile> {
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: const [
-                          Text("Low", style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
+                          Text(
+                            "Low",
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                           SizedBox(width: 8),
-                          Text("Moderate", style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
+                          Text(
+                            "Moderate",
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                           SizedBox(width: 8),
-                          Text("High", style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
+                          Text(
+                            "High",
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -236,7 +311,11 @@ class _ProfileState extends State<Profile> {
                     _buildPreferenceRow(
                       icon: Icons.apps,
                       label: "App Blacklist & Whitelist",
-                      trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white70, size: 15),
+                      trailing: const Icon(
+                        Icons.arrow_forward_ios,
+                        color: Colors.white70,
+                        size: 15,
+                      ),
                     ),
                     const SizedBox(height: 10),
 
@@ -262,7 +341,13 @@ class _ProfileState extends State<Profile> {
     );
   }
 
-  Widget _buildStatCard(IconData icon, String value, String label, Color color, double width) {
+  Widget _buildStatCard(
+    IconData icon,
+    String value,
+    String label,
+    Color color,
+    double width,
+  ) {
     return Container(
       width: width,
       decoration: BoxDecoration(

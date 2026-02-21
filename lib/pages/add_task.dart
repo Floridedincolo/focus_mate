@@ -25,7 +25,7 @@ class _AddTaskMenuState extends State<AddTaskMenu> {
   List<Reminder> _reminders = [];
   FirestoreService firestoreService = FirestoreService();
   // repeat info
-  RepeatType? repeatType=RepeatType.daily;
+  RepeatType? repeatType = RepeatType.daily;
   Map<String, bool> repeatDays = {};
 
   Future<void> submitTask() async {
@@ -42,8 +42,7 @@ class _AddTaskMenuState extends State<AddTaskMenu> {
         _showError("Repeat type is required");
         return;
       }
-      if (repeatType == RepeatType.custom &&
-          !repeatDays.containsValue(true)) {
+      if (repeatType == RepeatType.custom && !repeatDays.containsValue(true)) {
         _showError("Select at least one day for custom repeat");
         return;
       }
@@ -78,12 +77,9 @@ class _AddTaskMenuState extends State<AddTaskMenu> {
   }
 
   void _showError(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: Colors.red,
-      ),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
   }
 
   void _addReminder() async {
@@ -129,10 +125,7 @@ class _AddTaskMenuState extends State<AddTaskMenu> {
         ),
         title: const Text(
           'New Task',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 25.0,
-          ),
+          style: TextStyle(color: Colors.white, fontSize: 25.0),
         ),
         centerTitle: false,
       ),
@@ -164,15 +157,14 @@ class _AddTaskMenuState extends State<AddTaskMenu> {
                         margin: const EdgeInsets.symmetric(vertical: 5),
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: oneTime ? Colors.blueAccent : Colors.transparent,
+                          color: oneTime
+                              ? Colors.blueAccent
+                              : Colors.transparent,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: const Text(
                           "One-time task",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 20.0,
-                          ),
+                          style: TextStyle(color: Colors.white, fontSize: 20.0),
                         ),
                       ),
                     ),
@@ -186,15 +178,14 @@ class _AddTaskMenuState extends State<AddTaskMenu> {
                         margin: const EdgeInsets.symmetric(vertical: 10),
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: oneTime ? Colors.transparent : Colors.blueAccent,
+                          color: oneTime
+                              ? Colors.transparent
+                              : Colors.blueAccent,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: const Text(
                           "Recurring task",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 20.0,
-                          ),
+                          style: TextStyle(color: Colors.white, fontSize: 20.0),
                         ),
                       ),
                     ),
@@ -205,22 +196,15 @@ class _AddTaskMenuState extends State<AddTaskMenu> {
 
               const Text(
                 'Task Title',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 25.0,
-                ),
+                style: TextStyle(color: Colors.white, fontSize: 25.0),
               ),
               const SizedBox(height: 5),
               TextField(
                 onChanged: (value) => taskTitle = value,
-                style: const TextStyle(
-                  color: Colors.white70,
-                ),
+                style: const TextStyle(color: Colors.white70),
                 decoration: InputDecoration(
                   hintText: 'Enter task title',
-                  hintStyle: const TextStyle(
-                    color: Colors.white54,
-                  ),
+                  hintStyle: const TextStyle(color: Colors.white54),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 10),
                   filled: true,
                   fillColor: const Color(0xFF1A1A1A),
@@ -234,26 +218,21 @@ class _AddTaskMenuState extends State<AddTaskMenu> {
 
               const Text(
                 'Start Date',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 25.0,
-                ),
+                style: TextStyle(color: Colors.white, fontSize: 25.0),
               ),
               const SizedBox(height: 5),
-              DatePickerField(onDateSelected: (DateTime date) {
-                startDate = date;
-              }),
+              DatePickerField(
+                onDateSelected: (DateTime date) {
+                  startDate = date;
+                },
+              ),
               const SizedBox(height: 10),
               if (!oneTime)
                 const Text(
                   'Repeat',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 25.0,
-                  ),
+                  style: TextStyle(color: Colors.white, fontSize: 25.0),
                 ),
-              if (!oneTime)
-                const SizedBox(height: 5),
+              if (!oneTime) const SizedBox(height: 5),
               if (!oneTime)
                 ChooseRepeating(
                   repeatType: repeatType ?? RepeatType.daily,
@@ -269,10 +248,7 @@ class _AddTaskMenuState extends State<AddTaskMenu> {
 
               const Text(
                 'Time Interval',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 25.0,
-                ),
+                style: TextStyle(color: Colors.white, fontSize: 25.0),
               ),
               if (!oneTime) const SizedBox(height: 5),
               Row(
@@ -300,10 +276,7 @@ class _AddTaskMenuState extends State<AddTaskMenu> {
 
               const Text(
                 'Reminder',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 25.0,
-                ),
+                style: TextStyle(color: Colors.white, fontSize: 25.0),
               ),
               const SizedBox(height: 5),
 
@@ -326,18 +299,26 @@ class _AddTaskMenuState extends State<AddTaskMenu> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(r.time.format(context),
-                                style: const TextStyle(
-                                    color: Colors.white, fontSize: 18)),
-                            Text("Notify: ${days.join(", ")}",
-                                style: const TextStyle(color: Colors.white54)),
-                            if (r.message.isNotEmpty)
-                              Text(r.message,
-                                  style:
-                                  const TextStyle(color: Colors.white70)),
-                          ]),
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            r.time.format(context),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                            ),
+                          ),
+                          Text(
+                            "Notify: ${days.join(", ")}",
+                            style: const TextStyle(color: Colors.white54),
+                          ),
+                          if (r.message.isNotEmpty)
+                            Text(
+                              r.message,
+                              style: const TextStyle(color: Colors.white70),
+                            ),
+                        ],
+                      ),
                       IconButton(
                         icon: const Icon(Icons.delete, color: Colors.red),
                         onPressed: () => _deleteReminder(i),
@@ -361,8 +342,10 @@ class _AddTaskMenuState extends State<AddTaskMenu> {
                     children: [
                       Icon(Icons.add_alert, color: Colors.white70),
                       SizedBox(width: 10),
-                      Text("Add Reminder",
-                          style: TextStyle(color: Colors.white, fontSize: 18)),
+                      Text(
+                        "Add Reminder",
+                        style: TextStyle(color: Colors.white, fontSize: 18),
+                      ),
                     ],
                   ),
                 ),

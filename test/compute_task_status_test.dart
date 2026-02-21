@@ -45,31 +45,38 @@ class FakeTaskRepository implements TaskRepository {
 
 void main() {
   group('computeTaskStatus', () {
-    test('returns hidden for task that does not occur on selected date', () async {
-      final repo = FakeTaskRepository();
-      final startDate = DateTime(2024, 2, 12); // Monday
-      final task = Task(
-        id: '1',
-        title: 'Monday task',
-        oneTime: false,
-        startDate: startDate,
-        repeatType: RepeatType.custom,
-        days: {
-          'Monday': true,
-          'Tuesday': false,
-          'Wednesday': false,
-          'Thursday': false,
-          'Friday': false,
-          'Saturday': false,
-          'Sunday': false,
-        },
-      );
+    test(
+      'returns hidden for task that does not occur on selected date',
+      () async {
+        final repo = FakeTaskRepository();
+        final startDate = DateTime(2024, 2, 12); // Monday
+        final task = Task(
+          id: '1',
+          title: 'Monday task',
+          oneTime: false,
+          startDate: startDate,
+          repeatType: RepeatType.custom,
+          days: {
+            'Monday': true,
+            'Tuesday': false,
+            'Wednesday': false,
+            'Thursday': false,
+            'Friday': false,
+            'Saturday': false,
+            'Sunday': false,
+          },
+        );
 
-      // Select Tuesday (when task does not occur)
-      final status = await computeTaskStatus(task, DateTime(2024, 2, 13), repo);
+        // Select Tuesday (when task does not occur)
+        final status = await computeTaskStatus(
+          task,
+          DateTime(2024, 2, 13),
+          repo,
+        );
 
-      expect(status, equals('hidden'));
-    });
+        expect(status, equals('hidden'));
+      },
+    );
 
     test('returns completed when task is marked completed', () async {
       final repo = FakeTaskRepository();
@@ -130,4 +137,3 @@ void main() {
     });
   });
 }
-

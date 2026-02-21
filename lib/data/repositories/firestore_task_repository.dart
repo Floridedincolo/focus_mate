@@ -26,13 +26,13 @@ class FirestoreTaskRepository implements TaskRepository {
         .collection('tasks')
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs.map((doc) {
-        final data = doc.data();
-        // Ensure the document ID is included in the map
-        data['id'] = doc.id;
-        return Task.fromMap(data);
-      }).toList();
-    });
+          return snapshot.docs.map((doc) {
+            final data = doc.data();
+            // Ensure the document ID is included in the map
+            data['id'] = doc.id;
+            return Task.fromMap(data);
+          }).toList();
+        });
   }
 
   @override
@@ -65,4 +65,3 @@ class FirestoreTaskRepository implements TaskRepository {
     return _firestoreService.clearCompletion(task, date);
   }
 }
-

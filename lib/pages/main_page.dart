@@ -34,10 +34,7 @@ class _MainPageState extends State<MainPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: _pages,
-      ),
+      body: IndexedStack(index: _selectedIndex, children: _pages),
       floatingActionButton: FloatingActionButton(
         backgroundColor: accentColor,
         shape: const CircleBorder(),
@@ -58,10 +55,25 @@ class _MainPageState extends State<MainPage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               _buildBottomNavItem(0, Icons.home_outlined, Icons.home, "Home"),
-              _buildBottomNavItem(1, Icons.shield_outlined, Icons.shield, "Focus"),
+              _buildBottomNavItem(
+                1,
+                Icons.shield_outlined,
+                Icons.shield,
+                "Focus",
+              ),
               const SizedBox(width: 48), // Spațiu pentru FAB
-              _buildBottomNavItem(2, Icons.bar_chart_outlined, Icons.bar_chart, "Stats"),
-              _buildBottomNavItem(3, Icons.person_outline, Icons.person, "Profile"),
+              _buildBottomNavItem(
+                2,
+                Icons.bar_chart_outlined,
+                Icons.bar_chart,
+                "Stats",
+              ),
+              _buildBottomNavItem(
+                3,
+                Icons.person_outline,
+                Icons.person,
+                "Profile",
+              ),
             ],
           ),
         ),
@@ -69,7 +81,12 @@ class _MainPageState extends State<MainPage> {
     );
   }
 
-  Widget _buildBottomNavItem(int index, IconData icon, IconData activeIcon, String label) {
+  Widget _buildBottomNavItem(
+    int index,
+    IconData icon,
+    IconData activeIcon,
+    String label,
+  ) {
     bool isSelected = _selectedIndex == index;
     return InkWell(
       onTap: () => _onItemTapped(index),
@@ -98,4 +115,3 @@ class _MainPageState extends State<MainPage> {
     );
   }
 }
-

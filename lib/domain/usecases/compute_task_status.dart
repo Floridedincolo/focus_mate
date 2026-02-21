@@ -28,4 +28,3 @@ Future<String> computeTaskStatus(
   // Return the status (which is either 'missed' or 'upcoming')
   return status;
 }
-

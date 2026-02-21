@@ -72,13 +72,15 @@ class _HomeState extends State<Home> {
       currentDate = currentDate.add(const Duration(days: 1));
     }
 
-    WidgetsBinding.instance.addPostFrameCallback((_) => _centerOnSelected());//add after widgets initialize to calculate size of the layout
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _centerOnSelected(),
+    ); //add after widgets initialize to calculate size of the layout
   }
 
   void _centerOnSelected({bool animate = false}) {
     int index = calendarIcons.indexWhere(
-          (e) =>
-      e.dateTime.year == selectedDate.year &&
+      (e) =>
+          e.dateTime.year == selectedDate.year &&
           e.dateTime.month == selectedDate.month &&
           e.dateTime.day == selectedDate.day,
     );
@@ -87,12 +89,12 @@ class _HomeState extends State<Home> {
 
     double cardWidth = MediaQuery.of(context).size.width / 7;
     double target =
-        (index * cardWidth) -//how much size to scroll
-            (MediaQuery.of(context).size.width / 2) +
-            (cardWidth / 2);//to make it to the middle of the screen
+        (index * cardWidth) - //how much size to scroll
+        (MediaQuery.of(context).size.width / 2) +
+        (cardWidth / 2); //to make it to the middle of the screen
 
     double clamped = target.clamp(
-      _scrollController.position.minScrollExtent,//prevent the overscroll
+      _scrollController.position.minScrollExtent, //prevent the overscroll
       _scrollController.position.maxScrollExtent,
     );
 
@@ -132,11 +134,10 @@ class _HomeState extends State<Home> {
     }).toList();
 
     // remove hidden entries
-    return (await Future.wait(futures))
-        .where((entry) => entry['status'] != 'hidden')
-        .toList();
+    return (await Future.wait(
+      futures,
+    )).where((entry) => entry['status'] != 'hidden').toList();
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -149,12 +150,13 @@ class _HomeState extends State<Home> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text.rich(//allows multiple text spans and widgets with different styles
+            Text.rich(
+              //allows multiple text spans and widgets with different styles
               TextSpan(
                 children: [
                   TextSpan(
                     text:
-                    '${weekdays[selectedDate.weekday - 1]}, ${selectedDate.day}',
+                        '${weekdays[selectedDate.weekday - 1]}, ${selectedDate.day}',
                   ),
                   WidgetSpan(
                     child: Transform.translate(
@@ -171,7 +173,7 @@ class _HomeState extends State<Home> {
                   ),
                   TextSpan(
                     text:
-                    ' of ${months[selectedDate.month - 1]} ${selectedDate.year}',
+                        ' of ${months[selectedDate.month - 1]} ${selectedDate.year}',
                   ),
                 ],
               ),
@@ -227,8 +229,8 @@ class _HomeState extends State<Home> {
                 children: calendarIcons.map((e) {
                   bool isSelected =
                       e.dateTime.year == selectedDate.year &&
-                          e.dateTime.month == selectedDate.month &&
-                          e.dateTime.day == selectedDate.day;
+                      e.dateTime.month == selectedDate.month &&
+                      e.dateTime.day == selectedDate.day;
                   return SizedBox(
                     width: MediaQuery.of(context).size.width / 7,
                     child: CalendarIconWidget(
@@ -238,14 +240,14 @@ class _HomeState extends State<Home> {
                         setState(() {
                           selectedDate = e.dateTime;
                           currentDateText =
-                          (todayDate.day == selectedDate.day &&
-                              todayDate.month == selectedDate.month &&
-                              todayDate.year == selectedDate.year)
+                              (todayDate.day == selectedDate.day &&
+                                  todayDate.month == selectedDate.month &&
+                                  todayDate.year == selectedDate.year)
                               ? "Today"
                               : "This Day";
                         });
                         WidgetsBinding.instance.addPostFrameCallback(
-                              (_) => _centerOnSelected(animate: true),
+                          (_) => _centerOnSelected(animate: true),
                         );
                       },
                     ),
@@ -268,8 +270,10 @@ class _HomeState extends State<Home> {
                 final allTasks = snapshot.data as List<Task>;
 
                 final tasksForDay = allTasks
-                    .where((task) =>
-                task.occursOn(selectedDate) && task.archived == false)
+                    .where(
+                      (task) =>
+                          task.occursOn(selectedDate) && task.archived == false,
+                    )
                     .toList();
 
                 if (tasksForDay.isEmpty) {
@@ -281,9 +285,11 @@ class _HomeState extends State<Home> {
                   );
                 }
 
-                return FutureBuilder<List<Map<String, dynamic>>>(//picture
+                return FutureBuilder<List<Map<String, dynamic>>>(
+                  //picture
                   future: _fetchStatuses(tasksForDay),
-                  builder: (context, statusSnap) {//status snap is the snpashot of the future hasdata -knows if data loaded or not yet
+                  builder: (context, statusSnap) {
+                    //status snap is the snpashot of the future hasdata -knows if data loaded or not yet
                     if (!statusSnap.hasData) {
                       return const Center(
                         child: CircularProgressIndicator(color: Colors.white),
@@ -292,25 +298,27 @@ class _HomeState extends State<Home> {
 
                     final list = statusSnap.data!;
 
-                    final completedCount =
-                        list.where((e) {
-                          final key = '${e['task'].id}_${selectedDate.toIso8601String()}';
-                          final  localStatus=_localCompletions[key];
-                          final  finalStatus=localStatus??e['status'];
-                          return finalStatus == 'completed';
-                        }).length;
+                    final completedCount = list.where((e) {
+                      final key =
+                          '${e['task'].id}_${selectedDate.toIso8601String()}';
+                      final localStatus = _localCompletions[key];
+                      final finalStatus = localStatus ?? e['status'];
+                      return finalStatus == 'completed';
+                    }).length;
                     final totalCount = list.length;
                     final remainingCount = totalCount - completedCount;
 
                     list.sort((a, b) {
-                      final taskA=a['task'];
-                      final taskB=b['task'];
-                      final keyA='${taskA.id}_${selectedDate.toIso8601String()}';
-                      final keyB='${taskB.id}_${selectedDate.toIso8601String()}';
-                      final localA=_localCompletions[keyA];
-                      final localB=_localCompletions[keyB];
-                      final statusA=localA??a['status'];
-                      final statusB=localB??b['status'];
+                      final taskA = a['task'];
+                      final taskB = b['task'];
+                      final keyA =
+                          '${taskA.id}_${selectedDate.toIso8601String()}';
+                      final keyB =
+                          '${taskB.id}_${selectedDate.toIso8601String()}';
+                      final localA = _localCompletions[keyA];
+                      final localB = _localCompletions[keyB];
+                      final statusA = localA ?? a['status'];
+                      final statusB = localB ?? b['status'];
                       final aDone = statusA == 'completed' ? 1 : 0;
                       final bDone = statusB == 'completed' ? 1 : 0;
                       if (aDone != bDone) return aDone - bDone;
@@ -319,8 +327,9 @@ class _HomeState extends State<Home> {
                       if (at == null && bt == null) return 0;
                       if (at == null) return 1;
                       if (bt == null) return -1;
-                      return (at.hour * 60 + at.minute)
-                          .compareTo(bt.hour * 60 + bt.minute);
+                      return (at.hour * 60 + at.minute).compareTo(
+                        bt.hour * 60 + bt.minute,
+                      );
                     });
 
                     return Column(
@@ -334,17 +343,26 @@ class _HomeState extends State<Home> {
                             children: [
                               Expanded(
                                 child: _slimStatPill(
-                                    "Total", "$totalCount", Colors.blueAccent),
+                                  "Total",
+                                  "$totalCount",
+                                  Colors.blueAccent,
+                                ),
                               ),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: _slimStatPill(
-                                    "Completed", "$completedCount", Colors.green),
+                                  "Completed",
+                                  "$completedCount",
+                                  Colors.green,
+                                ),
                               ),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: _slimStatPill(
-                                    "Remaining", "$remainingCount", Colors.orange),
+                                  "Remaining",
+                                  "$remainingCount",
+                                  Colors.orange,
+                                ),
                               ),
                             ],
                           ),
@@ -368,8 +386,9 @@ class _HomeState extends State<Home> {
                                 statusForSelectedDay: status,
                                 onMarkCompleted: () async {
                                   final isCompleted = status == 'completed';
-                                  final newStatus =
-                                  isCompleted ? 'upcoming' : 'completed';
+                                  final newStatus = isCompleted
+                                      ? 'upcoming'
+                                      : 'completed';
 
                                   setState(() {
                                     _localCompletions[key] = newStatus;
@@ -379,16 +398,21 @@ class _HomeState extends State<Home> {
                                     int updatedStreak;
 
                                     if (isCompleted) {
-                                      updatedStreak = await _taskRepo.clearCompletion(task, selectedDate);
+                                      updatedStreak = await _taskRepo
+                                          .clearCompletion(task, selectedDate);
                                     } else {
-                                      updatedStreak = await _taskRepo.markTaskStatus(task, selectedDate, 'completed');
+                                      updatedStreak = await _taskRepo
+                                          .markTaskStatus(
+                                            task,
+                                            selectedDate,
+                                            'completed',
+                                          );
                                     }
 
                                     setState(() {
                                       _localCompletions[key] = newStatus;
                                       task.streak = updatedStreak;
                                     });
-
                                   } catch (e) {
                                     // rollback if Firestore fails
                                     setState(() {
@@ -422,12 +446,19 @@ class _HomeState extends State<Home> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(title,
-              style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          Text(
+            title,
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
           const SizedBox(height: 2),
-          Text(value,
-              style: TextStyle(
-                  color: color, fontSize: 16, fontWeight: FontWeight.bold)),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ],
       ),
     );
