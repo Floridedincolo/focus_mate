@@ -55,7 +55,7 @@ class _AddTaskMenuState extends State<AddTaskMenu> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text("✅ Task created successfully!"),
+        content: Text(" Task created successfully!"),
         backgroundColor: Colors.green,
       ),
     );

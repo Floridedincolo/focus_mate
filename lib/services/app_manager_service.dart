@@ -34,7 +34,7 @@ class AppManagerService {
       return false;
     }).toList();
 
-    print("✅ Apps with valid icons: ${validApps.length}");
+    print(" Apps with valid icons: ${validApps.length}");
 
     return validApps.map((app) {
       bool hasIcon = app is ApplicationWithIcon && app.icon != null;

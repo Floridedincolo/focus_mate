@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 class AccessibilityService {
   static const MethodChannel _channel = MethodChannel('focus_mate/accessibility');
 
-  /// ✅ Verifică dacă Accessibility Service este activ
+  ///  Verifică dacă Accessibility Service este activ
   static Future<bool> isEnabled() async {
     try {
       final bool enabled = await _channel.invokeMethod('checkAccessibility');
@@ -34,7 +34,7 @@ class AccessibilityService {
     return true;
   }
 
-  /// ✅ Verifică dacă permisiunea de overlay este acordată
+  ///  Verifică dacă permisiunea de overlay este acordată
   static Future<bool> canDrawOverlays() async {
     try {
       final bool canDraw = await _channel.invokeMethod('canDrawOverlays');

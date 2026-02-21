@@ -207,7 +207,7 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        // ✅ MethodChannel pentru verificare Accessibility Service
+        //  MethodChannel pentru verificare Accessibility Service
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "focus_mate/accessibility").setMethodCallHandler { call, result ->
             when(call.method) {
                 "checkAccessibility" -> {
@@ -255,7 +255,7 @@ class MainActivity : FlutterActivity() {
 
         // Notifică serviciul de accessibility despre schimbare (broadcast EXPLICIT pentru Android 12+)
         val intent = Intent("com.example.focus_mate.UPDATE_BLOCKED_APPS")
-        intent.setPackage(packageName) // ✅ Face broadcast-ul EXPLICIT
+        intent.setPackage(packageName) //  Face broadcast-ul EXPLICIT
         intent.putStringArrayListExtra("apps", ArrayList(apps))
         sendBroadcast(intent)
         Log.d("MainActivity", "📤 Sent UPDATE_BLOCKED_APPS broadcast with ${apps.size} apps")
@@ -294,7 +294,7 @@ class MainActivity : FlutterActivity() {
         saveBlockedApps(packages)
     }
 
-    // ✅ Helper pentru verificare Accessibility Service
+    //  Helper pentru verificare Accessibility Service
     private fun isAccessibilityServiceEnabled(serviceClass: Class<out AccessibilityService>): Boolean {
         val enabledServices = Settings.Secure.getString(
             contentResolver,
@@ -304,7 +304,7 @@ class MainActivity : FlutterActivity() {
         return enabledServices?.contains(serviceId) == true
     }
 
-    // ✅ Deschide setările de Accessibility
+    //  Deschide setările de Accessibility
     private fun promptEnableAccessibility() {
         Toast.makeText(
             this,

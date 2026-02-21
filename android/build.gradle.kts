@@ -1,5 +1,5 @@
 plugins {
-    // ✅ Only this version — no buildscript section below!
+    //  Only this version — no buildscript section below!
     id("com.google.gms.google-services") version "4.3.15" apply false
 }
 
