@@ -1,15 +1,20 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:focus_mate/pages/add_task.dart';
+import 'package:focus_mate/pages/focus_page.dart';
 import 'package:focus_mate/pages/home.dart';
+import 'package:focus_mate/pages/add_task.dart';
+import 'package:focus_mate/pages/main_page.dart';
+import 'package:focus_mate/pages/stats_page.dart';
 import 'pages/profile.dart';
 import 'package:focus_mate/firebase_options.dart';
-import 'package:block_app/block_app.dart';
+import 'package:flutter/services.dart'; // pentru EventChannel
+import 'services/accessibility_service.dart'; //  Import nou
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Inițializează Firebase
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
@@ -19,46 +24,44 @@ void main() async {
     cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
   );
 
-  final blockApp = BlockApp();
-
-  await blockApp.initialize();
-
-  // ✅ Pasul 1: cere permisiuni necesare
-  final overlayGranted = await blockApp.requestOverlayPermission();
-
-  print('Overlay permission granted: $overlayGranted');
-
-  // ✅ Pasul 2: verifică aplicațiile instalate
-  final apps = await blockApp.getInstalledApps(includeSystemApps: false);
-  for (final app in apps) {
-    print('App: ${app.appName} (${app.packageName})');
+  //  Verifică Accessibility Service la pornire
+  final isAccessibilityEnabled = await AccessibilityService.isEnabled();
+  if (!isAccessibilityEnabled) {
+    print('⚠️ Accessibility Service NU este activ!');
+    // Se va deschide automat setările când se apasă butonul din UI
+  } else {
+    print(' Accessibility Service este ACTIV și funcțional!');
   }
 
-  // Exemplu: blochează doar YouTube
-  const packageToBlock = 'com.google.android.youtube';
+  //  Ascultă evenimentele de la AccessibilityService
+  final accessibilityChannel = EventChannel('accessibility_events');
+  accessibilityChannel.receiveBroadcastStream().listen((event) {
+    final packageName = event.toString();
+    print('📣 App opened: $packageName');
 
-  try {
-    // ✅ Pasul 3: blochează o aplicație specifică (dacă permisiunile sunt OK)
-    if ( overlayGranted) {
-      final success=false; //= await blockApp.blockPackage(packageToBlock);
-      print(success
-          ? '✅ $packageToBlock blocată cu succes!'
-          : '❌ Nu s-a putut bloca $packageToBlock.');
-    } else {
-      print('⚠️ Lipsesc permisiunile necesare pentru blocare.');
+    // Exemplu: blocare YouTube
+    if (packageName == 'com.google.android.youtube') {
+      print('⚠️ Trebuie blocată YouTube!');
+
+      // Aici poți afișa overlay-ul tău personalizat
+      // showOverlay();
     }
-  } catch (e) {
-    print('❌ Eroare la blocare: $e');
-  }
+  }, onError: (error) {
+    print('❌ Eroare la evenimentele Accessibility: $error');
+  });
 
-  // ✅ Pasul 4: rulează aplicația normal
+  // Rulează aplicația normal
   runApp(
     MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: Home(),
+      home: const MainPage(),
       routes: {
-        '/profile': (context) => Profile(),
-        '/add_task': (context) => AddTaskMenu(),
+        '/profile': (context) => const Profile(),
+        '/add_task': (context) => const AddTaskMenu(),
+        '/focus_page': (context) => const FocusPage(),
+        '/home': (context) => const Home(),
+        '/stats': (context) => const StatsPage(),
+        '/main': (context) => const MainPage(),
       },
     ),
   );

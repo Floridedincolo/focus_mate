@@ -22,7 +22,6 @@ class _HomeState extends State<Home> {
   late DateTime firstDate;
   late DateTime lastDate;
   late String currentDateText;
-
   final ScrollController _scrollController = ScrollController();
   late List<CalendarIconData> calendarIcons;
 
@@ -61,7 +60,6 @@ class _HomeState extends State<Home> {
     todayDate = DateTime.now();
     selectedDate = todayDate;
     currentDateText = "Today";
-
     int totalDays = 203;
     firstDate = todayDate.subtract(Duration(days: totalDays ~/ 2));
     lastDate = todayDate.add(Duration(days: totalDays ~/ 2));
@@ -304,7 +302,7 @@ class _HomeState extends State<Home> {
                           final  localStatus=_localCompletions[key];
                           final  finalStatus=localStatus??e['status'];
                           return finalStatus == 'completed';
-                       }).length;
+                        }).length;
                     final totalCount = list.length;
                     final remainingCount = totalCount - completedCount;
 
@@ -414,11 +412,6 @@ class _HomeState extends State<Home> {
             ),
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.blueAccent,
-        onPressed: () => Navigator.pushNamed(context, '/add_task'),
-        child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }
