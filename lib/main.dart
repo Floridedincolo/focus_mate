@@ -9,7 +9,7 @@ import 'package:focus_mate/pages/stats_page.dart';
 import 'pages/profile.dart';
 import 'package:focus_mate/firebase_options.dart';
 import 'package:flutter/services.dart'; // pentru EventChannel
-import 'services/accessibility_service.dart'; // ✅ Import nou
+import 'services/accessibility_service.dart'; //  Import nou
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,16 +24,16 @@ void main() async {
     cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
   );
 
-  // ✅ Verifică Accessibility Service la pornire
+  //  Verifică Accessibility Service la pornire
   final isAccessibilityEnabled = await AccessibilityService.isEnabled();
   if (!isAccessibilityEnabled) {
     print('⚠️ Accessibility Service NU este activ!');
     // Se va deschide automat setările când se apasă butonul din UI
   } else {
-    print('✅ Accessibility Service este ACTIV și funcțional!');
+    print(' Accessibility Service este ACTIV și funcțional!');
   }
 
-  // ✅ Ascultă evenimentele de la AccessibilityService
+  //  Ascultă evenimentele de la AccessibilityService
   final accessibilityChannel = EventChannel('accessibility_events');
   accessibilityChannel.receiveBroadcastStream().listen((event) {
     final packageName = event.toString();

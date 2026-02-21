@@ -97,7 +97,7 @@ class AppBlockService : AccessibilityService() {
         } else {
             registerReceiver(updateReceiver, filter)
         }
-        Log.d("AppAccessibilityService", "✅ BroadcastReceiver registered for UPDATE_BLOCKED_APPS")
+        Log.d("AppAccessibilityService", " BroadcastReceiver registered for UPDATE_BLOCKED_APPS")
     }
 
     override fun onDestroy() {
@@ -201,7 +201,7 @@ class AppBlockService : AccessibilityService() {
             return
         }
 
-        Log.d("AppAccessibilityService", "✅ Overlay permission granted, showing overlay for: $packageName")
+        Log.d("AppAccessibilityService", " Overlay permission granted, showing overlay for: $packageName")
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         val scale = resources.displayMetrics.density

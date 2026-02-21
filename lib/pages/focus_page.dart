@@ -25,19 +25,19 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this); // ✅ Ascultă schimbările de lifecycle
+    WidgetsBinding.instance.addObserver(this); //  Ascultă schimbările de lifecycle
     _loadBlockedApps();
-    _checkAccessibilityService(); // ✅ Verifică imediat la pornire
-    _checkOverlayPermission(); // ✅ Verifică permisiunea overlay
+    _checkAccessibilityService(); //  Verifică imediat la pornire
+    _checkOverlayPermission(); //  Verifică permisiunea overlay
   }
 
     @override
     void dispose() {
-      WidgetsBinding.instance.removeObserver(this); // ✅ Curăță observer-ul
+      WidgetsBinding.instance.removeObserver(this); //  Curăță observer-ul
       super.dispose();
     }
 
-  // ✅ Verifică accessibility când app-ul revine în foreground
+  //  Verifică accessibility când app-ul revine în foreground
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
@@ -50,7 +50,7 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
   }
 
 
-  // ✅ Verifică dacă Accessibility Service este activ
+  //  Verifică dacă Accessibility Service este activ
   Future<void> _checkAccessibilityService() async {
     final enabled = await AccessibilityService.isEnabled();
 
@@ -60,14 +60,14 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
       });
 
       if (enabled) {
-        print("✅ Accessibility Service este ACTIV și funcțional!");
+        print(" Accessibility Service este ACTIV și funcțional!");
       } else {
         print("⚠️ Accessibility Service NU este activ!");
       }
     }
   }
 
-  // ✅ Verifică permisiunea overlay
+  //  Verifică permisiunea overlay
   Future<void> _checkOverlayPermission() async {
     final canDraw = await AccessibilityService.canDrawOverlays();
 
@@ -77,7 +77,7 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
       });
 
       if (canDraw) {
-        print("✅ Overlay permission este ACTIVĂ!");
+        print(" Overlay permission este ACTIVĂ!");
       } else {
         print("⚠️ Overlay permission NU este activă!");
       }
@@ -91,10 +91,10 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
       final prefs = await SharedPreferences.getInstance();
       setState(() {
         _blockedApps = prefs.getStringList('focus_blocked_apps') ?? [];
-        _blockingEnabled = prefs.getBool('focus_blocking_enabled') ?? true; // ✅ Default true
+        _blockingEnabled = prefs.getBool('focus_blocking_enabled') ?? true; //  Default true
       });
 
-      // ✅ Aplică blocarea imediat după încărcare
+      //  Aplică blocarea imediat după încărcare
       if (_blockingEnabled && _blockedApps.isNotEmpty) {
         await BlockAppManager.setBlockedApps(_blockedApps);
         print("🔒 Loaded and applied ${_blockedApps.length} blocked apps");
@@ -107,9 +107,9 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
       await prefs.setStringList('focus_blocked_apps', _blockedApps);
       await prefs.setBool('focus_blocking_enabled', _blockingEnabled);
 
-      // ✅ IMPORTANT: Trimite lista actualizată către serviciul nativ
+      //  IMPORTANT: Trimite lista actualizată către serviciul nativ
       await BlockAppManager.setBlockedApps(_blockedApps);
-      print("✅ Saved ${_blockedApps.length} blocked apps to native service");
+      print(" Saved ${_blockedApps.length} blocked apps to native service");
     }
 
     // Activează blocarea REALĂ prin block_app
@@ -209,7 +209,7 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
                               });
                               setState(() {});
                               await _saveBlockedApps();
-                              // ✅ Aplică blocarea imediat
+                              //  Aplică blocarea imediat
                               if (_blockingEnabled) {
                                 await _applyBlocking();
                               }
@@ -259,7 +259,7 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
 
                 const SizedBox(height: 20),
 
-                // ✅ BANNER ACCESSIBILITY SERVICE (compact)
+                //  BANNER ACCESSIBILITY SERVICE (compact)
                 if (!_isAccessibilityEnabled)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -314,7 +314,7 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
                     ),
                   ),
 
-                // ✅ BANNER OVERLAY PERMISSION (compact)
+                //  BANNER OVERLAY PERMISSION (compact)
                 if (!_hasOverlayPermission)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -418,7 +418,7 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
                               _blockingEnabled = val;
                             });
                             await _saveBlockedApps();
-                            // ✅ Aplică blocarea imediat când se schimbă switch-ul
+                            //  Aplică blocarea imediat când se schimbă switch-ul
                             await _applyBlocking();
                           },
                           activeColor: accentColor,
