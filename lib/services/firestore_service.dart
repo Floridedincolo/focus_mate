@@ -12,11 +12,16 @@ class FirestoreService {
     final user = _auth.currentUser;
     return user?.uid ?? 'default_user';
   }
+
   String _dateId(DateTime date) => DateFormat('yyyy-MM-dd').format(date);
 
   DateTime? _previousOccurrence(Task task, DateTime from) {
     DateTime current = from.subtract(const Duration(days: 1));
-    final min = DateTime(task.startDate.year, task.startDate.month, task.startDate.day);
+    final min = DateTime(
+      task.startDate.year,
+      task.startDate.month,
+      task.startDate.day,
+    );
     while (current.isAfter(min) || current.isAtSameMomentAs(min)) {
       if (task.occursOn(current)) return current;
       current = current.subtract(const Duration(days: 1));
@@ -25,13 +30,21 @@ class FirestoreService {
   }
 
   Future<int> _countConsecutiveCompletions(Task task, DateTime start) async {
-    final taskRef = _db.collection('users').doc(userId).collection('tasks').doc(task.id);
+    final taskRef = _db
+        .collection('users')
+        .doc(userId)
+        .collection('tasks')
+        .doc(task.id);
     int count = 0;
     DateTime? cursor = start;
 
     while (cursor != null &&
-        (cursor.isAfter(task.startDate) || cursor.isAtSameMomentAs(task.startDate))) {
-      final doc = await taskRef.collection('completions').doc(_dateId(cursor)).get();
+        (cursor.isAfter(task.startDate) ||
+            cursor.isAtSameMomentAs(task.startDate))) {
+      final doc = await taskRef
+          .collection('completions')
+          .doc(_dateId(cursor))
+          .get();
       if (doc.exists && doc.data()?['status'] == 'completed') {
         count++;
         cursor = _previousOccurrence(task, cursor);
@@ -102,7 +115,6 @@ class FirestoreService {
     return 'upcoming';
   }
 
-
   /// Marchează o zi ca "completed" sau alt status
   /// Returnează noul streak
   Future<int> markTaskStatus(Task task, DateTime date, String status) async {
@@ -112,9 +124,7 @@ class FirestoreService {
         .collection('tasks')
         .doc(task.id);
 
-    final completionRef = taskRef
-        .collection('completions')
-        .doc(_dateId(date));
+    final completionRef = taskRef.collection('completions').doc(_dateId(date));
 
     await completionRef.set({
       'status': status,
@@ -124,13 +134,12 @@ class FirestoreService {
     int newStreak = 0;
     if (status == 'completed') {
       newStreak = await _countConsecutiveCompletions(task, date);
-      await taskRef.update({
-        'streak': newStreak,
-        'lastCompletionDate': date,
-      });
+      await taskRef.update({'streak': newStreak, 'lastCompletionDate': date});
     } else {
       final prev = _previousOccurrence(task, date);
-      newStreak = prev != null ? await _countConsecutiveCompletions(task, prev) : 0;
+      newStreak = prev != null
+          ? await _countConsecutiveCompletions(task, prev)
+          : 0;
       await taskRef.update({'streak': newStreak});
     }
 
@@ -145,14 +154,14 @@ class FirestoreService {
         .collection('tasks')
         .doc(task.id);
 
-    final docRef = taskRef
-        .collection('completions')
-        .doc(_dateId(date));
+    final docRef = taskRef.collection('completions').doc(_dateId(date));
 
     await docRef.delete();
 
     final prev = _previousOccurrence(task, date);
-    final newStreak = prev != null ? await _countConsecutiveCompletions(task, prev) : 0;
+    final newStreak = prev != null
+        ? await _countConsecutiveCompletions(task, prev)
+        : 0;
 
     await taskRef.update({'streak': newStreak});
     return newStreak;

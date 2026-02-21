@@ -15,9 +15,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Inițializează Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   FirebaseFirestore.instance.settings = const Settings(
     persistenceEnabled: true,
@@ -35,20 +33,23 @@ void main() async {
 
   //  Ascultă evenimentele de la AccessibilityService
   final accessibilityChannel = EventChannel('accessibility_events');
-  accessibilityChannel.receiveBroadcastStream().listen((event) {
-    final packageName = event.toString();
-    print('📣 App opened: $packageName');
+  accessibilityChannel.receiveBroadcastStream().listen(
+    (event) {
+      final packageName = event.toString();
+      print('📣 App opened: $packageName');
 
-    // Exemplu: blocare YouTube
-    if (packageName == 'com.google.android.youtube') {
-      print('⚠️ Trebuie blocată YouTube!');
+      // Exemplu: blocare YouTube
+      if (packageName == 'com.google.android.youtube') {
+        print('⚠️ Trebuie blocată YouTube!');
 
-      // Aici poți afișa overlay-ul tău personalizat
-      // showOverlay();
-    }
-  }, onError: (error) {
-    print('❌ Eroare la evenimentele Accessibility: $error');
-  });
+        // Aici poți afișa overlay-ul tău personalizat
+        // showOverlay();
+      }
+    },
+    onError: (error) {
+      print('❌ Eroare la evenimentele Accessibility: $error');
+    },
+  );
 
   // Rulează aplicația normal
   runApp(

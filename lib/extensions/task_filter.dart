@@ -1,38 +1,8 @@
 import 'package:focus_mate/models/task.dart';
-import 'package:focus_mate/models/repeatTypes.dart';
+import 'package:focus_mate/domain/usecases/task_occurrence.dart';
 
 extension TaskFilter on Task {
-  bool occursOn(DateTime date) {
-    final targetDay = date.weekday;
-    final isSameDay = date.year == startDate.year &&
-        date.month == startDate.month &&
-        date.day == startDate.day;
-
-    if (oneTime) {
-      return isSameDay;
-    }
-
-    switch (repeatType) {
-      case RepeatType.daily:
-        return !date.isBefore(startDate);
-      case RepeatType.weekly:
-        final difference = date.difference(startDate).inDays;
-        return difference >= 0 && difference % 7 == 0;
-
-      case RepeatType.custom:
-        final weekdays = [
-          "Monday",
-          "Tuesday",
-          "Wednesday",
-          "Thursday",
-          "Friday",
-          "Saturday",
-          "Sunday"
-        ];
-        return days[weekdays[targetDay - 1]] == true &&
-            !date.isBefore(startDate);
-      default:
-        return false;
-    }
-  }
+  /// Determines whether this task occurs on [date].
+  /// Delegates to the pure function [occursOnTask] for testability.
+  bool occursOn(DateTime date) => occursOnTask(this, date);
 }

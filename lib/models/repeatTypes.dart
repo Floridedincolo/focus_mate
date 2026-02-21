@@ -1,1 +1,1 @@
-enum RepeatType{daily,weekly,custom}
+enum RepeatType { daily, weekly, custom }

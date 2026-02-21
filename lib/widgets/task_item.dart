@@ -39,16 +39,13 @@ class TaskItem extends StatelessWidget {
         ),
       ),
       child: ListTile(
-        contentPadding:
-        const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         leading: GestureDetector(
           onTap: (isMissed) ? null : onMarkCompleted,
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 250),
-            transitionBuilder: (child, anim) => ScaleTransition(
-              scale: anim,
-              child: child,
-            ),
+            transitionBuilder: (child, anim) =>
+                ScaleTransition(scale: anim, child: child),
             child: Icon(
               isCompleted
                   ? Icons.check_circle
@@ -79,7 +76,7 @@ class TaskItem extends StatelessWidget {
             if (task.startTime != null)
               Text(
                 "${task.startTime!.format(context)}"
-                    "${task.endTime != null ? " - ${task.endTime!.format(context)}" : ""}",
+                "${task.endTime != null ? " - ${task.endTime!.format(context)}" : ""}",
                 style: const TextStyle(color: Colors.white54),
               ),
             if (task.streak > 0)
@@ -87,8 +84,11 @@ class TaskItem extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 4.0),
                 child: Row(
                   children: [
-                    const Icon(Icons.local_fire_department,
-                        color: Colors.orangeAccent, size: 16),
+                    const Icon(
+                      Icons.local_fire_department,
+                      color: Colors.orangeAccent,
+                      size: 16,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       "${task.streak} day${task.streak > 1 ? 's' : ''} streak",
