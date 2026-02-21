@@ -1,15 +1,14 @@
 // lib/pages/home.dart
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
 
 import '../models/task.dart';
 import '../models/calendar_icon_data.dart';
 import '../widgets/calendar_icon_widget.dart';
 import '../widgets/task_item.dart';
-import '../services/firestore_service.dart';
+import '../domain/repositories/task_repository.dart';
+import '../data/repositories/firestore_task_repository.dart';
+import '../domain/use_cases/compute_task_status.dart';
 import '../extensions/task_filter.dart';
-import 'package:focus_mate/firebase_options.dart';
 class Home extends StatefulWidget {
   const Home({super.key});
 
@@ -27,7 +26,7 @@ class _HomeState extends State<Home> {
   final ScrollController _scrollController = ScrollController();
   late List<CalendarIconData> calendarIcons;
 
-  final firestore = FirestoreService();
+  final TaskRepository _repository = FirestoreTaskRepository();
 
   //  Local cache for instant UI update
   final Map<String, String> _localCompletions = {};
@@ -125,53 +124,23 @@ class _HomeState extends State<Home> {
 
   Future<List<Map<String, dynamic>>> _fetchStatuses(List<Task> tasks) async {
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
 
     final futures = tasks.map((t) async {
       try {
-        // mark hidden to skip tasks not active on selected date before returning them at the end
-        if (!t.occursOn(selectedDate)) {
-          return {'task': t, 'status': 'hidden'};
-        }
-
-        // check stored completion status first
-        String status = await firestore.getCompletionStatus(t, selectedDate);
-
-        if (status == 'completed') {
-          return {'task': t, 'status': 'completed'};
-        }
-
-        // if no status add calculate dynamically
-        if (selectedDate.isBefore(today)) {
-          status = 'missed';
-        } else if (selectedDate.isAfter(today)) {
-          status = 'upcoming';
-        } else {
-          if (t.endTime != null) {
-            final taskEnd = DateTime(
-              today.year,
-              today.month,
-              t.endTime!.isBefore(t.startTime!) ? today.day+1:today.day,
-              t.endTime!.hour,
-              t.endTime!.minute,
-            );
-
-            status = now.isBefore(taskEnd) ? 'upcoming' : 'missed';
-          } else {
-            status = 'upcoming';
-          }
-        }
-
+        final storedStatus = await _repository.getCompletionStatus(t, selectedDate);
+        final status = computeTaskStatus(
+          task: t,
+          selectedDate: selectedDate,
+          storedStatus: storedStatus,
+          now: now,
+        );
         return {'task': t, 'status': status};
       } catch (e) {
         return {'task': t, 'status': 'upcoming'};
       }
     }).toList();
 
-    // remove hidden entries
-    return (await Future.wait(futures))
-        .where((entry) => entry['status'] != 'hidden')
-        .toList();
+    return Future.wait(futures);
   }
 
 
@@ -293,12 +262,8 @@ class _HomeState extends State<Home> {
           ),
           const SizedBox(height: 14),
           Expanded(
-            child: StreamBuilder<QuerySnapshot>(//live camera
-              stream: FirebaseFirestore.instance
-                  .collection('users')
-                  .doc('default_user')
-                  .collection('tasks')
-                  .snapshots(),
+            child: StreamBuilder<List<Task>>(
+              stream: _repository.watchTasks(),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
                   return const Center(
@@ -306,9 +271,7 @@ class _HomeState extends State<Home> {
                   );
                 }
 
-                final allTasks = snapshot.data!.docs
-                    .map((doc) => Task.fromMap(doc.data() as Map<String, dynamic>))
-                    .toList();
+                final allTasks = snapshot.data!;
 
                 final tasksForDay = allTasks
                     .where((task) =>
@@ -422,9 +385,9 @@ class _HomeState extends State<Home> {
                                     int updatedStreak;
 
                                     if (isCompleted) {
-                                      updatedStreak = await firestore.clearCompletion(task, selectedDate);
+                                      updatedStreak = await _repository.clearCompletion(task, selectedDate);
                                     } else {
-                                      updatedStreak = await firestore.markTaskStatus(task, selectedDate, 'completed');
+                                      updatedStreak = await _repository.markTaskStatus(task, selectedDate, 'completed');
                                     }
 
                                     setState(() {
@@ -433,7 +396,7 @@ class _HomeState extends State<Home> {
                                     });
 
                                   } catch (e) {
-                                    // rollback if Firestore fails
+                                    // rollback if repository call fails
                                     setState(() {
                                       _localCompletions[key] = firestoreStatus;
                                     });
