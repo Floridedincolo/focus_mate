@@ -1,7 +1,6 @@
 // lib/pages/home.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
 
 import '../models/task.dart';
 import '../models/calendar_icon_data.dart';
@@ -9,7 +8,7 @@ import '../widgets/calendar_icon_widget.dart';
 import '../widgets/task_item.dart';
 import '../services/firestore_service.dart';
 import '../extensions/task_filter.dart';
-import 'package:focus_mate/firebase_options.dart';
+
 class Home extends StatefulWidget {
   const Home({super.key});
 
@@ -23,7 +22,6 @@ class _HomeState extends State<Home> {
   late DateTime firstDate;
   late DateTime lastDate;
   late String currentDateText;
-
   final ScrollController _scrollController = ScrollController();
   late List<CalendarIconData> calendarIcons;
 
@@ -62,7 +60,6 @@ class _HomeState extends State<Home> {
     todayDate = DateTime.now();
     selectedDate = todayDate;
     currentDateText = "Today";
-
     int totalDays = 203;
     firstDate = todayDate.subtract(Duration(days: totalDays ~/ 2));
     lastDate = todayDate.add(Duration(days: totalDays ~/ 2));
@@ -341,7 +338,7 @@ class _HomeState extends State<Home> {
                           final  localStatus=_localCompletions[key];
                           final  finalStatus=localStatus??e['status'];
                           return finalStatus == 'completed';
-                       }).length;
+                        }).length;
                     final totalCount = list.length;
                     final remainingCount = totalCount - completedCount;
 
@@ -451,11 +448,6 @@ class _HomeState extends State<Home> {
             ),
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.blueAccent,
-        onPressed: () => Navigator.pushNamed(context, '/add_task'),
-        child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }
