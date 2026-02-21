@@ -29,5 +29,5 @@ jobs:
         run: dart format --set-exit-if-changed .
 
       - name: Run tests
-        run: dart test
+        run: flutter test
 
