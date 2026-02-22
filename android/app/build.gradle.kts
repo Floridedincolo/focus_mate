@@ -54,6 +54,15 @@ android {
             }
         }
     }
+
+    packagingOptions {
+        exclude("META-INF/proguard/androidx-*.pro")
+        exclude("META-INF/DEPENDENCIES")
+        exclude("META-INF/LICENSE")
+        exclude("META-INF/LICENSE.txt")
+        exclude("META-INF/NOTICE")
+        exclude("META-INF/NOTICE.txt")
+    }
 }
 
 flutter {
@@ -63,4 +72,5 @@ flutter {
 dependencies {
     implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
     implementation("com.google.firebase:firebase-analytics-ktx")
+    implementation("com.google.android.material:material:1.11.0")
 }

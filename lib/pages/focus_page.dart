@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:device_apps/device_apps.dart';
 import '../services/accessibility_service.dart';
 import '../services/block_app_manager.dart';
+import '../services/app_manager_service.dart';
 
 class FocusPage extends StatefulWidget {
   const FocusPage({super.key});
@@ -126,12 +126,8 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
   void _showAppSelector() async {
     if (!mounted) return;
 
-    // Încarcă lista de aplicații
-    List<Application> apps = await DeviceApps.getInstalledApplications(
-      includeAppIcons: true,
-      includeSystemApps: true,
-      onlyAppsWithLaunchIntent: true,
-    );
+    // Încarcă lista de aplicații din serviciul nativ
+    List<InstalledApp> apps = await AppManagerService.getAllInstalledApps();
 
     // Sortează alfabetic
     apps.sort(
@@ -182,8 +178,12 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
                       final isBlocked = _blockedApps.contains(app.packageName);
 
                       return ListTile(
-                        leading: app is ApplicationWithIcon
-                            ? Image.memory(app.icon, width: 40, height: 40)
+                        leading: app.iconBytes != null
+                            ? Image.memory(
+                                app.iconBytes!,
+                                width: 40,
+                                height: 40,
+                              )
                             : const Icon(Icons.android, color: Colors.white),
                         title: Text(
                           app.appName,

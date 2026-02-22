@@ -1,5 +1,6 @@
 import 'dart:typed_data';
-import 'package:device_apps/device_apps.dart';
+import 'dart:convert' show base64;
+import 'package:flutter/services.dart';
 
 class InstalledApp {
   final String appName;
@@ -16,35 +17,51 @@ class InstalledApp {
 }
 
 class AppManagerService {
+  static const platform = MethodChannel('com.example.focus_mate/apps');
+
   static Future<List<InstalledApp>> getAllInstalledApps() async {
-    List<Application> apps = await DeviceApps.getInstalledApplications(
-      includeSystemApps: true,
-      includeAppIcons: true,
-      onlyAppsWithLaunchIntent: true,
-    );
-
-    print("📱 Total apps found: ${apps.length}");
-
-    // Filtrăm TOATE aplicațiile care au icon valid (> 5 bytes)
-    final validApps = apps.where((app) {
-      if (app is ApplicationWithIcon) {
-        final iconBytes = app.icon;
-        return iconBytes.length > 5;
-      }
-      return false;
-    }).toList();
-
-    print(" Apps with valid icons: ${validApps.length}");
-
-    return validApps.map((app) {
-      bool hasIcon = app is ApplicationWithIcon;
-
-      return InstalledApp(
-        appName: app.appName,
-        packageName: app.packageName,
-        isSystemApp: app.systemApp,
-        iconBytes: hasIcon ? (app).icon : null,
+    try {
+      final result = await platform.invokeMethod<List<dynamic>>(
+        'getAllInstalledApps',
       );
-    }).toList();
+
+      if (result == null) {
+        print("❌ No apps returned from native code");
+        return [];
+      }
+
+      print("📱 Total apps found: ${result.length}");
+
+      final apps = result.cast<Map<dynamic, dynamic>>().map((appData) {
+        final iconBase64 = appData['iconBase64'] as String?;
+        Uint8List? iconBytes;
+
+        if (iconBase64 != null && iconBase64.isNotEmpty) {
+          try {
+            iconBytes = Uint8List.fromList(base64.decode(iconBase64));
+          } catch (e) {
+            print("⚠️ Failed to decode icon for ${appData['appName']}: $e");
+          }
+        }
+
+        return InstalledApp(
+          appName: appData['appName'] as String? ?? 'Unknown',
+          packageName: appData['packageName'] as String? ?? '',
+          isSystemApp: appData['isSystemApp'] as bool? ?? false,
+          iconBytes: iconBytes,
+        );
+      }).toList();
+
+      // Filter apps with valid icons (> 5 bytes)
+      final validApps = apps
+          .where((app) => app.iconBytes != null && app.iconBytes!.length > 5)
+          .toList();
+
+      print("✅ Apps with valid icons: ${validApps.length}");
+      return validApps;
+    } catch (e) {
+      print("❌ Error getting installed apps: $e");
+      return [];
+    }
   }
 }
