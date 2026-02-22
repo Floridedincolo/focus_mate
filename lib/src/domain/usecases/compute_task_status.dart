@@ -1,5 +1,5 @@
-import 'package:focus_mate/domain/repositories/task_repository.dart';
-import 'package:focus_mate/models/task.dart';
+import '../entities/task.dart';
+import '../repositories/task_repository.dart';
 import 'task_occurrence.dart';
 
 /// Computes the status of a [task] for a given [selectedDate].
@@ -28,3 +28,4 @@ Future<String> computeTaskStatus(
   // Return the status (which is either 'missed' or 'upcoming')
   return status;
 }
+

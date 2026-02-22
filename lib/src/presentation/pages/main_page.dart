@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-// Import original pages from lib/pages/ for now
-import 'package:focus_mate/pages/home.dart' as old_home;
-import 'package:focus_mate/pages/focus_page.dart' as old_focus;
-import 'package:focus_mate/pages/stats_page.dart' as old_stats;
+
+import 'home.dart';
+import 'focus_page.dart';
+import 'stats_page.dart';
+import 'profile.dart';
 
 class MainPage extends ConsumerStatefulWidget {
   const MainPage({super.key});
@@ -26,12 +27,11 @@ class _MainPageState extends ConsumerState<MainPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Build pages lazily to avoid Riverpod issues
     final pages = [
-      _buildHome(),
-      _buildFocus(),
-      _buildStats(),
-      _buildProfile(),
+      const Home(),
+      const FocusPage(),
+      const StatsPage(),
+      const Profile(),
     ];
 
     return Scaffold(
@@ -109,37 +109,6 @@ class _MainPageState extends ConsumerState<MainPage> {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHome() {
-    return const old_home.Home();
-  }
-
-  Widget _buildFocus() {
-    return const old_focus.FocusPage();
-  }
-
-  Widget _buildStats() {
-    return const old_stats.StatsPage();
-  }
-
-  Widget _buildProfile() {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0D0D0D),
-        title: const Text(
-          'Profile',
-          style: TextStyle(color: Colors.white),
-        ),
-      ),
-      body: const Center(
-        child: Text(
-          'Profile Page',
-          style: TextStyle(color: Colors.white),
         ),
       ),
     );

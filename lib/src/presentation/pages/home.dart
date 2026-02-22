@@ -1,23 +1,24 @@
-// lib/pages/home.dart
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../models/task.dart';
+import '../../core/service_locator.dart';
+import '../../domain/entities/task.dart';
+import '../../domain/repositories/task_repository.dart';
+import '../../domain/usecases/compute_task_status.dart';
+import '../../domain/extensions/task_filter.dart';
+import '../providers/task_providers.dart';
 import '../models/calendar_icon_data.dart';
 import '../widgets/calendar_icon_widget.dart';
 import '../widgets/task_item.dart';
-import '../extensions/task_filter.dart';
-import 'package:focus_mate/domain/repositories/task_repository.dart';
-import 'package:focus_mate/data/repositories/firestore_task_repository.dart';
-import 'package:focus_mate/domain/usecases/compute_task_status.dart';
 
-class Home extends StatefulWidget {
+class Home extends ConsumerStatefulWidget {
   const Home({super.key});
 
   @override
-  State<Home> createState() => _HomeState();
+  ConsumerState<Home> createState() => _HomeState();
 }
 
-class _HomeState extends State<Home> {
+class _HomeState extends ConsumerState<Home> {
   late DateTime selectedDate;
   late DateTime todayDate;
   late DateTime firstDate;
@@ -26,33 +27,14 @@ class _HomeState extends State<Home> {
   final ScrollController _scrollController = ScrollController();
   late List<CalendarIconData> calendarIcons;
 
-  final TaskRepository _taskRepo = FirestoreTaskRepository();
-
-  //  Local cache for instant UI update
   final Map<String, String> _localCompletions = {};
 
   final List<String> months = [
-    'January',
-    'February',
-    'March',
-    'April',
-    'May',
-    'June',
-    'July',
-    'August',
-    'September',
-    'October',
-    'November',
-    'December',
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
   ];
   final List<String> weekdays = [
-    'Monday',
-    'Tuesday',
-    'Wednesday',
-    'Thursday',
-    'Friday',
-    'Saturday',
-    'Sunday',
+    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
   ];
 
   @override
@@ -74,7 +56,7 @@ class _HomeState extends State<Home> {
 
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _centerOnSelected(),
-    ); //add after widgets initialize to calculate size of the layout
+    );
   }
 
   void _centerOnSelected({bool animate = false}) {
@@ -89,12 +71,12 @@ class _HomeState extends State<Home> {
 
     double cardWidth = MediaQuery.of(context).size.width / 7;
     double target =
-        (index * cardWidth) - //how much size to scroll
+        (index * cardWidth) -
         (MediaQuery.of(context).size.width / 2) +
-        (cardWidth / 2); //to make it to the middle of the screen
+        (cardWidth / 2);
 
     double clamped = target.clamp(
-      _scrollController.position.minScrollExtent, //prevent the overscroll
+      _scrollController.position.minScrollExtent,
       _scrollController.position.maxScrollExtent,
     );
 
@@ -112,36 +94,33 @@ class _HomeState extends State<Home> {
   String getDaySuffix(int day) {
     if (day >= 11 && day <= 13) return 'th';
     switch (day % 10) {
-      case 1:
-        return 'st';
-      case 2:
-        return 'nd';
-      case 3:
-        return 'rd';
-      default:
-        return 'th';
+      case 1: return 'st';
+      case 2: return 'nd';
+      case 3: return 'rd';
+      default: return 'th';
     }
   }
 
   Future<List<Map<String, dynamic>>> _fetchStatuses(List<Task> tasks) async {
+    final repo = getIt<TaskRepository>();
     final futures = tasks.map((t) async {
       try {
-        final status = await computeTaskStatus(t, selectedDate, _taskRepo);
+        final status = await computeTaskStatus(t, selectedDate, repo);
         return {'task': t, 'status': status};
       } catch (e) {
         return {'task': t, 'status': 'upcoming'};
       }
     }).toList();
 
-    // remove hidden entries
-    return (await Future.wait(
-      futures,
-    )).where((entry) => entry['status'] != 'hidden').toList();
+    return (await Future.wait(futures))
+        .where((entry) => entry['status'] != 'hidden')
+        .toList();
   }
 
   @override
   Widget build(BuildContext context) {
     String suffix = getDaySuffix(selectedDate.day);
+    final tasksAsyncValue = ref.watch(tasksStreamProvider);
 
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
@@ -151,7 +130,6 @@ class _HomeState extends State<Home> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text.rich(
-              //allows multiple text spans and widgets with different styles
               TextSpan(
                 children: [
                   TextSpan(
@@ -199,21 +177,12 @@ class _HomeState extends State<Home> {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16),
-            child: Stack(
-              alignment: Alignment.bottomRight,
-              children: [
-                // circular profile picture
-                GestureDetector(
-                  onTap: () {
-                    // Navigate to profile page
-                    Navigator.pushNamed(context, '/profile');
-                  },
-                  child: const CircleAvatar(
-                    radius: 22,
-                    backgroundImage: AssetImage('assets/button_bg.png'),
-                  ),
-                ),
-              ],
+            child: GestureDetector(
+              onTap: () => Navigator.pushNamed(context, '/profile'),
+              child: const CircleAvatar(
+                radius: 22,
+                backgroundImage: AssetImage('assets/button_bg.png'),
+              ),
             ),
           ),
         ],
@@ -241,10 +210,10 @@ class _HomeState extends State<Home> {
                           selectedDate = e.dateTime;
                           currentDateText =
                               (todayDate.day == selectedDate.day &&
-                                  todayDate.month == selectedDate.month &&
-                                  todayDate.year == selectedDate.year)
-                              ? "Today"
-                              : "This Day";
+                                      todayDate.month == selectedDate.month &&
+                                      todayDate.year == selectedDate.year)
+                                  ? "Today"
+                                  : "This Day";
                         });
                         WidgetsBinding.instance.addPostFrameCallback(
                           (_) => _centerOnSelected(animate: true),
@@ -258,22 +227,18 @@ class _HomeState extends State<Home> {
           ),
           const SizedBox(height: 14),
           Expanded(
-            child: StreamBuilder<List<Task>>(
-              stream: _taskRepo.watchTasks(),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) {
-                  return const Center(
-                    child: CircularProgressIndicator(color: Colors.white),
-                  );
-                }
-
-                final allTasks = snapshot.data as List<Task>;
-
+            child: tasksAsyncValue.when(
+              loading: () => const Center(
+                child: CircularProgressIndicator(color: Colors.white),
+              ),
+              error: (err, stack) => Center(
+                child: Text('Error: $err',
+                    style: const TextStyle(color: Colors.white)),
+              ),
+              data: (allTasks) {
                 final tasksForDay = allTasks
-                    .where(
-                      (task) =>
-                          task.occursOn(selectedDate) && task.archived == false,
-                    )
+                    .where((task) =>
+                        task.occursOn(selectedDate) && task.archived == false)
                     .toList();
 
                 if (tasksForDay.isEmpty) {
@@ -286,21 +251,21 @@ class _HomeState extends State<Home> {
                 }
 
                 return FutureBuilder<List<Map<String, dynamic>>>(
-                  //picture
                   future: _fetchStatuses(tasksForDay),
                   builder: (context, statusSnap) {
-                    //status snap is the snpashot of the future hasdata -knows if data loaded or not yet
                     if (!statusSnap.hasData) {
                       return const Center(
-                        child: CircularProgressIndicator(color: Colors.white),
+                        child:
+                            CircularProgressIndicator(color: Colors.white),
                       );
                     }
 
                     final list = statusSnap.data!;
 
                     final completedCount = list.where((e) {
+                      final task = e['task'] as Task;
                       final key =
-                          '${e['task'].id}_${selectedDate.toIso8601String()}';
+                          '${task.id}_${selectedDate.toIso8601String()}';
                       final localStatus = _localCompletions[key];
                       final finalStatus = localStatus ?? e['status'];
                       return finalStatus == 'completed';
@@ -309,8 +274,8 @@ class _HomeState extends State<Home> {
                     final remainingCount = totalCount - completedCount;
 
                     list.sort((a, b) {
-                      final taskA = a['task'];
-                      final taskB = b['task'];
+                      final taskA = a['task'] as Task;
+                      final taskB = b['task'] as Task;
                       final keyA =
                           '${taskA.id}_${selectedDate.toIso8601String()}';
                       final keyB =
@@ -327,9 +292,8 @@ class _HomeState extends State<Home> {
                       if (at == null && bt == null) return 0;
                       if (at == null) return 1;
                       if (bt == null) return -1;
-                      return (at.hour * 60 + at.minute).compareTo(
-                        bt.hour * 60 + bt.minute,
-                      );
+                      return (at.hour * 60 + at.minute)
+                          .compareTo(bt.hour * 60 + bt.minute);
                     });
 
                     return Column(
@@ -386,9 +350,8 @@ class _HomeState extends State<Home> {
                                 statusForSelectedDay: status,
                                 onMarkCompleted: () async {
                                   final isCompleted = status == 'completed';
-                                  final newStatus = isCompleted
-                                      ? 'upcoming'
-                                      : 'completed';
+                                  final newStatus =
+                                      isCompleted ? 'upcoming' : 'completed';
 
                                   setState(() {
                                     _localCompletions[key] = newStatus;
@@ -398,15 +361,17 @@ class _HomeState extends State<Home> {
                                     int updatedStreak;
 
                                     if (isCompleted) {
-                                      updatedStreak = await _taskRepo
-                                          .clearCompletion(task, selectedDate);
+                                      updatedStreak = await ref.read(
+                                        clearCompletionProvider(
+                                          (task, selectedDate),
+                                        ).future,
+                                      );
                                     } else {
-                                      updatedStreak = await _taskRepo
-                                          .markTaskStatus(
-                                            task,
-                                            selectedDate,
-                                            'completed',
-                                          );
+                                      updatedStreak = await ref.read(
+                                        markTaskStatusProvider(
+                                          (task, selectedDate, newStatus),
+                                        ).future,
+                                      );
                                     }
 
                                     setState(() {
@@ -414,9 +379,9 @@ class _HomeState extends State<Home> {
                                       task.streak = updatedStreak;
                                     });
                                   } catch (e) {
-                                    // rollback if Firestore fails
                                     setState(() {
-                                      _localCompletions[key] = firestoreStatus;
+                                      _localCompletions[key] =
+                                          firestoreStatus;
                                     });
                                   }
                                 },
@@ -464,3 +429,4 @@ class _HomeState extends State<Home> {
     );
   }
 }
+

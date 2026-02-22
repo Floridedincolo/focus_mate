@@ -1,5 +1,5 @@
-import 'package:focus_mate/models/task.dart';
-import 'package:focus_mate/models/repeatTypes.dart';
+import '../entities/task.dart';
+import '../entities/repeat_type.dart';
 
 /// Pure function: determines whether [task] occurs on [date].
 /// This extracted logic can be unit tested easily and reused.
@@ -20,7 +20,6 @@ bool occursOnTask(Task task, DateTime date) {
     case RepeatType.weekly:
       final difference = date.difference(task.startDate).inDays;
       return difference >= 0 && difference % 7 == 0;
-
     case RepeatType.custom:
       final weekdays = [
         "Monday",
@@ -37,3 +36,4 @@ bool occursOnTask(Task task, DateTime date) {
       return false;
   }
 }
+

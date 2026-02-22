@@ -1,138 +1,89 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:focus_mate/services/accessibility_service.dart';
-import 'package:focus_mate/services/block_app_manager.dart';
-import 'package:focus_mate/services/app_manager_service.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class FocusPage extends StatefulWidget {
+import '../../core/service_locator.dart';
+import '../../domain/entities/blocked_app.dart';
+import '../../domain/entities/installed_application.dart';
+import '../../domain/usecases/accessibility_usecases.dart';
+import '../../domain/usecases/app_usecases.dart';
+
+class FocusPage extends ConsumerStatefulWidget {
   const FocusPage({super.key});
 
   @override
-  State<FocusPage> createState() => _FocusPageState();
+  ConsumerState<FocusPage> createState() => _FocusPageState();
 }
 
-class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
-  // --- LISTĂ APLICAȚII BLOCATE ---
-  List<String> _blockedApps = []; // Package names
+class _FocusPageState extends ConsumerState<FocusPage>
+    with WidgetsBindingObserver {
+  List<BlockedApp> _blockedApps = [];
   bool _blockingEnabled = false;
 
-  // --- ACCESSIBILITY SERVICE STATUS ---
   bool _isAccessibilityEnabled = false;
   bool _hasOverlayPermission = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(
-      this,
-    ); //  Ascultă schimbările de lifecycle
+    WidgetsBinding.instance.addObserver(this);
     _loadBlockedApps();
-    _checkAccessibilityService(); //  Verifică imediat la pornire
-    _checkOverlayPermission(); //  Verifică permisiunea overlay
+    _checkPermissions();
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this); //  Curăță observer-ul
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
-  //  Verifică accessibility când app-ul revine în foreground
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // Delay pentru a lăsa sistemul să se stabilizeze după revenirea în foreground
       Future.delayed(const Duration(milliseconds: 1000), () async {
-        await _checkAccessibilityService();
-        await _checkOverlayPermission();
+        await _checkPermissions();
       });
     }
   }
 
-  //  Verifică dacă Accessibility Service este activ
-  Future<void> _checkAccessibilityService() async {
-    final enabled = await AccessibilityService.isEnabled();
+  Future<void> _checkPermissions() async {
+    final accessibilityEnabled =
+        await getIt<CheckAccessibilityUseCase>()();
+    final overlayEnabled =
+        await getIt<CheckOverlayPermissionUseCase>()();
 
     if (mounted) {
       setState(() {
-        _isAccessibilityEnabled = enabled;
+        _isAccessibilityEnabled = accessibilityEnabled;
+        _hasOverlayPermission = overlayEnabled;
       });
-
-      if (enabled) {
-        print(" Accessibility Service este ACTIV și funcțional!");
-      } else {
-        print("⚠️ Accessibility Service NU este activ!");
-      }
     }
   }
 
-  //  Verifică permisiunea overlay
-  Future<void> _checkOverlayPermission() async {
-    final canDraw = await AccessibilityService.canDrawOverlays();
-
-    if (mounted) {
-      setState(() {
-        _hasOverlayPermission = canDraw;
-      });
-
-      if (canDraw) {
-        print(" Overlay permission este ACTIVĂ!");
-      } else {
-        print("⚠️ Overlay permission NU este activă!");
-      }
-    }
-  }
-
-  // Încarcă lista de aplicații blocate din SharedPreferences
   Future<void> _loadBlockedApps() async {
-    final prefs = await SharedPreferences.getInstance();
+    final blockedApps = await getIt<GetBlockedAppsUseCase>()();
+
     setState(() {
-      _blockedApps = prefs.getStringList('focus_blocked_apps') ?? [];
-      _blockingEnabled =
-          prefs.getBool('focus_blocking_enabled') ?? true; //  Default true
+      _blockedApps = blockedApps;
+      _blockingEnabled = _blockedApps.isNotEmpty;
     });
-
-    //  Aplică blocarea imediat după încărcare
-    if (_blockingEnabled && _blockedApps.isNotEmpty) {
-      await BlockAppManager.setBlockedApps(_blockedApps);
-      print("🔒 Loaded and applied ${_blockedApps.length} blocked apps");
-    }
   }
 
-  // Salvează lista de aplicații blocate
-  Future<void> _saveBlockedApps() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('focus_blocked_apps', _blockedApps);
-    await prefs.setBool('focus_blocking_enabled', _blockingEnabled);
-
-    //  IMPORTANT: Trimite lista actualizată către serviciul nativ
-    await BlockAppManager.setBlockedApps(_blockedApps);
-    print(" Saved ${_blockedApps.length} blocked apps to native service");
-  }
-
-  // Activează blocarea REALĂ prin block_app
   Future<void> _applyBlocking() async {
     if (_blockingEnabled && _blockedApps.isNotEmpty) {
-      // Trimite întreaga listă actualizată
-      await BlockAppManager.setBlockedApps(_blockedApps);
-      print("🔒 Blocking enabled for ${_blockedApps.length} apps");
+      await getIt<SetBlockedAppsUseCase>()(_blockedApps);
     } else {
-      await BlockAppManager.clearBlockList();
-      print("🔓 Blocking disabled");
+      await getIt<SetBlockedAppsUseCase>()([]);
     }
   }
 
-  // DIALOG PENTRU SELECTARE APLICAȚII
   void _showAppSelector() async {
     if (!mounted) return;
 
-    // Încarcă lista de aplicații din serviciul nativ
-    List<InstalledApp> apps = await AppManagerService.getAllInstalledApps();
-
-    // Sortează alfabetic
-    apps.sort(
-      (a, b) => a.appName.toLowerCase().compareTo(b.appName.toLowerCase()),
-    );
+    List<InstalledApplication> apps =
+        await getIt<GetAllAppsUseCase>()();
+    apps.sort((a, b) =>
+        a.appName.toLowerCase().compareTo(b.appName.toLowerCase()));
 
     if (!mounted) return;
 
@@ -146,7 +97,8 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
             height: MediaQuery.of(context).size.height * 0.8,
             decoration: const BoxDecoration(
               color: Color(0xFF1E1E1E),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              borderRadius:
+                  BorderRadius.vertical(top: Radius.circular(20)),
             ),
             child: Column(
               children: [
@@ -175,19 +127,22 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
                     itemCount: apps.length,
                     itemBuilder: (context, index) {
                       final app = apps[index];
-                      final isBlocked = _blockedApps.contains(app.packageName);
+                      final isBlocked = _blockedApps.any(
+                          (b) => b.packageName == app.packageName);
 
                       return ListTile(
                         leading: app.iconBytes != null
                             ? Image.memory(
-                                app.iconBytes!,
+                                Uint8List.fromList(app.iconBytes!),
                                 width: 40,
                                 height: 40,
                               )
-                            : const Icon(Icons.android, color: Colors.white),
+                            : const Icon(Icons.android,
+                                color: Colors.white),
                         title: Text(
                           app.appName,
-                          style: const TextStyle(color: Colors.white),
+                          style:
+                              const TextStyle(color: Colors.white),
                         ),
                         subtitle: Text(
                           app.packageName,
@@ -202,16 +157,21 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
                           onChanged: (val) async {
                             setModalState(() {
                               if (val == true) {
-                                if (!_blockedApps.contains(app.packageName)) {
-                                  _blockedApps.add(app.packageName);
+                                if (!_blockedApps.any((b) =>
+                                    b.packageName ==
+                                    app.packageName)) {
+                                  _blockedApps.add(BlockedApp(
+                                    packageName: app.packageName,
+                                    appName: app.appName,
+                                  ));
                                 }
                               } else {
-                                _blockedApps.remove(app.packageName);
+                                _blockedApps.removeWhere((b) =>
+                                    b.packageName ==
+                                    app.packageName);
                               }
                             });
                             setState(() {});
-                            await _saveBlockedApps();
-                            //  Aplică blocarea imediat
                             if (_blockingEnabled) {
                               await _applyBlocking();
                             }
@@ -244,7 +204,6 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // --- TITLU ---
                 const Text(
                   "Focus Mode",
                   style: TextStyle(
@@ -256,51 +215,48 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
                 const SizedBox(height: 8),
                 Text(
                   "Stay productive, silence distractions.",
-                  style: TextStyle(color: Colors.grey[500], fontSize: 14),
+                  style:
+                      TextStyle(color: Colors.grey[500], fontSize: 14),
                 ),
-
                 const SizedBox(height: 20),
 
-                //  BANNER ACCESSIBILITY SERVICE (compact)
+                // Accessibility banner
                 if (!_isAccessibilityEnabled)
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
+                        horizontal: 12, vertical: 10),
                     margin: const EdgeInsets.only(bottom: 12),
                     decoration: BoxDecoration(
                       color: Colors.orange.withAlpha(26),
-                      border: Border.all(color: Colors.orange, width: 2),
+                      border: Border.all(
+                          color: Colors.orange, width: 2),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
                       children: [
                         const Icon(
-                          Icons.warning_amber_rounded,
-                          color: Colors.orange,
-                          size: 24,
-                        ),
+                            Icons.warning_amber_rounded,
+                            color: Colors.orange,
+                            size: 24),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               const Text(
                                 "Service inactiv",
                                 style: TextStyle(
-                                  color: Colors.orange,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                                    color: Colors.orange,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold),
                               ),
                               Text(
                                 "Activează Accessibility",
                                 style: TextStyle(
-                                  color: Colors.grey[400],
-                                  fontSize: 11,
-                                ),
+                                    color: Colors.grey[400],
+                                    fontSize: 11),
                               ),
                             ],
                           ),
@@ -308,72 +264,67 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
                         const SizedBox(width: 6),
                         ElevatedButton(
                           onPressed: () async {
-                            await AccessibilityService.promptEnable();
-                            // După ce userul revine din setări, verifică din nou
+                            await getIt<
+                                RequestAccessibilityUseCase>()();
                             await Future.delayed(
-                              const Duration(milliseconds: 500),
-                            );
-                            await _checkAccessibilityService();
+                                const Duration(milliseconds: 500));
+                            await _checkPermissions();
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.orange,
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
+                                horizontal: 12, vertical: 6),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
+                                borderRadius:
+                                    BorderRadius.circular(8)),
                           ),
                           child: const Text(
                             "Enable",
                             style: TextStyle(
-                              color: Colors.black,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
+                                color: Colors.black,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12),
                           ),
                         ),
                       ],
                     ),
                   ),
 
-                //  BANNER OVERLAY PERMISSION (compact)
+                // Overlay banner
                 if (!_hasOverlayPermission)
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
+                        horizontal: 12, vertical: 10),
                     margin: const EdgeInsets.only(bottom: 12),
                     decoration: BoxDecoration(
                       color: Colors.red.withAlpha(26),
-                      border: Border.all(color: Colors.red, width: 2),
+                      border:
+                          Border.all(color: Colors.red, width: 2),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.block, color: Colors.red, size: 24),
+                        const Icon(Icons.block,
+                            color: Colors.red, size: 24),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               const Text(
                                 "Overlay lipsă",
                                 style: TextStyle(
-                                  color: Colors.red,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                                    color: Colors.red,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold),
                               ),
                               Text(
                                 "Activează 'Display over other apps'",
                                 style: TextStyle(
-                                  color: Colors.grey[400],
-                                  fontSize: 11,
-                                ),
+                                    color: Colors.grey[400],
+                                    fontSize: 11),
                               ),
                             ],
                           ),
@@ -381,30 +332,26 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
                         const SizedBox(width: 6),
                         ElevatedButton(
                           onPressed: () async {
-                            await AccessibilityService.requestOverlayPermission();
-                            // După ce userul revine din setări, verifică din nou
+                            await getIt<
+                                RequestOverlayPermissionUseCase>()();
                             await Future.delayed(
-                              const Duration(milliseconds: 500),
-                            );
-                            await _checkOverlayPermission();
+                                const Duration(milliseconds: 500));
+                            await _checkPermissions();
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.red,
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
+                                horizontal: 12, vertical: 6),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
+                                borderRadius:
+                                    BorderRadius.circular(8)),
                           ),
                           child: const Text(
                             "Enable",
                             style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12),
                           ),
                         ),
                       ],
@@ -413,7 +360,7 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
 
                 const SizedBox(height: 20),
 
-                // --- LISTA APLICAȚII BLOCATE (REAL) ---
+                // Blocked apps card
                 GestureDetector(
                   onTap: _showAppSelector,
                   child: Container(
@@ -430,31 +377,28 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
                             color: Colors.redAccent.withAlpha(26),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Icon(
-                            Icons.block,
-                            color: Colors.redAccent,
-                          ),
+                          child: const Icon(Icons.block,
+                              color: Colors.redAccent),
                         ),
                         const SizedBox(width: 15),
                         Expanded(
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
                             children: [
                               const Text(
                                 "Blocked Apps",
                                 style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold),
                               ),
                               Text(
                                 _blockedApps.isEmpty
                                     ? "Tap to select apps"
                                     : "${_blockedApps.length} apps selected",
                                 style: TextStyle(
-                                  color: Colors.grey[500],
-                                  fontSize: 12,
-                                ),
+                                    color: Colors.grey[500],
+                                    fontSize: 12),
                               ),
                             ],
                           ),
@@ -462,11 +406,8 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
                         Switch(
                           value: _blockingEnabled,
                           onChanged: (val) async {
-                            setState(() {
-                              _blockingEnabled = val;
-                            });
-                            await _saveBlockedApps();
-                            //  Aplică blocarea imediat când se schimbă switch-ul
+                            setState(() =>
+                                _blockingEnabled = val);
                             await _applyBlocking();
                           },
                           activeColor: accentColor,
@@ -484,3 +425,4 @@ class _FocusPageState extends State<FocusPage> with WidgetsBindingObserver {
     );
   }
 }
+

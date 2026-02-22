@@ -1,5 +1,4 @@
 import 'package:get_it/get_it.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 // Domain
 import '../domain/repositories/task_repository.dart';
@@ -30,7 +29,7 @@ Future<void> setupServiceLocator() async {
 
   // Task data sources
   getIt.registerSingleton<RemoteTaskDataSource>(
-    FirebaseRemoteTaskDataSource(firestore: FirebaseFirestore.instance),
+    FirebaseRemoteTaskDataSource(),
   );
 
   getIt.registerSingleton<LocalTaskDataSource>(
@@ -43,7 +42,6 @@ Future<void> setupServiceLocator() async {
   );
 
   final blockedAppsDataSource = SharedPreferencesBlockedAppsDataSource();
-  // Initialize in background - don't block UI startup
   blockedAppsDataSource.init().ignore();
   getIt.registerSingleton<LocalBlockedAppsDataSource>(blockedAppsDataSource);
 
@@ -85,8 +83,10 @@ Future<void> setupServiceLocator() async {
   getIt.registerSingleton(GetTasksUseCase(getIt<TaskRepository>()));
   getIt.registerSingleton(SaveTaskUseCase(getIt<TaskRepository>()));
   getIt.registerSingleton(DeleteTaskUseCase(getIt<TaskRepository>()));
+  getIt.registerSingleton(ArchiveTaskUseCase(getIt<TaskRepository>()));
+  getIt.registerSingleton(GetCompletionStatusUseCase(getIt<TaskRepository>()));
   getIt.registerSingleton(MarkTaskStatusUseCase(getIt<TaskRepository>()));
-  getIt.registerSingleton(GetCompletionStatsUseCase(getIt<TaskRepository>()));
+  getIt.registerSingleton(ClearCompletionUseCase(getIt<TaskRepository>()));
 
   // App use cases
   getIt.registerSingleton(GetAllAppsUseCase(getIt<AppManagerRepository>()));

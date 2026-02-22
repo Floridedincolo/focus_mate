@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
-
 import '../models/calendar_icon_data.dart';
 
 class CalendarIconWidget extends StatelessWidget {
   final CalendarIconData calendarIconData;
   final bool isSelected;
   final VoidCallback onTap;
+
   const CalendarIconWidget({
     super.key,
     required this.calendarIconData,
     this.isSelected = false,
     required this.onTap,
   });
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -43,3 +44,4 @@ class CalendarIconWidget extends StatelessWidget {
     );
   }
 }
+

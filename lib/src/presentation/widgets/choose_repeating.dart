@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:focus_mate/models/repeatTypes.dart';
+import '../../domain/entities/repeat_type.dart';
 
 class ChooseRepeating extends StatefulWidget {
   final RepeatType repeatType;
   final Function(RepeatType?, Map<String, bool>) onRepeatChanged;
   final Map<String, bool> d;
+
   const ChooseRepeating({
     super.key,
     required this.onRepeatChanged,
     required this.repeatType,
     required this.d,
   });
+
   @override
   State<ChooseRepeating> createState() => _ChooseRepeatingState();
 }
@@ -26,6 +28,7 @@ class _ChooseRepeatingState extends State<ChooseRepeating> {
     'Saturday': false,
     'Sunday': false,
   };
+
   @override
   void initState() {
     super.initState();
@@ -49,10 +52,8 @@ class _ChooseRepeatingState extends State<ChooseRepeating> {
             children: [
               GestureDetector(
                 onTap: () {
-                  setState(() {
-                    _repeatType = RepeatType.daily;
-                  });
-                  widget.onRepeatChanged(_repeatType, days); //update the parent
+                  setState(() => _repeatType = RepeatType.daily);
+                  widget.onRepeatChanged(_repeatType, days);
                 },
                 child: Container(
                   margin: const EdgeInsets.symmetric(vertical: 10),
@@ -71,9 +72,7 @@ class _ChooseRepeatingState extends State<ChooseRepeating> {
               ),
               GestureDetector(
                 onTap: () {
-                  setState(() {
-                    _repeatType = RepeatType.weekly;
-                  });
+                  setState(() => _repeatType = RepeatType.weekly);
                   widget.onRepeatChanged(_repeatType, days);
                 },
                 child: Container(
@@ -93,9 +92,7 @@ class _ChooseRepeatingState extends State<ChooseRepeating> {
               ),
               GestureDetector(
                 onTap: () {
-                  setState(() {
-                    _repeatType = RepeatType.custom;
-                  });
+                  setState(() => _repeatType = RepeatType.custom);
                   widget.onRepeatChanged(_repeatType, days);
                 },
                 child: Container(
@@ -120,7 +117,7 @@ class _ChooseRepeatingState extends State<ChooseRepeating> {
           const SizedBox(height: 10),
           Wrap(
             spacing: 10.0,
-            runSpacing: 5.0, //spatiu dintre linii
+            runSpacing: 5.0,
             children: days.keys.map((day) {
               return FilterChip(
                 label: Text(
@@ -147,3 +144,4 @@ class _ChooseRepeatingState extends State<ChooseRepeating> {
     );
   }
 }
+

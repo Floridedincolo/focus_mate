@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:focus_mate/domain/usecases/compute_task_status.dart';
-import 'package:focus_mate/domain/repositories/task_repository.dart';
-import 'package:focus_mate/models/task.dart';
-import 'package:focus_mate/models/repeatTypes.dart';
+import 'package:focus_mate/src/domain/usecases/compute_task_status.dart';
+import 'package:focus_mate/src/domain/repositories/task_repository.dart';
+import 'package:focus_mate/src/domain/entities/task.dart';
+import 'package:focus_mate/src/domain/entities/repeat_type.dart';
 
 /// Fake implementation of TaskRepository for testing purposes.
 class FakeTaskRepository implements TaskRepository {
@@ -20,7 +20,6 @@ class FakeTaskRepository implements TaskRepository {
     return _completionStatuses[key] ?? 'upcoming';
   }
 
-  // These methods are not needed for compute_task_status testing
   @override
   Stream<List<Task>> watchTasks() => throw UnimplementedError();
 
@@ -100,8 +99,8 @@ void main() {
 
     test('returns missed when task did not occur and is in the past', () async {
       final repo = FakeTaskRepository();
-      final startDate = DateTime(2024, 2, 10);
-      final selectedDate = DateTime(2024, 2, 15);
+      final startDate = DateTime(2024, 1, 1);
+      final selectedDate = DateTime(2024, 1, 15);
       final task = Task(
         id: '3',
         title: 'Daily task',
@@ -110,7 +109,9 @@ void main() {
         repeatType: RepeatType.daily,
       );
 
-      // Repository returns 'missed' for a past date with no completion
+      // The repo will return 'upcoming' by default, but compute_task_status
+      // delegates to the repo which checks date
+      // For testing, let's set the repo to return 'missed'
       repo.setCompletionStatus(task.id, selectedDate, 'missed');
 
       final status = await computeTaskStatus(task, selectedDate, repo);
@@ -118,22 +119,22 @@ void main() {
       expect(status, equals('missed'));
     });
 
-    test('returns upcoming when task has no completion status', () async {
+    test('returns upcoming for future task', () async {
       final repo = FakeTaskRepository();
-      final startDate = DateTime(2024, 2, 15);
-      final selectedDate = DateTime(2024, 2, 15);
+      final startDate = DateTime(2025, 6, 1);
+      final selectedDate = DateTime(2025, 6, 15);
       final task = Task(
         id: '4',
-        title: 'Daily task',
+        title: 'Future daily task',
         oneTime: false,
         startDate: startDate,
         repeatType: RepeatType.daily,
       );
 
-      // Repository will return 'upcoming' by default
       final status = await computeTaskStatus(task, selectedDate, repo);
 
       expect(status, equals('upcoming'));
     });
   });
 }
+

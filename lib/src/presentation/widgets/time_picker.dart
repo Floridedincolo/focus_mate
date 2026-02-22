@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
 class TimePicker extends StatefulWidget {
-  TimeOfDay? initialTime;
-  String label;
-  final void Function(TimeOfDay)
-  onTimeSelected; //functie care primeste un timeofday ca parametru si o voi ca parametru ca sa se execute de fiecre data cand dau pick la ceva
-  TimePicker({
+  final TimeOfDay? initialTime;
+  final String label;
+  final void Function(TimeOfDay) onTimeSelected;
+
+  const TimePicker({
     super.key,
     this.initialTime,
     required this.label,
@@ -18,6 +18,7 @@ class TimePicker extends StatefulWidget {
 
 class _TimePickerState extends State<TimePicker> {
   TimeOfDay? _selectedTime;
+
   @override
   void initState() {
     super.initState();
@@ -33,7 +34,6 @@ class _TimePickerState extends State<TimePicker> {
           context: context,
           initialTime: _selectedTime ?? now,
           builder: (context, child) {
-            // Dark theme picker
             return Theme(
               data: Theme.of(context).copyWith(
                 colorScheme: const ColorScheme.dark(
@@ -49,18 +49,14 @@ class _TimePickerState extends State<TimePicker> {
           },
         );
         if (picked != null) {
-          setState(() {
-            _selectedTime = picked; //sa apara in field
-          });
+          setState(() => _selectedTime = picked);
           widget.onTimeSelected(picked);
         }
       },
       child: AbsorbPointer(
-        //ca sa nu primeasca click copiii widgetului(sa nu pot da input la text field)
         child: TextField(
           readOnly: true,
           controller: TextEditingController(
-            //controlez textu din textfield deci o sa fisez ce ora am dat pick
             text: _selectedTime != null ? _selectedTime!.format(context) : "",
           ),
           decoration: InputDecoration(
@@ -80,3 +76,4 @@ class _TimePickerState extends State<TimePicker> {
     );
   }
 }
+

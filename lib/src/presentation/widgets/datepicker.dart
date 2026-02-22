@@ -51,14 +51,11 @@ class _DatePickerFieldState extends State<DatePickerField> {
         );
 
         if (picked != null) {
-          setState(() {
-            _selectedDate = picked;
-          });
+          setState(() => _selectedDate = picked);
           widget.onDateSelected(picked);
         }
       },
       child: AbsorbPointer(
-        //absorb pointer ca copii sa nu primeasca inputu de click
         child: TextField(
           readOnly: true,
           controller: TextEditingController(
@@ -69,7 +66,8 @@ class _DatePickerFieldState extends State<DatePickerField> {
           decoration: InputDecoration(
             hintText: "Select a date",
             hintStyle: const TextStyle(color: Colors.grey),
-            suffixIcon: const Icon(Icons.calendar_today, color: Colors.white70),
+            suffixIcon:
+                const Icon(Icons.calendar_today, color: Colors.white70),
             filled: true,
             fillColor: const Color(0xFF1A1A1A),
             border: OutlineInputBorder(
@@ -83,3 +81,4 @@ class _DatePickerFieldState extends State<DatePickerField> {
     );
   }
 }
+

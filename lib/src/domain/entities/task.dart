@@ -1,45 +1,60 @@
-/// Task entity - pure business domain
+import 'package:flutter/material.dart';
+import 'reminder.dart';
+import 'repeat_type.dart';
+
 class Task {
   final String id;
   final String title;
-  final String description;
-  final DateTime createdAt;
-  final DateTime? dueDate;
-  final Map<String, dynamic> metadata;
-  final bool isCompleted;
+  final bool oneTime;
+  final bool archived;
+  final DateTime startDate;
+  final TimeOfDay? startTime;
+  final TimeOfDay? endTime;
+  final RepeatType? repeatType;
+  final Map<String, bool> days;
+  final List<Reminder> reminders;
+  int streak;
 
   Task({
     required this.id,
     required this.title,
-    required this.description,
-    required this.createdAt,
-    this.dueDate,
-    this.metadata = const {},
-    this.isCompleted = false,
+    this.oneTime = false,
+    this.archived = false,
+    required this.startDate,
+    this.startTime,
+    this.endTime,
+    this.repeatType,
+    this.reminders = const [],
+    this.days = const {},
+    this.streak = 0,
   });
 
-  /// Create a copy with modified fields
   Task copyWith({
     String? id,
     String? title,
-    String? description,
-    DateTime? createdAt,
-    DateTime? dueDate,
-    Map<String, dynamic>? metadata,
-    bool? isCompleted,
+    bool? oneTime,
+    bool? archived,
+    DateTime? startDate,
+    TimeOfDay? startTime,
+    TimeOfDay? endTime,
+    RepeatType? repeatType,
+    Map<String, bool>? days,
+    List<Reminder>? reminders,
+    int? streak,
   }) {
     return Task(
       id: id ?? this.id,
       title: title ?? this.title,
-      description: description ?? this.description,
-      createdAt: createdAt ?? this.createdAt,
-      dueDate: dueDate ?? this.dueDate,
-      metadata: metadata ?? this.metadata,
-      isCompleted: isCompleted ?? this.isCompleted,
+      oneTime: oneTime ?? this.oneTime,
+      archived: archived ?? this.archived,
+      startDate: startDate ?? this.startDate,
+      startTime: startTime ?? this.startTime,
+      endTime: endTime ?? this.endTime,
+      repeatType: repeatType ?? this.repeatType,
+      days: days ?? this.days,
+      reminders: reminders ?? this.reminders,
+      streak: streak ?? this.streak,
     );
   }
-
-  @override
-  String toString() => 'Task(id: $id, title: $title, isCompleted: $isCompleted)';
 }
 

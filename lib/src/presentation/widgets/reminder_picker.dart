@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:focus_mate/models/reminder.dart';
+import '../../domain/entities/reminder.dart';
 
 class ReminderPickerDialog extends StatefulWidget {
   const ReminderPickerDialog({super.key});
@@ -34,8 +34,6 @@ class _ReminderPickerDialogState extends State<ReminderPickerDialog> {
             style: TextStyle(color: Colors.white, fontSize: 22),
           ),
           const SizedBox(height: 20),
-
-          // pick time
           GestureDetector(
             onTap: () async {
               final picked = await showTimePicker(
@@ -66,14 +64,12 @@ class _ReminderPickerDialogState extends State<ReminderPickerDialog> {
               ),
             ),
           ),
-
           const SizedBox(height: 20),
           const Text(
             "Notify on days",
             style: TextStyle(color: Colors.white, fontSize: 18),
           ),
           const SizedBox(height: 10),
-
           Wrap(
             spacing: 8,
             children: _days.keys.map((day) {
@@ -83,13 +79,13 @@ class _ReminderPickerDialogState extends State<ReminderPickerDialog> {
                   style: const TextStyle(color: Colors.white, fontSize: 15),
                 ),
                 selected: _days[day]!,
-                onSelected: (selected) => setState(() => _days[day] = selected),
+                onSelected: (selected) =>
+                    setState(() => _days[day] = selected),
                 backgroundColor: const Color(0xFF1A1A1A),
                 selectedColor: Colors.blueAccent,
               );
             }).toList(),
           ),
-
           const SizedBox(height: 20),
           TextField(
             controller: _messageController,
@@ -106,7 +102,6 @@ class _ReminderPickerDialogState extends State<ReminderPickerDialog> {
               ),
             ),
           ),
-
           const SizedBox(height: 20),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
@@ -140,3 +135,4 @@ class _ReminderPickerDialogState extends State<ReminderPickerDialog> {
     );
   }
 }
+

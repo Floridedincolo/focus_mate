@@ -2,16 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter/services.dart';
 
 import 'firebase_options.dart';
 import 'src/core/service_locator.dart';
 import 'src/presentation/pages/main_page.dart';
-import 'pages/focus_page.dart';
-import 'pages/home.dart';
-import 'pages/add_task.dart';
-import 'pages/stats_page.dart';
-import 'pages/profile.dart';
+import 'src/presentation/pages/focus_page.dart';
+import 'src/presentation/pages/home.dart';
+import 'src/presentation/pages/add_task.dart';
+import 'src/presentation/pages/stats_page.dart';
+import 'src/presentation/pages/profile.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,7 +26,6 @@ void main() async {
   // Initialize dependency injection
   await setupServiceLocator();
 
-  // Watch accessibility status through use cases (will be handled in UI)
   print('✅ Service Locator initialized');
 
   // Run app

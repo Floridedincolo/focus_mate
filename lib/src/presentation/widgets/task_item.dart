@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../models/task.dart';
+import '../../domain/entities/task.dart';
 
 class TaskItem extends StatelessWidget {
   final Task task;
@@ -17,7 +17,6 @@ class TaskItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final isCompleted = statusForSelectedDay == 'completed';
     final isMissed = statusForSelectedDay == 'missed';
-    final isUpcoming = statusForSelectedDay == 'upcoming';
 
     Color statusColor;
     if (isCompleted) {
@@ -39,7 +38,8 @@ class TaskItem extends StatelessWidget {
         ),
       ),
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         leading: GestureDetector(
           onTap: (isMissed) ? null : onMarkCompleted,
           child: AnimatedSwitcher(
@@ -50,8 +50,8 @@ class TaskItem extends StatelessWidget {
               isCompleted
                   ? Icons.check_circle
                   : isMissed
-                  ? Icons.cancel
-                  : Icons.circle_outlined,
+                      ? Icons.cancel
+                      : Icons.circle_outlined,
               key: ValueKey(statusForSelectedDay),
               color: statusColor,
               size: 28,
@@ -64,8 +64,8 @@ class TaskItem extends StatelessWidget {
             color: isCompleted
                 ? Colors.greenAccent
                 : isMissed
-                ? Colors.redAccent.withOpacity(0.8)
-                : Colors.white,
+                    ? Colors.redAccent.withOpacity(0.8)
+                    : Colors.white,
             decoration: isCompleted ? TextDecoration.lineThrough : null,
             fontWeight: FontWeight.w600,
           ),
@@ -107,3 +107,4 @@ class TaskItem extends StatelessWidget {
     );
   }
 }
+

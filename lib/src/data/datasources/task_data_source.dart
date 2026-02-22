@@ -2,11 +2,8 @@ import '../dtos/task_dto.dart';
 
 /// Remote data source for tasks (Firestore)
 abstract class RemoteTaskDataSource {
-  /// Get all tasks from remote
+  /// Watch all tasks from remote
   Stream<List<TaskDTO>> watchTasks();
-
-  /// Get a single task
-  Future<TaskDTO?> getTask(String taskId);
 
   /// Save a task to remote
   Future<void> saveTask(TaskDTO task);
@@ -14,17 +11,17 @@ abstract class RemoteTaskDataSource {
   /// Delete a task from remote
   Future<void> deleteTask(String taskId);
 
-  /// Get task status for a date
-  Future<TaskDTO?> getTaskStatus(String taskId, DateTime date);
+  /// Archive or unarchive a task
+  Future<void> archiveTask(String taskId, bool archive);
 
-  /// Mark task status
-  Future<void> markTaskStatus(String taskId, DateTime date, String status);
+  /// Get completion status for a task on a specific date
+  Future<String> getCompletionStatus(String taskId, DateTime date);
 
-  /// Get completion stats
-  Future<Map<String, int>> getCompletionStats(
-    DateTime startDate,
-    DateTime endDate,
-  );
+  /// Mark task status on a date; returns updated streak
+  Future<int> markTaskStatus(TaskDTO task, DateTime date, String status);
+
+  /// Clear completion for a task on a date; returns updated streak
+  Future<int> clearCompletion(TaskDTO task, DateTime date);
 }
 
 /// Local data source for tasks (cached)

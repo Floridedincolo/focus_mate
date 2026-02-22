@@ -1,6 +1,5 @@
 import '../../domain/repositories/task_repository.dart';
 import '../../domain/entities/task.dart';
-import '../../domain/entities/task_status.dart';
 import '../datasources/task_data_source.dart';
 import '../mappers/task_mapper.dart';
 
@@ -16,32 +15,17 @@ class TaskRepositoryImpl implements TaskRepository {
 
   @override
   Stream<List<Task>> watchTasks() {
-    // Stream from remote (Firestore) to get real-time updates
     return remoteDataSource.watchTasks().map((dtos) {
-      // Also cache locally
       localDataSource.saveTasks(dtos).ignore();
       return TaskMapper.toDomainList(dtos);
     });
   }
 
   @override
-  Future<Task?> getTask(String taskId) async {
-    try {
-      final dto = await remoteDataSource.getTask(taskId);
-      if (dto == null) return null;
-      return TaskMapper.toDomain(dto);
-    } catch (e) {
-      // Fallback to local cache
-      final cached = await localDataSource.getTask(taskId);
-      return cached != null ? TaskMapper.toDomain(cached) : null;
-    }
-  }
-
-  @override
   Future<void> saveTask(Task task) async {
     final dto = TaskMapper.toDTO(task);
     await remoteDataSource.saveTask(dto);
-    await localDataSource.saveTasks([dto]); // Cache it
+    await localDataSource.saveTasks([dto]);
   }
 
   @override
@@ -50,29 +34,25 @@ class TaskRepositoryImpl implements TaskRepository {
   }
 
   @override
-  Future<TaskStatus?> getTaskStatus(String taskId, DateTime date) async {
-    try {
-      // Note: remoteDataSource returns TaskDTO, not TaskStatusDTO
-      // This is a data source limitation - implement properly when needed
-      final dto = await remoteDataSource.getTaskStatus(taskId, date);
-      if (dto == null) return null;
-      return null; // TODO: Implement proper TaskStatus retrieval
-    } catch (e) {
-      return null;
-    }
+  Future<void> archiveTask(String taskId, bool archive) async {
+    await remoteDataSource.archiveTask(taskId, archive);
   }
 
   @override
-  Future<void> markTaskStatus(String taskId, DateTime date, String status) {
-    return remoteDataSource.markTaskStatus(taskId, date, status);
+  Future<String> getCompletionStatus(Task task, DateTime date) {
+    return remoteDataSource.getCompletionStatus(task.id, date);
   }
 
   @override
-  Future<Map<String, int>> getCompletionStats(
-    DateTime startDate,
-    DateTime endDate,
-  ) {
-    return remoteDataSource.getCompletionStats(startDate, endDate);
+  Future<int> markTaskStatus(Task task, DateTime date, String status) {
+    final dto = TaskMapper.toDTO(task);
+    return remoteDataSource.markTaskStatus(dto, date, status);
+  }
+
+  @override
+  Future<int> clearCompletion(Task task, DateTime date) {
+    final dto = TaskMapper.toDTO(task);
+    return remoteDataSource.clearCompletion(dto, date);
   }
 }
 

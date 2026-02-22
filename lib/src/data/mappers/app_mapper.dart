@@ -1,5 +1,4 @@
 import 'dart:convert' show base64;
-import 'dart:typed_data';
 import '../../domain/entities/blocked_app.dart';
 import '../../domain/entities/installed_application.dart';
 import '../dtos/app_dto.dart';

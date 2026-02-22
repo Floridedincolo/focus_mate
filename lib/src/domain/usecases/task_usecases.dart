@@ -34,25 +34,47 @@ class DeleteTaskUseCase {
   }
 }
 
-/// Use case: Mark task as complete/pending on a specific date
+/// Use case: Archive or unarchive a task
+class ArchiveTaskUseCase {
+  final TaskRepository _repository;
+
+  ArchiveTaskUseCase(this._repository);
+
+  Future<void> call(String taskId, bool archive) {
+    return _repository.archiveTask(taskId, archive);
+  }
+}
+
+/// Use case: Get task completion status for a specific date
+class GetCompletionStatusUseCase {
+  final TaskRepository _repository;
+
+  GetCompletionStatusUseCase(this._repository);
+
+  Future<String> call(Task task, DateTime date) {
+    return _repository.getCompletionStatus(task, date);
+  }
+}
+
+/// Use case: Mark task status on a specific date; returns updated streak
 class MarkTaskStatusUseCase {
   final TaskRepository _repository;
 
   MarkTaskStatusUseCase(this._repository);
 
-  Future<void> call(String taskId, DateTime date, String status) {
-    return _repository.markTaskStatus(taskId, date, status);
+  Future<int> call(Task task, DateTime date, String status) {
+    return _repository.markTaskStatus(task, date, status);
   }
 }
 
-/// Use case: Get task completion statistics
-class GetCompletionStatsUseCase {
+/// Use case: Clear completion for a task on a date; returns updated streak
+class ClearCompletionUseCase {
   final TaskRepository _repository;
 
-  GetCompletionStatsUseCase(this._repository);
+  ClearCompletionUseCase(this._repository);
 
-  Future<Map<String, int>> call(DateTime startDate, DateTime endDate) {
-    return _repository.getCompletionStats(startDate, endDate);
+  Future<int> call(Task task, DateTime date) {
+    return _repository.clearCompletion(task, date);
   }
 }
 
