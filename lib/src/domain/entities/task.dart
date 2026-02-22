@@ -13,7 +13,7 @@ class Task {
   final RepeatType? repeatType;
   final Map<String, bool> days;
   final List<Reminder> reminders;
-  int streak;
+  final int streak;
 
   Task({
     required this.id,

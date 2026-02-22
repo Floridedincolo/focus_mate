@@ -28,6 +28,11 @@ class _HomeState extends ConsumerState<Home> {
   late List<CalendarIconData> calendarIcons;
 
   final Map<String, String> _localCompletions = {};
+  final Map<String, int> _localStreaks = {};
+
+  Future<List<Map<String, dynamic>>>? _statusesFuture;
+  List<Task>? _lastTasksForDay;
+  DateTime? _lastSelectedDate;
 
   final List<String> months = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -57,6 +62,12 @@ class _HomeState extends ConsumerState<Home> {
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _centerOnSelected(),
     );
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   void _centerOnSelected({bool animate = false}) {
@@ -250,8 +261,17 @@ class _HomeState extends ConsumerState<Home> {
                   );
                 }
 
+                // Cache the future: only re-fetch when tasks or date change
+                if (_statusesFuture == null ||
+                    _lastSelectedDate != selectedDate ||
+                    !_taskListsEqual(_lastTasksForDay, tasksForDay)) {
+                  _lastTasksForDay = tasksForDay;
+                  _lastSelectedDate = selectedDate;
+                  _statusesFuture = _fetchStatuses(tasksForDay);
+                }
+
                 return FutureBuilder<List<Map<String, dynamic>>>(
-                  future: _fetchStatuses(tasksForDay),
+                  future: _statusesFuture,
                   builder: (context, statusSnap) {
                     if (!statusSnap.hasData) {
                       return const Center(
@@ -345,8 +365,13 @@ class _HomeState extends ConsumerState<Home> {
                               final localStatus = _localCompletions[key];
                               final status = localStatus ?? firestoreStatus;
 
+                              final localStreak = _localStreaks[task.id];
+                              final displayTask = localStreak != null
+                                  ? task.copyWith(streak: localStreak)
+                                  : task;
+
                               return TaskItem(
-                                task: task,
+                                task: displayTask,
                                 statusForSelectedDay: status,
                                 onMarkCompleted: () async {
                                   final isCompleted = status == 'completed';
@@ -376,7 +401,10 @@ class _HomeState extends ConsumerState<Home> {
 
                                     setState(() {
                                       _localCompletions[key] = newStatus;
-                                      task.streak = updatedStreak;
+                                      _localStreaks[task.id] = updatedStreak;
+                                      // Invalidate cached future so next
+                                      // stream emission picks up fresh data
+                                      _statusesFuture = null;
                                     });
                                   } catch (e) {
                                     setState(() {
@@ -427,6 +455,16 @@ class _HomeState extends ConsumerState<Home> {
         ],
       ),
     );
+  }
+
+  /// Compares two task lists by ID to detect if the set of tasks changed.
+  bool _taskListsEqual(List<Task>? a, List<Task>? b) {
+    if (a == null || b == null) return false;
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id) return false;
+    }
+    return true;
   }
 }
 
