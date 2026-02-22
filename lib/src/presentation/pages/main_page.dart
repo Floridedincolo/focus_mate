@@ -1,21 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+// Import original pages from lib/pages/ for now
+import 'package:focus_mate/pages/home.dart' as old_home;
+import 'package:focus_mate/pages/focus_page.dart' as old_focus;
+import 'package:focus_mate/pages/stats_page.dart' as old_stats;
 
-class MainPage extends StatefulWidget {
+class MainPage extends ConsumerStatefulWidget {
   const MainPage({super.key});
 
   @override
-  State<MainPage> createState() => _MainPageState();
+  ConsumerState<MainPage> createState() => _MainPageState();
 }
 
-class _MainPageState extends State<MainPage> {
+class _MainPageState extends ConsumerState<MainPage> {
   int _selectedIndex = 0;
-
-  final List<Widget> _pages = [
-    const _Home(),
-    const _Focus(),
-    const _Stats(),
-    const _Profile(),
-  ];
 
   final bottomBarColor = const Color(0xFF1A1A1A);
   final accentColor = Colors.blueAccent;
@@ -28,9 +26,20 @@ class _MainPageState extends State<MainPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Build pages lazily to avoid Riverpod issues
+    final pages = [
+      _buildHome(),
+      _buildFocus(),
+      _buildStats(),
+      _buildProfile(),
+    ];
+
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
-      body: IndexedStack(index: _selectedIndex, children: _pages),
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: pages,
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           Navigator.of(context).pushNamed('/add_task');
@@ -104,68 +113,35 @@ class _MainPageState extends State<MainPage> {
       ),
     );
   }
-}
 
-class _Home extends StatelessWidget {
-  const _Home();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0D0D0D),
-        title: const Text('Home'),
-      ),
-      body: const Center(child: Text('Home')),
-    );
+  Widget _buildHome() {
+    return const old_home.Home();
   }
-}
 
-class _Focus extends StatelessWidget {
-  const _Focus();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0D0D0D),
-        title: const Text('Focus'),
-      ),
-      body: const Center(child: Text('Focus')),
-    );
+  Widget _buildFocus() {
+    return const old_focus.FocusPage();
   }
-}
 
-class _Stats extends StatelessWidget {
-  const _Stats();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0D0D0D),
-        title: const Text('Stats'),
-      ),
-      body: const Center(child: Text('Stats')),
-    );
+  Widget _buildStats() {
+    return const old_stats.StatsPage();
   }
-}
 
-class _Profile extends StatelessWidget {
-  const _Profile();
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildProfile() {
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0D0D0D),
-        title: const Text('Profile'),
+        title: const Text(
+          'Profile',
+          style: TextStyle(color: Colors.white),
+        ),
       ),
-      body: const Center(child: Text('Profile')),
+      body: const Center(
+        child: Text(
+          'Profile Page',
+          style: TextStyle(color: Colors.white),
+        ),
+      ),
     );
   }
 }

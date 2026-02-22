@@ -6,12 +6,12 @@ import 'package:flutter/services.dart';
 
 import 'firebase_options.dart';
 import 'src/core/service_locator.dart';
-import 'src/presentation/pages/focus_page.dart';
-import 'src/presentation/pages/home.dart';
-import 'src/presentation/pages/add_task.dart';
 import 'src/presentation/pages/main_page.dart';
-import 'src/presentation/pages/stats_page.dart';
-import 'src/presentation/pages/profile.dart';
+import 'pages/focus_page.dart';
+import 'pages/home.dart';
+import 'pages/add_task.dart';
+import 'pages/stats_page.dart';
+import 'pages/profile.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

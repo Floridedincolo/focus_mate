@@ -1,3 +1,5 @@
+import 'dart:convert' show json;
+
 /// Data Transfer Object for InstalledApplication
 class InstalledApplicationDTO {
   final String packageName;
@@ -55,15 +57,15 @@ class BlockedAppDTO {
     };
   }
 
-  factory BlockedAppDTO.fromJson(String json) {
+  factory BlockedAppDTO.fromJson(String jsonString) {
     final data = Map<String, dynamic>.from(
-      const JsonDecoder().convert(json),
+      json.decode(jsonString) as Map<dynamic, dynamic>,
     );
     return BlockedAppDTO.fromMap(data);
   }
 
   String toJson() {
-    return const JsonEncoder().convert(toMap());
+    return json.encode(toMap());
   }
 }
 

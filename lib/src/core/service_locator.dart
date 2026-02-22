@@ -43,7 +43,8 @@ Future<void> setupServiceLocator() async {
   );
 
   final blockedAppsDataSource = SharedPreferencesBlockedAppsDataSource();
-  await blockedAppsDataSource.init();
+  // Initialize in background - don't block UI startup
+  blockedAppsDataSource.init().ignore();
   getIt.registerSingleton<LocalBlockedAppsDataSource>(blockedAppsDataSource);
 
   // Accessibility data source

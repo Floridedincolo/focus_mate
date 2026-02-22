@@ -1,3 +1,4 @@
+import 'dart:convert' show base64;
 import '../../domain/repositories/app_manager_repository.dart';
 import '../../domain/repositories/block_manager_repository.dart';
 import '../../domain/entities/blocked_app.dart';
@@ -31,7 +32,12 @@ class AppManagerRepositoryImpl implements AppManagerRepository {
   @override
   Future<List<int>?> getAppIcon(String packageName) async {
     final dto = await remoteDataSource.getAppIcon(packageName);
-    return dto?.iconBytes;
+    if (dto?.iconBase64 == null) return null;
+    try {
+      return base64.decode(dto!.iconBase64!);
+    } catch (e) {
+      return null;
+    }
   }
 }
 

@@ -38,27 +38,47 @@ final watchAppOpeningEventsUseCaseProvider =
 );
 
 /// Future provider for checking accessibility
-final checkAccessibilityProvider = FutureProvider<bool>((ref) {
-  final usecase = ref.watch(checkAccessibilityUseCaseProvider);
-  return usecase();
+final checkAccessibilityProvider = FutureProvider<bool>((ref) async {
+  try {
+    final usecase = ref.watch(checkAccessibilityUseCaseProvider);
+    return await usecase();
+  } catch (e) {
+    print('❌ Error checking accessibility: $e');
+    return false; // Safe default
+  }
 });
 
 /// Future provider for checking overlay permission
-final checkOverlayPermissionProvider = FutureProvider<bool>((ref) {
-  final usecase = ref.watch(checkOverlayPermissionUseCaseProvider);
-  return usecase();
+final checkOverlayPermissionProvider = FutureProvider<bool>((ref) async {
+  try {
+    final usecase = ref.watch(checkOverlayPermissionUseCaseProvider);
+    return await usecase();
+  } catch (e) {
+    print('❌ Error checking overlay: $e');
+    return false; // Safe default
+  }
 });
 
-/// Stream provider for accessibility status changes
-final accessibilityStatusStreamProvider = StreamProvider<bool>((ref) {
-  final usecase = ref.watch(watchAccessibilityStatusUseCaseProvider);
-  return usecase();
+/// Stream provider for accessibility status changes - NON-BLOCKING
+final accessibilityStatusStreamProvider = StreamProvider<bool>((ref) async* {
+  try {
+    final usecase = ref.watch(watchAccessibilityStatusUseCaseProvider);
+    yield* usecase();
+  } catch (e) {
+    print('❌ Error watching accessibility status: $e');
+    yield false; // Safe default
+  }
 });
 
-/// Stream provider for app opening events
-final appOpeningEventsStreamProvider = StreamProvider<String>((ref) {
-  final usecase = ref.watch(watchAppOpeningEventsUseCaseProvider);
-  return usecase();
+/// Stream provider for app opening events - OPTIONAL (can fail gracefully)
+final appOpeningEventsStreamProvider = StreamProvider<String>((ref) async* {
+  try {
+    final usecase = ref.watch(watchAppOpeningEventsUseCaseProvider);
+    yield* usecase();
+  } catch (e) {
+    print('⚠️ App opening events not available: $e');
+    // Emit nothing - stream will show error state in UI
+  }
 });
 
 /// Future provider for requesting accessibility
