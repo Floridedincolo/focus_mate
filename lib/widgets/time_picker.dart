@@ -36,11 +36,11 @@ class _TimePickerState extends State<TimePicker> {
             // Dark theme picker
             return Theme(
               data: Theme.of(context).copyWith(
-                colorScheme: ColorScheme.dark(
+                colorScheme: const ColorScheme.dark(
                   primary: Colors.cyan,
                   surface: Color(0xFF1A1A1A),
                 ),
-                dialogTheme: DialogThemeData(
+                dialogTheme: const DialogThemeData(
                   backgroundColor: Color(0xFF0D0D0D),
                 ),
               ),
@@ -65,10 +65,10 @@ class _TimePickerState extends State<TimePicker> {
           ),
           decoration: InputDecoration(
             hintText: widget.label,
-            hintStyle: TextStyle(color: Colors.white54),
-            suffixIcon: Icon(Icons.alarm, color: Colors.white54),
+            hintStyle: const TextStyle(color: Colors.white54),
+            suffixIcon: const Icon(Icons.alarm, color: Colors.white54),
             filled: true,
-            fillColor: Color(0xFF1A1A1A),
+            fillColor: const Color(0xFF1A1A1A),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide.none,

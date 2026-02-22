@@ -54,7 +54,7 @@ class _ReminderPickerDialogState extends State<ReminderPickerDialog> {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.access_time, color: Colors.white70),
+                  const Icon(Icons.access_time, color: Colors.white70),
                   const SizedBox(width: 10),
                   Text(
                     _selectedTime != null

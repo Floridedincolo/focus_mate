@@ -1,8 +1,5 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:focus_mate/services/app_manager_service.dart';
-import 'dart:typed_data';
-import 'package:flutter/material.dart';
 
 class AppIcon extends StatelessWidget {
   final Uint8List? iconBytes;

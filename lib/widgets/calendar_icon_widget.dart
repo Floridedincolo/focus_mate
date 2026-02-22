@@ -21,7 +21,7 @@ class CalendarIconWidget extends StatelessWidget {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),
           side: isSelected
-              ? BorderSide(color: Colors.amberAccent, width: 2)
+              ? const BorderSide(color: Colors.amberAccent, width: 2)
               : BorderSide.none,
         ),
         child: Column(
@@ -31,11 +31,11 @@ class CalendarIconWidget extends StatelessWidget {
           children: [
             Text(
               calendarIconData.day.toString(),
-              style: TextStyle(color: Colors.white, fontSize: 30),
+              style: const TextStyle(color: Colors.white, fontSize: 30),
             ),
             Text(
               calendarIconData.weekday.substring(0, 3),
-              style: TextStyle(color: Colors.white),
+              style: const TextStyle(color: Colors.white),
             ),
           ],
         ),

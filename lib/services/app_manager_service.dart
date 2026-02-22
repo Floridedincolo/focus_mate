@@ -29,7 +29,7 @@ class AppManagerService {
     final validApps = apps.where((app) {
       if (app is ApplicationWithIcon) {
         final iconBytes = app.icon;
-        return iconBytes != null && iconBytes.length > 5;
+        return iconBytes.length > 5;
       }
       return false;
     }).toList();
@@ -37,13 +37,13 @@ class AppManagerService {
     print(" Apps with valid icons: ${validApps.length}");
 
     return validApps.map((app) {
-      bool hasIcon = app is ApplicationWithIcon && app.icon != null;
+      bool hasIcon = app is ApplicationWithIcon;
 
       return InstalledApp(
         appName: app.appName,
         packageName: app.packageName,
         isSystemApp: app.systemApp,
-        iconBytes: hasIcon ? (app as ApplicationWithIcon).icon : null,
+        iconBytes: hasIcon ? (app).icon : null,
       );
     }).toList();
   }

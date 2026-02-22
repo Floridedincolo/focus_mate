@@ -32,7 +32,7 @@ void main() async {
   }
 
   //  Ascultă evenimentele de la AccessibilityService
-  final accessibilityChannel = EventChannel('accessibility_events');
+  final accessibilityChannel = const EventChannel('accessibility_events');
   accessibilityChannel.receiveBroadcastStream().listen(
     (event) {
       final packageName = event.toString();

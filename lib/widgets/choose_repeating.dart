@@ -26,11 +26,13 @@ class _ChooseRepeatingState extends State<ChooseRepeating> {
     'Saturday': false,
     'Sunday': false,
   };
+  @override
   void initState() {
     super.initState();
     _repeatType = widget.repeatType;
-    if (widget.repeatType == RepeatType.custom && widget.d.isNotEmpty)
+    if (widget.repeatType == RepeatType.custom && widget.d.isNotEmpty) {
       days = widget.d;
+    }
   }
 
   @override
@@ -61,7 +63,7 @@ class _ChooseRepeatingState extends State<ChooseRepeating> {
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Text(
+                  child: const Text(
                     'Daily',
                     style: TextStyle(color: Colors.white, fontSize: 20.0),
                   ),
@@ -83,7 +85,7 @@ class _ChooseRepeatingState extends State<ChooseRepeating> {
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Text(
+                  child: const Text(
                     'Weekly',
                     style: TextStyle(color: Colors.white, fontSize: 20.0),
                   ),
@@ -105,7 +107,7 @@ class _ChooseRepeatingState extends State<ChooseRepeating> {
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Text(
+                  child: const Text(
                     'Custom',
                     style: TextStyle(color: Colors.white, fontSize: 20.0),
                   ),

@@ -40,8 +40,7 @@ class _DatePickerFieldState extends State<DatePickerField> {
                   primary: Colors.cyan,
                   surface: Color(0xFF1A1A1A),
                   onSurface: Colors.white,
-                ),
-                dialogBackgroundColor: const Color(0xFF0D0D0D),
+                ), dialogTheme: const DialogThemeData(backgroundColor: Color(0xFF0D0D0D)),
               ),
               child: child!,
             );

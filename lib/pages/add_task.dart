@@ -22,7 +22,7 @@ class _AddTaskMenuState extends State<AddTaskMenu> {
   TimeOfDay? endTime;
   DateTime? startDate;
   String taskTitle = '';
-  List<Reminder> _reminders = [];
+  final List<Reminder> _reminders = [];
   FirestoreService firestoreService = FirestoreService();
   // repeat info
   RepeatType? repeatType = RepeatType.daily;

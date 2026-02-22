@@ -71,7 +71,7 @@ class _ProfileState extends State<Profile> {
           .get();
 
       final tasks = tasksSnapshot.docs
-          .map((d) => Task.fromMap(d.data() as Map<String, dynamic>))
+          .map((d) => Task.fromMap(d.data()))
           .toList();
 
       final completions = completionsSnapshot.docs
@@ -278,9 +278,9 @@ class _ProfileState extends State<Profile> {
                     _buildPreferenceRow(
                       icon: Icons.lock,
                       label: "Blocking Mode",
-                      trailing: Row(
+                      trailing: const Row(
                         mainAxisSize: MainAxisSize.min,
-                        children: const [
+                        children: [
                           Text(
                             "Low",
                             style: TextStyle(
