@@ -41,6 +41,12 @@ dependencies:
   cupertino_icons: ^1.0.8
   shared_preferences: ^2.2.2
 
+  # Dependency Injection
+  get_it: ^7.6.0
+
+  # State Management
+  flutter_riverpod: ^2.4.0
+
 
 dev_dependencies:
   flutter_test:

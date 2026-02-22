@@ -1,20 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:focus_mate/pages/focus_page.dart';
-import 'package:focus_mate/pages/home.dart';
-import 'package:focus_mate/pages/add_task.dart';
-import 'package:focus_mate/pages/main_page.dart';
-import 'package:focus_mate/pages/stats_page.dart';
-import 'pages/profile.dart';
-import 'package:focus_mate/firebase_options.dart';
-import 'package:flutter/services.dart'; // pentru EventChannel
-import 'services/accessibility_service.dart'; //  Import nou
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
+
+import 'firebase_options.dart';
+import 'src/core/service_locator.dart';
+import 'src/presentation/pages/focus_page.dart';
+import 'src/presentation/pages/home.dart';
+import 'src/presentation/pages/add_task.dart';
+import 'src/presentation/pages/main_page.dart';
+import 'src/presentation/pages/stats_page.dart';
+import 'src/presentation/pages/profile.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Inițializează Firebase
+  // Initialize Firebase
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   FirebaseFirestore.instance.settings = const Settings(
@@ -22,38 +24,22 @@ void main() async {
     cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
   );
 
-  //  Verifică Accessibility Service la pornire
-  final isAccessibilityEnabled = await AccessibilityService.isEnabled();
-  if (!isAccessibilityEnabled) {
-    print('⚠️ Accessibility Service NU este activ!');
-    // Se va deschide automat setările când se apasă butonul din UI
-  } else {
-    print(' Accessibility Service este ACTIV și funcțional!');
-  }
+  // Initialize dependency injection
+  await setupServiceLocator();
 
-  //  Ascultă evenimentele de la AccessibilityService
-  final accessibilityChannel = const EventChannel('accessibility_events');
-  accessibilityChannel.receiveBroadcastStream().listen(
-    (event) {
-      final packageName = event.toString();
-      print('📣 App opened: $packageName');
+  // Watch accessibility status through use cases (will be handled in UI)
+  print('✅ Service Locator initialized');
 
-      // Exemplu: blocare YouTube
-      if (packageName == 'com.google.android.youtube') {
-        print('⚠️ Trebuie blocată YouTube!');
+  // Run app
+  runApp(const ProviderScope(child: FocusMateApp()));
+}
 
-        // Aici poți afișa overlay-ul tău personalizat
-        // showOverlay();
-      }
-    },
-    onError: (error) {
-      print('❌ Eroare la evenimentele Accessibility: $error');
-    },
-  );
+class FocusMateApp extends StatelessWidget {
+  const FocusMateApp({super.key});
 
-  // Rulează aplicația normal
-  runApp(
-    MaterialApp(
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
       debugShowCheckedModeBanner: false,
       home: const MainPage(),
       routes: {
@@ -64,6 +50,7 @@ void main() async {
         '/stats': (context) => const StatsPage(),
         '/main': (context) => const MainPage(),
       },
-    ),
-  );
+    );
+  }
 }
+
