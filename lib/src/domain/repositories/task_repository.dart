@@ -1,4 +1,5 @@
 import '../entities/task.dart';
+import '../entities/task_completion_status.dart';
 
 /// Task repository interface - abstracts data source
 abstract class TaskRepository {
@@ -15,12 +16,11 @@ abstract class TaskRepository {
   Future<void> archiveTask(String taskId, bool archive);
 
   /// Returns the completion status for a task on a specific date.
-  /// Can return: 'completed', 'missed', 'upcoming'.
-  Future<String> getCompletionStatus(Task task, DateTime date);
+  Future<TaskCompletionStatus> getCompletionStatus(Task task, DateTime date);
 
   /// Marks a task as completed or updates its status for a date.
   /// Returns the updated streak count.
-  Future<int> markTaskStatus(Task task, DateTime date, String status);
+  Future<int> markTaskStatus(Task task, DateTime date, TaskCompletionStatus status);
 
   /// Clears the completion record for a task on a date.
   /// Returns the updated streak count.

@@ -1,5 +1,6 @@
 import '../repositories/task_repository.dart';
 import '../entities/task.dart';
+import '../entities/task_completion_status.dart';
 
 /// Use case: Get all tasks
 class GetTasksUseCase {
@@ -51,7 +52,7 @@ class GetCompletionStatusUseCase {
 
   GetCompletionStatusUseCase(this._repository);
 
-  Future<String> call(Task task, DateTime date) {
+  Future<TaskCompletionStatus> call(Task task, DateTime date) {
     return _repository.getCompletionStatus(task, date);
   }
 }
@@ -62,7 +63,7 @@ class MarkTaskStatusUseCase {
 
   MarkTaskStatusUseCase(this._repository);
 
-  Future<int> call(Task task, DateTime date, String status) {
+  Future<int> call(Task task, DateTime date, TaskCompletionStatus status) {
     return _repository.markTaskStatus(task, date, status);
   }
 }

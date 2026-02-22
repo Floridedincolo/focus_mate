@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/entities/task.dart';
+import '../../domain/entities/task_completion_status.dart';
 import '../../domain/usecases/task_usecases.dart';
 import '../../core/service_locator.dart';
 
@@ -51,9 +52,9 @@ final deleteTaskProvider =
 });
 
 /// Future provider for marking task status
-/// Parameters: (Task, DateTime, String status)
+/// Parameters: (Task, DateTime, TaskCompletionStatus)
 final markTaskStatusProvider =
-    FutureProvider.family<int, (Task, DateTime, String)>((ref, params) {
+    FutureProvider.family<int, (Task, DateTime, TaskCompletionStatus)>((ref, params) {
   final usecase = ref.watch(markTaskStatusUseCaseProvider);
   return usecase(params.$1, params.$2, params.$3);
 });

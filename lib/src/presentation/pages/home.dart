@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/service_locator.dart';
 import '../../domain/entities/task.dart';
+import '../../domain/entities/task_completion_status.dart';
 import '../../domain/repositories/task_repository.dart';
 import '../../domain/usecases/compute_task_status.dart';
 import '../../domain/extensions/task_filter.dart';
@@ -27,7 +28,7 @@ class _HomeState extends ConsumerState<Home> {
   final ScrollController _scrollController = ScrollController();
   late List<CalendarIconData> calendarIcons;
 
-  final Map<String, String> _localCompletions = {};
+  final Map<String, TaskCompletionStatus> _localCompletions = {};
   final Map<String, int> _localStreaks = {};
 
   Future<List<Map<String, dynamic>>>? _statusesFuture;
@@ -119,12 +120,12 @@ class _HomeState extends ConsumerState<Home> {
         final status = await computeTaskStatus(t, selectedDate, repo);
         return {'task': t, 'status': status};
       } catch (e) {
-        return {'task': t, 'status': 'upcoming'};
+        return {'task': t, 'status': TaskCompletionStatus.upcoming};
       }
     }).toList();
 
     return (await Future.wait(futures))
-        .where((entry) => entry['status'] != 'hidden')
+        .where((entry) => entry['status'] != TaskCompletionStatus.hidden)
         .toList();
   }
 
@@ -288,7 +289,7 @@ class _HomeState extends ConsumerState<Home> {
                           '${task.id}_${selectedDate.toIso8601String()}';
                       final localStatus = _localCompletions[key];
                       final finalStatus = localStatus ?? e['status'];
-                      return finalStatus == 'completed';
+                      return finalStatus == TaskCompletionStatus.completed;
                     }).length;
                     final totalCount = list.length;
                     final remainingCount = totalCount - completedCount;
@@ -304,8 +305,8 @@ class _HomeState extends ConsumerState<Home> {
                       final localB = _localCompletions[keyB];
                       final statusA = localA ?? a['status'];
                       final statusB = localB ?? b['status'];
-                      final aDone = statusA == 'completed' ? 1 : 0;
-                      final bDone = statusB == 'completed' ? 1 : 0;
+                      final aDone = statusA == TaskCompletionStatus.completed ? 1 : 0;
+                      final bDone = statusB == TaskCompletionStatus.completed ? 1 : 0;
                       if (aDone != bDone) return aDone - bDone;
                       final at = taskA.startTime;
                       final bt = taskB.startTime;
@@ -358,7 +359,7 @@ class _HomeState extends ConsumerState<Home> {
                               final entry = list[index];
                               final Task task = entry['task'] as Task;
                               final firestoreStatus =
-                                  entry['status'] as String? ?? 'upcoming';
+                                  entry['status'] as TaskCompletionStatus? ?? TaskCompletionStatus.upcoming;
 
                               final key =
                                   '${task.id}_${selectedDate.toIso8601String()}';
@@ -374,9 +375,9 @@ class _HomeState extends ConsumerState<Home> {
                                 task: displayTask,
                                 statusForSelectedDay: status,
                                 onMarkCompleted: () async {
-                                  final isCompleted = status == 'completed';
+                                  final isCompleted = status == TaskCompletionStatus.completed;
                                   final newStatus =
-                                      isCompleted ? 'upcoming' : 'completed';
+                                      isCompleted ? TaskCompletionStatus.upcoming : TaskCompletionStatus.completed;
 
                                   setState(() {
                                     _localCompletions[key] = newStatus;

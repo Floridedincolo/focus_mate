@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../accessibility_data_source.dart';
 
@@ -20,7 +21,7 @@ class MethodChannelAccessibilityDataSource
       );
       return result ?? false;
     } catch (e) {
-      print('❌ Error checking accessibility: $e');
+      if (kDebugMode) debugPrint('❌ Error checking accessibility: $e');
       return false;
     }
   }
@@ -33,7 +34,7 @@ class MethodChannelAccessibilityDataSource
             onTimeout: () => null,
           );
     } catch (e) {
-      print('❌ Error requesting accessibility: $e');
+      if (kDebugMode) debugPrint('❌ Error requesting accessibility: $e');
     }
   }
 
@@ -48,7 +49,7 @@ class MethodChannelAccessibilityDataSource
       );
       return result ?? false;
     } catch (e) {
-      print('❌ Error checking overlay permission: $e');
+      if (kDebugMode) debugPrint('❌ Error checking overlay permission: $e');
       return false;
     }
   }
@@ -61,7 +62,7 @@ class MethodChannelAccessibilityDataSource
             onTimeout: () => null,
           );
     } catch (e) {
-      print('❌ Error requesting overlay permission: $e');
+      if (kDebugMode) debugPrint('❌ Error requesting overlay permission: $e');
     }
   }
 
@@ -78,12 +79,12 @@ class MethodChannelAccessibilityDataSource
           final status = await isAccessibilityEnabled();
           yield status;
         } catch (e) {
-          print('⚠️ Error polling accessibility status: $e');
+          if (kDebugMode) debugPrint('⚠️ Error polling accessibility status: $e');
           // Continue polling
         }
       }
     } catch (e) {
-      print('❌ Error in watchAccessibilityStatus: $e');
+      if (kDebugMode) debugPrint('❌ Error in watchAccessibilityStatus: $e');
       yield false;
     }
   }
@@ -94,10 +95,9 @@ class MethodChannelAccessibilityDataSource
       return event.toString();
     }).handleError(
       (error) {
-        print('⚠️ App opening events error: $error');
+        if (kDebugMode) debugPrint('⚠️ App opening events error: $error');
         // Return empty to prevent breaking the stream
       },
     );
   }
 }
-

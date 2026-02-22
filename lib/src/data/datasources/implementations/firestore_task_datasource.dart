@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import '../../../domain/entities/task_completion_status.dart';
 import '../task_data_source.dart';
 import '../../dtos/task_dto.dart';
 
@@ -69,7 +70,7 @@ class FirebaseRemoteTaskDataSource implements RemoteTaskDataSource {
   }
 
   @override
-  Future<String> getCompletionStatus(String taskId, DateTime date) async {
+  Future<TaskCompletionStatus> getCompletionStatus(String taskId, DateTime date) async {
     final dateId = _dateId(date);
     final docRef = _firestore
         .collection('users')
@@ -82,7 +83,8 @@ class FirebaseRemoteTaskDataSource implements RemoteTaskDataSource {
     final doc = await docRef.get();
 
     if (doc.exists) {
-      return doc.data()?['status'] ?? 'upcoming';
+      final raw = doc.data()?['status'] as String? ?? 'upcoming';
+      return TaskCompletionStatus.fromString(raw);
     }
 
     final today = DateTime.now();
@@ -90,14 +92,14 @@ class FirebaseRemoteTaskDataSource implements RemoteTaskDataSource {
     final todayOnly = DateTime(today.year, today.month, today.day);
 
     if (dateOnly.isBefore(todayOnly)) {
-      return 'missed';
+      return TaskCompletionStatus.missed;
     }
 
-    return 'upcoming';
+    return TaskCompletionStatus.upcoming;
   }
 
   @override
-  Future<int> markTaskStatus(TaskDTO task, DateTime date, String status) async {
+  Future<int> markTaskStatus(TaskDTO task, DateTime date, TaskCompletionStatus status) async {
     final taskRef = _firestore
         .collection('users')
         .doc(_userId)
@@ -108,12 +110,12 @@ class FirebaseRemoteTaskDataSource implements RemoteTaskDataSource {
         taskRef.collection('completions').doc(_dateId(date));
 
     await completionRef.set({
-      'status': status,
+      'status': status.toValue(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
 
     int newStreak = 0;
-    if (status == 'completed') {
+    if (status == TaskCompletionStatus.completed) {
       newStreak = await _countConsecutiveCompletions(task, date);
       await taskRef.update({'streak': newStreak, 'lastCompletionDate': date});
     } else {
@@ -180,7 +182,7 @@ class FirebaseRemoteTaskDataSource implements RemoteTaskDataSource {
           .collection('completions')
           .doc(_dateId(cursor))
           .get();
-      if (doc.exists && doc.data()?['status'] == 'completed') {
+      if (doc.exists && doc.data()?['status'] == TaskCompletionStatus.completed.toValue()) {
         count++;
         cursor = _previousOccurrence(task, cursor);
       } else {

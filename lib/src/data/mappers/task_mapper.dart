@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../domain/entities/task.dart';
+import '../../domain/entities/task_completion_status.dart';
 import '../../domain/entities/task_status.dart';
 import '../../domain/entities/reminder.dart';
 import '../../domain/entities/repeat_type.dart';
@@ -79,7 +80,7 @@ class TaskStatusMapper {
     return TaskStatus(
       taskId: dto.taskId,
       date: dto.date,
-      status: dto.status,
+      status: TaskCompletionStatus.fromString(dto.status),
     );
   }
 
@@ -87,7 +88,7 @@ class TaskStatusMapper {
     return TaskStatusDTO(
       taskId: status.taskId,
       date: status.date,
-      status: status.status,
+      status: status.status.toValue(),
     );
   }
 }

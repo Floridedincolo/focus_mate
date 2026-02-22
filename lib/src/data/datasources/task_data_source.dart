@@ -1,3 +1,4 @@
+import '../../domain/entities/task_completion_status.dart';
 import '../dtos/task_dto.dart';
 
 /// Remote data source for tasks (Firestore)
@@ -15,10 +16,10 @@ abstract class RemoteTaskDataSource {
   Future<void> archiveTask(String taskId, bool archive);
 
   /// Get completion status for a task on a specific date
-  Future<String> getCompletionStatus(String taskId, DateTime date);
+  Future<TaskCompletionStatus> getCompletionStatus(String taskId, DateTime date);
 
   /// Mark task status on a date; returns updated streak
-  Future<int> markTaskStatus(TaskDTO task, DateTime date, String status);
+  Future<int> markTaskStatus(TaskDTO task, DateTime date, TaskCompletionStatus status);
 
   /// Clear completion for a task on a date; returns updated streak
   Future<int> clearCompletion(TaskDTO task, DateTime date);

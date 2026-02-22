@@ -1,8 +1,10 @@
+import 'task_completion_status.dart';
+
 /// Represents the status of a task on a specific date
 class TaskStatus {
   final String taskId;
   final DateTime date;
-  final String status; // 'completed', 'pending', 'skipped', etc.
+  final TaskCompletionStatus status;
 
   TaskStatus({
     required this.taskId,
@@ -13,7 +15,7 @@ class TaskStatus {
   TaskStatus copyWith({
     String? taskId,
     DateTime? date,
-    String? status,
+    TaskCompletionStatus? status,
   }) {
     return TaskStatus(
       taskId: taskId ?? this.taskId,

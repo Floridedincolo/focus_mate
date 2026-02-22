@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../app_data_source.dart';
 import '../../dtos/app_dto.dart';
@@ -21,7 +22,7 @@ class NativeMethodChannelAppDataSource implements RemoteAppDataSource {
           .map((data) => InstalledApplicationDTO.fromMap(data))
           .toList();
     } catch (e) {
-      print('❌ Error getting installed apps: $e');
+      if (kDebugMode) debugPrint('❌ Error getting installed apps: $e');
       return [];
     }
   }
@@ -40,7 +41,7 @@ class NativeMethodChannelAppDataSource implements RemoteAppDataSource {
           .map((data) => InstalledApplicationDTO.fromMap(data))
           .toList();
     } catch (e) {
-      print('❌ Error getting user apps: $e');
+      if (kDebugMode) debugPrint('❌ Error getting user apps: $e');
       return [];
     }
   }
@@ -53,7 +54,7 @@ class NativeMethodChannelAppDataSource implements RemoteAppDataSource {
         {'packageName': packageName},
       );
     } catch (e) {
-      print('❌ Error getting app name: $e');
+      if (kDebugMode) debugPrint('❌ Error getting app name: $e');
       return null;
     }
   }
@@ -69,9 +70,8 @@ class NativeMethodChannelAppDataSource implements RemoteAppDataSource {
       if (result == null) return null;
       return InstalledApplicationDTO.fromMap(result);
     } catch (e) {
-      print('❌ Error getting app icon: $e');
+      if (kDebugMode) debugPrint('❌ Error getting app icon: $e');
       return null;
     }
   }
 }
-

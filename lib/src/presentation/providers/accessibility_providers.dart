@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/usecases/accessibility_usecases.dart';
 import '../../core/service_locator.dart';
@@ -43,7 +44,7 @@ final checkAccessibilityProvider = FutureProvider<bool>((ref) async {
     final usecase = ref.watch(checkAccessibilityUseCaseProvider);
     return await usecase();
   } catch (e) {
-    print('❌ Error checking accessibility: $e');
+    if (kDebugMode) debugPrint('❌ Error checking accessibility: $e');
     return false; // Safe default
   }
 });
@@ -54,7 +55,7 @@ final checkOverlayPermissionProvider = FutureProvider<bool>((ref) async {
     final usecase = ref.watch(checkOverlayPermissionUseCaseProvider);
     return await usecase();
   } catch (e) {
-    print('❌ Error checking overlay: $e');
+    if (kDebugMode) debugPrint('❌ Error checking overlay: $e');
     return false; // Safe default
   }
 });
@@ -65,7 +66,7 @@ final accessibilityStatusStreamProvider = StreamProvider<bool>((ref) async* {
     final usecase = ref.watch(watchAccessibilityStatusUseCaseProvider);
     yield* usecase();
   } catch (e) {
-    print('❌ Error watching accessibility status: $e');
+    if (kDebugMode) debugPrint('❌ Error watching accessibility status: $e');
     yield false; // Safe default
   }
 });
@@ -76,7 +77,7 @@ final appOpeningEventsStreamProvider = StreamProvider<String>((ref) async* {
     final usecase = ref.watch(watchAppOpeningEventsUseCaseProvider);
     yield* usecase();
   } catch (e) {
-    print('⚠️ App opening events not available: $e');
+    if (kDebugMode) debugPrint('⚠️ App opening events not available: $e');
     // Emit nothing - stream will show error state in UI
   }
 });
@@ -92,4 +93,3 @@ final requestOverlayPermissionProvider = FutureProvider<void>((ref) {
   final usecase = ref.watch(requestOverlayPermissionUseCaseProvider);
   return usecase();
 });
-

@@ -1,5 +1,6 @@
 import '../../domain/repositories/task_repository.dart';
 import '../../domain/entities/task.dart';
+import '../../domain/entities/task_completion_status.dart';
 import '../datasources/task_data_source.dart';
 import '../mappers/task_mapper.dart';
 
@@ -39,12 +40,12 @@ class TaskRepositoryImpl implements TaskRepository {
   }
 
   @override
-  Future<String> getCompletionStatus(Task task, DateTime date) {
+  Future<TaskCompletionStatus> getCompletionStatus(Task task, DateTime date) {
     return remoteDataSource.getCompletionStatus(task.id, date);
   }
 
   @override
-  Future<int> markTaskStatus(Task task, DateTime date, String status) {
+  Future<int> markTaskStatus(Task task, DateTime date, TaskCompletionStatus status) {
     final dto = TaskMapper.toDTO(task);
     return remoteDataSource.markTaskStatus(dto, date, status);
   }

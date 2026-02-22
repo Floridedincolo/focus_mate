@@ -1,4 +1,5 @@
 import 'dart:convert' show base64;
+import 'package:flutter/foundation.dart';
 import '../../domain/entities/blocked_app.dart';
 import '../../domain/entities/installed_application.dart';
 import '../dtos/app_dto.dart';
@@ -11,7 +12,7 @@ class InstalledApplicationMapper {
       try {
         iconBytes = base64.decode(dto.iconBase64!);
       } catch (e) {
-        print('⚠️ Failed to decode icon for ${dto.appName}: $e');
+        if (kDebugMode) debugPrint('⚠️ Failed to decode icon for ${dto.appName}: $e');
       }
     }
 

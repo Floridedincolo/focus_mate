@@ -2,22 +2,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:focus_mate/src/domain/usecases/compute_task_status.dart';
 import 'package:focus_mate/src/domain/repositories/task_repository.dart';
 import 'package:focus_mate/src/domain/entities/task.dart';
+import 'package:focus_mate/src/domain/entities/task_completion_status.dart';
 import 'package:focus_mate/src/domain/entities/repeat_type.dart';
 
 /// Fake implementation of TaskRepository for testing purposes.
 class FakeTaskRepository implements TaskRepository {
-  final Map<String, String> _completionStatuses = {};
+  final Map<String, TaskCompletionStatus> _completionStatuses = {};
 
   /// Set a canned response for testing
-  void setCompletionStatus(String taskId, DateTime date, String status) {
+  void setCompletionStatus(String taskId, DateTime date, TaskCompletionStatus status) {
     final key = '$taskId:${date.toIso8601String()}';
     _completionStatuses[key] = status;
   }
 
   @override
-  Future<String> getCompletionStatus(Task task, DateTime date) async {
+  Future<TaskCompletionStatus> getCompletionStatus(Task task, DateTime date) async {
     final key = '${task.id}:${date.toIso8601String()}';
-    return _completionStatuses[key] ?? 'upcoming';
+    return _completionStatuses[key] ?? TaskCompletionStatus.upcoming;
   }
 
   @override
@@ -34,7 +35,7 @@ class FakeTaskRepository implements TaskRepository {
       throw UnimplementedError();
 
   @override
-  Future<int> markTaskStatus(Task task, DateTime date, String status) =>
+  Future<int> markTaskStatus(Task task, DateTime date, TaskCompletionStatus status) =>
       throw UnimplementedError();
 
   @override
@@ -73,7 +74,7 @@ void main() {
           repo,
         );
 
-        expect(status, equals('hidden'));
+        expect(status, equals(TaskCompletionStatus.hidden));
       },
     );
 
@@ -90,11 +91,11 @@ void main() {
       );
 
       // Set the repository to return 'completed' for this task
-      repo.setCompletionStatus(task.id, selectedDate, 'completed');
+      repo.setCompletionStatus(task.id, selectedDate, TaskCompletionStatus.completed);
 
       final status = await computeTaskStatus(task, selectedDate, repo);
 
-      expect(status, equals('completed'));
+      expect(status, equals(TaskCompletionStatus.completed));
     });
 
     test('returns missed when task did not occur and is in the past', () async {
@@ -112,11 +113,11 @@ void main() {
       // The repo will return 'upcoming' by default, but compute_task_status
       // delegates to the repo which checks date
       // For testing, let's set the repo to return 'missed'
-      repo.setCompletionStatus(task.id, selectedDate, 'missed');
+      repo.setCompletionStatus(task.id, selectedDate, TaskCompletionStatus.missed);
 
       final status = await computeTaskStatus(task, selectedDate, repo);
 
-      expect(status, equals('missed'));
+      expect(status, equals(TaskCompletionStatus.missed));
     });
 
     test('returns upcoming for future task', () async {
@@ -133,7 +134,7 @@ void main() {
 
       final status = await computeTaskStatus(task, selectedDate, repo);
 
-      expect(status, equals('upcoming'));
+      expect(status, equals(TaskCompletionStatus.upcoming));
     });
   });
 }

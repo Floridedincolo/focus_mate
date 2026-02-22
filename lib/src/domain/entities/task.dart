@@ -56,5 +56,54 @@ class Task {
       streak: streak ?? this.streak,
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+
+    return other is Task &&
+        other.id == id &&
+        other.title == title &&
+        other.oneTime == oneTime &&
+        other.archived == archived &&
+        other.startDate == startDate &&
+        other.startTime == startTime &&
+        other.endTime == endTime &&
+        other.repeatType == repeatType &&
+        _mapsEqual(other.days, days) &&
+        _listsEqual(other.reminders, reminders) &&
+        other.streak == streak;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        id,
+        title,
+        oneTime,
+        archived,
+        startDate,
+        startTime,
+        endTime,
+        repeatType,
+        Object.hashAll(days.entries),
+        Object.hashAll(reminders),
+        streak,
+      );
+
+  static bool _mapsEqual(Map<String, bool> a, Map<String, bool> b) {
+    if (a.length != b.length) return false;
+    for (final key in a.keys) {
+      if (a[key] != b[key]) return false;
+    }
+    return true;
+  }
+
+  static bool _listsEqual(List<Reminder> a, List<Reminder> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
 }
 

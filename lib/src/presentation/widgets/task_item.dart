@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../domain/entities/task.dart';
+import '../../domain/entities/task_completion_status.dart';
 
 class TaskItem extends StatelessWidget {
   final Task task;
-  final String statusForSelectedDay; // 'completed', 'missed', 'upcoming'
+  final TaskCompletionStatus statusForSelectedDay;
   final VoidCallback onMarkCompleted;
 
   const TaskItem({
@@ -15,8 +16,8 @@ class TaskItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isCompleted = statusForSelectedDay == 'completed';
-    final isMissed = statusForSelectedDay == 'missed';
+    final isCompleted = statusForSelectedDay == TaskCompletionStatus.completed;
+    final isMissed = statusForSelectedDay == TaskCompletionStatus.missed;
 
     Color statusColor;
     if (isCompleted) {
