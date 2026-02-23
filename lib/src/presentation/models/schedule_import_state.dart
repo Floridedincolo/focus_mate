@@ -6,6 +6,7 @@ import '../../domain/entities/task.dart';
 enum ScheduleImportStep {
   imagePicker,     // Step 1 — user picks an image
   aiLoading,       // Step 2 — Gemini is processing
+  classSelection,  // Step 2.5 — user picks which subjects to import
   timetableAdjust, // Step 3A — user toggles homework per class
   examAdjust,      // Step 3B — user sets difficulty per exam
   preview,         // Step 4 — read-only preview of tasks to be created
@@ -29,6 +30,9 @@ class ScheduleImportState {
   /// Generated tasks shown in the preview step — not yet saved.
   final List<Task> previewTasks;
 
+  /// Subjects the user has selected for import (classSelection step).
+  final Set<String> selectedSubjects;
+
   /// Error message shown in the error step.
   final String? errorMessage;
 
@@ -38,6 +42,7 @@ class ScheduleImportState {
     this.adjustedClasses = const [],
     this.adjustedExams = const [],
     this.previewTasks = const [],
+    this.selectedSubjects = const {},
     this.errorMessage,
   });
 
@@ -47,6 +52,7 @@ class ScheduleImportState {
     List<ExtractedClass>? adjustedClasses,
     List<ExtractedExam>? adjustedExams,
     List<Task>? previewTasks,
+    Set<String>? selectedSubjects,
     String? errorMessage,
   }) {
     return ScheduleImportState(
@@ -55,6 +61,7 @@ class ScheduleImportState {
       adjustedClasses: adjustedClasses ?? this.adjustedClasses,
       adjustedExams: adjustedExams ?? this.adjustedExams,
       previewTasks: previewTasks ?? this.previewTasks,
+      selectedSubjects: selectedSubjects ?? this.selectedSubjects,
       errorMessage: errorMessage ?? this.errorMessage,
     );
   }

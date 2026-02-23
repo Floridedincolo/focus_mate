@@ -45,21 +45,68 @@ class ScheduleImportNotifier extends Notifier<ScheduleImportState> {
 
     try {
       final result = await _extractUseCase(imageBytes, mimeType);
-      state = state.copyWith(
-        step: result.type == ScheduleType.weeklyTimetable
-            ? ScheduleImportStep.timetableAdjust
-            : ScheduleImportStep.examAdjust,
-        importResult: result,
-        adjustedClasses: result.classes ?? [],
-        adjustedExams: result.exams ?? [],
-        errorMessage: null,
-      );
+
+      if (result.type == ScheduleType.weeklyTimetable) {
+        // Collect all unique subject names for the selection step
+        final allSubjects = (result.classes ?? [])
+            .map((c) => c.subject)
+            .toSet();
+
+        state = state.copyWith(
+          step: ScheduleImportStep.classSelection,
+          importResult: result,
+          adjustedClasses: result.classes ?? [],
+          selectedSubjects: allSubjects,
+          errorMessage: null,
+        );
+      } else {
+        state = state.copyWith(
+          step: ScheduleImportStep.examAdjust,
+          importResult: result,
+          adjustedExams: result.exams ?? [],
+          errorMessage: null,
+        );
+      }
     } catch (e) {
       state = state.copyWith(
         step: ScheduleImportStep.error,
         errorMessage: e.toString(),
       );
     }
+  }
+
+  // ── Step 2.5 — Class Selection helpers ──────────────────────────────────
+
+  /// Toggle a single subject on/off.
+  void toggleSubject(String subject) {
+    final updated = Set<String>.from(state.selectedSubjects);
+    if (updated.contains(subject)) {
+      updated.remove(subject);
+    } else {
+      updated.add(subject);
+    }
+    state = state.copyWith(selectedSubjects: updated);
+  }
+
+  /// Select or deselect all subjects at once.
+  void toggleAllSubjects(bool selectAll) {
+    if (selectAll) {
+      final all = state.adjustedClasses.map((c) => c.subject).toSet();
+      state = state.copyWith(selectedSubjects: all);
+    } else {
+      state = state.copyWith(selectedSubjects: <String>{});
+    }
+  }
+
+  /// Filters classes to only selected subjects and moves to timetableAdjust.
+  void confirmClassSelection() {
+    final filtered = state.adjustedClasses
+        .where((c) => state.selectedSubjects.contains(c.subject))
+        .toList();
+    state = state.copyWith(
+      step: ScheduleImportStep.timetableAdjust,
+      adjustedClasses: filtered,
+    );
   }
 
   // ── Step 3A helpers (timetable) ──────────────────────────────────────────
@@ -147,7 +194,10 @@ class ScheduleImportNotifier extends Notifier<ScheduleImportState> {
   /// Go back one step without resetting all state.
   void goBack() {
     switch (state.step) {
+      case ScheduleImportStep.classSelection:
+        state = state.copyWith(step: ScheduleImportStep.imagePicker);
       case ScheduleImportStep.timetableAdjust:
+        state = state.copyWith(step: ScheduleImportStep.classSelection);
       case ScheduleImportStep.examAdjust:
         state = state.copyWith(step: ScheduleImportStep.imagePicker);
       case ScheduleImportStep.preview:

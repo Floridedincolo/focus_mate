@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../providers/schedule_import_notifier.dart';
 import '../../../presentation/models/schedule_import_state.dart';
 import 'schedule_loading_page.dart';
+import 'class_selection_page.dart';
 import 'timetable_adjustment_page.dart';
 import 'exam_adjustment_page.dart';
 
@@ -35,6 +36,11 @@ class _ScheduleImportPageState extends ConsumerState<ScheduleImportPage> {
         case ScheduleImportStep.aiLoading:
           Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const ScheduleLoadingPage()),
+          );
+        case ScheduleImportStep.classSelection:
+          // Replace loading page with subject selection page
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const ClassSelectionPage()),
           );
         case ScheduleImportStep.timetableAdjust:
           // Replace loading page with adjustment page

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:uuid/uuid.dart';
 import '../entities/extracted_class.dart';
 import '../entities/task.dart';
 import '../entities/repeat_type.dart';
@@ -13,19 +12,26 @@ const _kHomeworkWindowEnd = 22;   // 22:00
 
 /// Generates repeating [Task]s from a confirmed weekly timetable.
 ///
-/// For each [ExtractedClass]:
-///   • Creates a class [Task] (repeating weekly on that day).
+/// **Deduplication logic:**
 ///
-/// For each class where [ExtractedClass.needsHomework] is true:
-///   • Finds free afternoon/evening slots across the week (respecting
-///     both newly imported classes AND the user's existing tasks from
-///     Firestore that are passed in via [existingTasks]).
-///   • Distributes weekly homework hours into those free slots as one
-///     or more repeating study tasks (each capped at 2 h to avoid
-///     marathon sessions).
+/// 1. **Class tasks** – Occurrences that share the same subject, startTime,
+///    and endTime are merged into a single [Task] with
+///    [RepeatType.custom] and a combined `days` map
+///    (e.g. `{"Mon": true, "Tue": true, "Wed": true}`).
+///
+/// 2. **Study (homework) tasks** – Generated strictly ONCE per unique
+///    subject (not per occurrence). The homework hours are taken from
+///    the first occurrence that has [ExtractedClass.needsHomework] set.
+///
+/// 3. **Deterministic IDs** – IDs follow a slug format so that
+///    re-importing the same schedule overwrites old tasks instead of
+///    creating duplicates:
+///      • Class: `"ai_class_<subject>_<HH>_<MM>_<eHH>_<eMM>"`
+///      • Study: `"ai_study_<subject>"`  (per session: `"…_<idx>"`)
 class GenerateWeeklyTasksUseCase {
-  static const _uuid = Uuid();
-  String _newId() => _uuid.v4();
+  /// Builds a deterministic, URL-safe slug from an arbitrary string.
+  static String _slugify(String input) =>
+      input.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
 
   Future<List<Task>> call({
     required List<ExtractedClass> classes,
@@ -34,23 +40,49 @@ class GenerateWeeklyTasksUseCase {
   }) async {
     final List<Task> result = [];
 
-    // 1. Generate class tasks
+    // ── 1. Group classes by (subject, startTime, endTime) ─────────────
+    //    Key = "subject|HH:MM|HH:MM"
+    final Map<String, List<ExtractedClass>> classGroups = {};
     for (final c in classes) {
-      result.add(_buildClassTask(c, importDate));
+      final key =
+          '${c.subject}|${c.startTime.hour}:${c.startTime.minute}|${c.endTime.hour}:${c.endTime.minute}';
+      classGroups.putIfAbsent(key, () => []).add(c);
     }
 
-    // 2. Build a busy-slots map: day → list of (start, end) in minutes-since-midnight
+    // Create ONE class task per group with merged days
+    for (final entry in classGroups.entries) {
+      final group = entry.value;
+      final representative = group.first;
+      result.add(_buildClassTask(group, representative, importDate));
+    }
+
+    // ── 2. Build a busy-slots map ─────────────────────────────────────
     final busySlots = _buildBusySlots(classes, existingTasks);
 
-    // 3. For each class that needs homework, schedule study tasks
+    // ── 3. Deduplicate homework by subject ────────────────────────────
+    //    Collect the FIRST occurrence per subject that has needsHomework.
+    final Map<String, ExtractedClass> homeworkBySubject = {};
     for (final c in classes.where((c) => c.needsHomework)) {
+      homeworkBySubject.putIfAbsent(c.subject, () => c);
+    }
+
+    // Collect all class-day abbreviations per subject so the scheduler
+    // can prefer non-class days.
+    final Map<String, Set<String>> classDaysBySubject = {};
+    for (final c in classes) {
+      classDaysBySubject.putIfAbsent(c.subject, () => {}).add(c.day);
+    }
+
+    for (final entry in homeworkBySubject.entries) {
+      final subject = entry.key;
+      final representative = entry.value;
+
       final studyTasks = _scheduleHomework(
-        subject: c.subject,
-        totalMinutes: (c.homeworkHoursPerWeek * 60).round(),
+        subject: subject,
+        totalMinutes: (representative.homeworkHoursPerWeek * 60).round(),
         busySlots: busySlots,
         importDate: importDate,
-        // Prefer days that are NOT the same as the class day (study after attending)
-        classDay: c.day,
+        classDays: classDaysBySubject[subject] ?? {},
       );
       result.addAll(studyTasks);
 
@@ -77,16 +109,40 @@ class GenerateWeeklyTasksUseCase {
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
-  Task _buildClassTask(ExtractedClass c, DateTime importDate) {
+  /// Builds a single merged class [Task] from a group of [ExtractedClass]es
+  /// that share the same subject, startTime, and endTime.
+  Task _buildClassTask(
+    List<ExtractedClass> group,
+    ExtractedClass representative,
+    DateTime importDate,
+  ) {
+    // Merge days from every occurrence in the group
+    final Map<String, bool> mergedDays = {
+      for (final d in _kAllDays)
+        d: group.any((c) => c.day == d),
+    };
+
+    // Deterministic ID: "ai_class_<subject>_<HH>_<MM>_<eHH>_<eMM>"
+    final slug = _slugify(representative.subject);
+    final h = representative.startTime.hour.toString().padLeft(2, '0');
+    final m = representative.startTime.minute.toString().padLeft(2, '0');
+    final eh = representative.endTime.hour.toString().padLeft(2, '0');
+    final em = representative.endTime.minute.toString().padLeft(2, '0');
+    final id = 'ai_class_${slug}_${h}_${m}_${eh}_$em';
+
+    // Use custom when more than one day is active, weekly otherwise
+    final activeDayCount = mergedDays.values.where((v) => v).length;
+
     return Task(
-      id: _newId(),
-      title: c.subject,
+      id: id,
+      title: representative.subject,
       oneTime: false,
       startDate: importDate,
-      startTime: c.startTime,
-      endTime: c.endTime,
-      repeatType: RepeatType.weekly,
-      days: {for (final d in _kAllDays) d: d == c.day},
+      startTime: representative.startTime,
+      endTime: representative.endTime,
+      repeatType:
+          activeDayCount > 1 ? RepeatType.custom : RepeatType.weekly,
+      days: mergedDays,
     );
   }
 
@@ -161,21 +217,23 @@ class GenerateWeeklyTasksUseCase {
     required int totalMinutes,
     required Map<String, List<(int, int)>> busySlots,
     required DateTime importDate,
-    required String classDay,
+    required Set<String> classDays,
   }) {
     // Max 120 min per session so we don't create a 6-hour block
     const maxSessionMinutes = 120;
     final List<Task> tasks = [];
 
-    // Build a ranked list of candidate days (prefer days after the class day,
-    // but include all days to guarantee we can always find slots)
-    final classIndex = _kAllDays.indexOf(classDay);
-    final orderedDays = [
-      ..._kAllDays.sublist(classIndex + 1),
-      ..._kAllDays.sublist(0, classIndex + 1),
-    ];
+    // Build a ranked list of candidate days — prefer days that are NOT
+    // class days for this subject so the student studies after attending.
+    // Non-class days come first, then class days as fallback.
+    final nonClassDays =
+        _kAllDays.where((d) => !classDays.contains(d)).toList();
+    final classOnlyDays =
+        _kAllDays.where((d) => classDays.contains(d)).toList();
+    final orderedDays = [...nonClassDays, ...classOnlyDays];
 
     int remaining = totalMinutes;
+    int sessionIndex = 0;
 
     for (final day in orderedDays) {
       if (remaining <= 0) break;
@@ -194,8 +252,15 @@ class GenerateWeeklyTasksUseCase {
         final startTime = TimeOfDay(hour: startMin ~/ 60, minute: startMin % 60);
         final endTime = TimeOfDay(hour: endMin ~/ 60, minute: endMin % 60);
 
+        // Deterministic ID: "ai_study_<subject>" for the first session,
+        // "ai_study_<subject>_<idx>" for subsequent sessions.
+        final slug = _slugify(subject);
+        final id = sessionIndex == 0
+            ? 'ai_study_$slug'
+            : 'ai_study_${slug}_$sessionIndex';
+
         tasks.add(Task(
-          id: _newId(),
+          id: id,
           title: 'Study: $subject',
           oneTime: false,
           startDate: importDate,
@@ -206,6 +271,7 @@ class GenerateWeeklyTasksUseCase {
         ));
 
         remaining -= sessionMinutes;
+        sessionIndex++;
 
         // Mark this window as now busy for subsequent subjects
         busySlots.putIfAbsent(day, () => []);

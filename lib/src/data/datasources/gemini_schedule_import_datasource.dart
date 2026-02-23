@@ -146,17 +146,20 @@ RULES:
 8. If you cannot determine the schedule type with confidence, default to "weekly_timetable".
 9. Ignore any handwritten notes, doodles, or non-schedule content in the image.
 10. If the image does not contain a recognizable schedule, return: {"type": "weekly_timetable", "classes": []}
+11. NORMALIZE subject names: use short, consistent, canonical names (e.g. "Linear Algebra", NOT "Linear Algebra - Room 305" or "Linear Algebra (Prof. Smith)"). Do NOT append room numbers, building codes, teacher names, or class types (lecture/seminar) to the subject name.
+12. Put room numbers, building codes, and teacher names ONLY in the "room" field (or "location" for exams).
+13. If the same subject appears multiple times with slight name variations (abbreviations, extra annotations, different capitalisation), unify them under a SINGLE canonical short name so every occurrence of that subject has an identical "subject" value.
 
 SCHEMA FOR WEEKLY TIMETABLE:
 {
   "type": "weekly_timetable",
   "classes": [
     {
-      "subject": "<string: full subject/course name>",
+      "subject": "<string: short, normalized subject/course name>",
       "day": "<Mon|Tue|Wed|Thu|Fri|Sat|Sun>",
       "start_time": "<HH:MM>",
       "end_time": "<HH:MM>",
-      "room": "<string or null>"
+      "room": "<string or null: room number, building, teacher>"
     }
   ]
 }
@@ -166,7 +169,7 @@ SCHEMA FOR EXAM SCHEDULE:
   "type": "exam_schedule",
   "exams": [
     {
-      "subject": "<string: full subject/course name>",
+      "subject": "<string: short, normalized subject/course name>",
       "date": "<YYYY-MM-DD>",
       "start_time": "<HH:MM>",
       "end_time": "<HH:MM>",
