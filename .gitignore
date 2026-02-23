@@ -48,7 +48,7 @@ ios/Runner/GoogleService-Info.plist
 
 # If you use the FlutterFire CLI, you might want to ignore this too
 # strictly speaking it is not a secret, but good to keep clean if you regenerate often
-# lib/firebase_options.dart
+lib/firebase_options.dart
 
 # -----------------------
 # Android

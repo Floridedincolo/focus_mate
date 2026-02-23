@@ -1,0 +1,2 @@
+enum ScheduleType { weeklyTimetable, examSchedule }
+
