@@ -13,6 +13,7 @@ import 'src/presentation/pages/home.dart';
 import 'src/presentation/pages/add_task.dart';
 import 'src/presentation/pages/stats_page.dart';
 import 'src/presentation/pages/profile.dart';
+import 'src/presentation/pages/schedule_import/schedule_import_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -77,6 +78,7 @@ class FocusMateApp extends StatelessWidget {
         '/home': (context) => const Home(),
         '/stats': (context) => const StatsPage(),
         '/main': (context) => const MainPage(),
+        '/import-schedule': (context) => const ScheduleImportPage(),
       },
     );
   }

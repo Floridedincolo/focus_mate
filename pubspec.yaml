@@ -27,6 +27,10 @@ dependencies:
   # State Management
   flutter_riverpod: ^2.4.0
 
+  # Schedule Import — AI + Image Picking
+  google_generative_ai: ^0.4.6
+  image_picker: ^1.1.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

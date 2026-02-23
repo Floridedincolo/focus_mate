@@ -5,17 +5,23 @@ import '../domain/repositories/task_repository.dart';
 import '../domain/repositories/app_manager_repository.dart';
 import '../domain/repositories/block_manager_repository.dart';
 import '../domain/repositories/accessibility_repository.dart';
+import '../domain/repositories/schedule_import_repository.dart';
 import '../domain/usecases/task_usecases.dart';
 import '../domain/usecases/app_usecases.dart';
 import '../domain/usecases/accessibility_usecases.dart';
+import '../domain/usecases/extract_schedule_from_image_use_case.dart';
+import '../domain/usecases/generate_weekly_tasks_use_case.dart';
+import '../domain/usecases/generate_exam_prep_tasks_use_case.dart';
 
 // Data
 import '../data/repositories/task_repository_impl.dart';
 import '../data/repositories/app_repository_impl.dart';
 import '../data/repositories/accessibility_repository_impl.dart';
+import '../data/repositories/schedule_import_repository_impl.dart';
 import '../data/datasources/task_data_source.dart';
 import '../data/datasources/app_data_source.dart';
 import '../data/datasources/accessibility_data_source.dart';
+import '../data/datasources/gemini_schedule_import_datasource.dart';
 import '../data/datasources/implementations/firestore_task_datasource.dart';
 import '../data/datasources/implementations/native_app_datasource.dart';
 import '../data/datasources/implementations/shared_preferences_datasource.dart';
@@ -117,6 +123,30 @@ Future<void> setupServiceLocator() async {
   );
   getIt.registerSingleton(
     WatchAppOpeningEventsUseCase(getIt<AccessibilityRepository>()),
+  );
+
+  // ============ SCHEDULE IMPORT ============
+
+  // Data source — reads GEMINI_API_KEY from --dart-define at build time
+  getIt.registerSingleton<GeminiScheduleImportDataSource>(
+    GeminiScheduleImportDataSource(),
+  );
+
+  getIt.registerSingleton<ScheduleImportRepository>(
+    ScheduleImportRepositoryImpl(getIt<GeminiScheduleImportDataSource>()),
+  );
+
+  // Use cases
+  getIt.registerSingleton(
+    ExtractScheduleFromImageUseCase(getIt<ScheduleImportRepository>()),
+  );
+  // GenerateWeeklyTasksUseCase and GenerateExamPrepTasksUseCase are stateless
+  // value objects — registered as factory so each call gets a fresh _nextId counter.
+  getIt.registerFactory<GenerateWeeklyTasksUseCase>(
+    GenerateWeeklyTasksUseCase.new,
+  );
+  getIt.registerFactory<GenerateExamPrepTasksUseCase>(
+    GenerateExamPrepTasksUseCase.new,
   );
 }
 
