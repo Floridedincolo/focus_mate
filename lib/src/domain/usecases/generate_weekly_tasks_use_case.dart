@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 import '../entities/extracted_class.dart';
 import '../entities/task.dart';
 import '../entities/repeat_type.dart';
@@ -23,8 +24,8 @@ const _kHomeworkWindowEnd = 22;   // 22:00
 ///     or more repeating study tasks (each capped at 2 h to avoid
 ///     marathon sessions).
 class GenerateWeeklyTasksUseCase {
-  int _nextId = 0;
-  String _newId() => '${DateTime.now().millisecondsSinceEpoch}_${_nextId++}';
+  static const _uuid = Uuid();
+  String _newId() => _uuid.v4();
 
   Future<List<Task>> call({
     required List<ExtractedClass> classes,

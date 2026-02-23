@@ -11,6 +11,7 @@ import '../providers/task_providers.dart';
 import '../models/calendar_icon_data.dart';
 import '../widgets/calendar_icon_widget.dart';
 import '../widgets/task_item.dart';
+import 'schedule_import/schedule_import_page.dart';
 
 class Home extends ConsumerStatefulWidget {
   const Home({super.key});
@@ -187,6 +188,28 @@ class _HomeState extends ConsumerState<Home> {
           ],
         ),
         actions: [
+          // Schedule Import button
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Center(
+              child: Tooltip(
+                message: 'Import Schedule',
+                child: GestureDetector(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const ScheduleImportPage(),
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.calendar_month_outlined,
+                    color: Colors.white70,
+                    size: 24,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // Profile button
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: GestureDetector(

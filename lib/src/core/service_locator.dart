@@ -127,7 +127,7 @@ Future<void> setupServiceLocator() async {
 
   // ============ SCHEDULE IMPORT ============
 
-  // Data source — reads GEMINI_API_KEY from --dart-define at build time
+  // Data source — uses Firebase Vertex AI (no client-side API key required)
   getIt.registerSingleton<GeminiScheduleImportDataSource>(
     GeminiScheduleImportDataSource(),
   );

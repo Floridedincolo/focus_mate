@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 import '../entities/extracted_exam.dart';
 import '../entities/exam_difficulty.dart';
 import '../entities/task.dart';
@@ -20,8 +21,8 @@ import '../entities/task.dart';
 /// 5. Default study start time: 17:00 (adjustable in the future).
 class GenerateExamPrepTasksUseCase {
   static const _defaultStudyStartHour = 17;
-  int _nextId = 0;
-  String _newId() => '${DateTime.now().millisecondsSinceEpoch}_${_nextId++}';
+  static const _uuid = Uuid();
+  String _newId() => _uuid.v4();
 
   Future<List<Task>> call({
     required List<ExtractedExam> exams,

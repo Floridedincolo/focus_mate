@@ -1,44 +1,44 @@
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:firebase_ai/firebase_ai.dart';
 import '../dtos/schedule_import_result_dto.dart';
 
-/// Communicates with the Gemini multimodal API to extract schedule data
-/// from an image.
+/// Communicates with Gemini via the Firebase AI SDK to extract
+/// schedule data from an image.
 ///
-/// API Key Strategy — dart-define:
+/// Security Strategy — Firebase AI (Vertex AI backend):
 /// ─────────────────────────────────────────────────────────────────────
-/// The Gemini API key is injected at build time via:
-///   flutter run --dart-define=GEMINI_API_KEY=your_key_here
+/// Instead of embedding a raw Gemini API key in the client binary
+/// (which can be extracted via reverse engineering), we use the
+/// `firebase_ai` package with the Vertex AI backend, which
+/// authenticates through the existing Firebase project credentials.
 ///
-/// This means:
-///  • The key is NEVER committed to source control.
-///  • It's embedded in the binary at compile time (acceptable for a student
-///    project; for production you'd rotate to a server-side proxy).
-///  • No extra package (dotenv) is needed — just a single String.const.
+/// Benefits:
+///  • NO API key is stored in the client binary or source code.
+///  • Authentication is handled by Firebase SDK automatically.
+///  • Access can be further restricted with Firebase App Check.
+///  • Billing goes through the linked Google Cloud project.
+///
+/// Prerequisites:
+///  • Enable "Vertex AI in Firebase" API in the Firebase / GCP console.
+///  • Firebase must be initialised before this class is used.
 /// ─────────────────────────────────────────────────────────────────────
 class GeminiScheduleImportDataSource {
-  static const _apiKey = String.fromEnvironment(
-    'GEMINI_API_KEY',
-    defaultValue: '',
-  );
+  static const _kTimeoutDuration = Duration(seconds: 60);
+  static const _kMaxRetries = 2;
 
   late final GenerativeModel _model;
 
+  /// Tracks the last request timestamp for simple client-side rate limiting.
+  DateTime? _lastRequestTime;
+  static const _kMinRequestInterval = Duration(seconds: 5);
+
   GeminiScheduleImportDataSource() {
-    if (_apiKey.isEmpty) {
-      throw StateError(
-        'GEMINI_API_KEY is not set. '
-        'Run with: flutter run --dart-define=GEMINI_API_KEY=<your_key>',
-      );
-    }
-    _model = GenerativeModel(
-      model: 'gemini-1.5-flash',
-      apiKey: _apiKey,
+    _model = FirebaseAI.vertexAI().generativeModel(
+      model: 'gemini-2.0-flash',
       generationConfig: GenerationConfig(
-        // Force the model to return pure JSON — no markdown fences
         responseMimeType: 'application/json',
-        temperature: 0.1, // low temperature = more deterministic extraction
+        temperature: 0.1,
       ),
     );
   }
@@ -47,14 +47,14 @@ class GeminiScheduleImportDataSource {
     Uint8List imageBytes,
     String mimeType,
   ) async {
+    // Client-side rate limiting to avoid accidental rapid-fire requests
+    _enforceRateLimit();
+
     final prompt = TextPart(_kSystemPrompt);
-    final image = DataPart(mimeType, imageBytes);
+    final image = InlineDataPart(mimeType, imageBytes);
 
-    final response = await _model.generateContent([
-      Content.multi([prompt, image]),
-    ]);
+    final rawText = await _sendWithRetry(prompt, image);
 
-    final rawText = response.text ?? '';
     if (rawText.isEmpty) {
       throw Exception('Gemini returned an empty response.');
     }
@@ -67,15 +67,62 @@ class GeminiScheduleImportDataSource {
       json = jsonDecode(cleaned) as Map<String, dynamic>;
     } catch (e) {
       throw FormatException(
-        'Could not parse Gemini response as JSON. Raw: $rawText',
+        'Could not parse Gemini response as JSON.\n'
+        'Raw response (first 500 chars): ${rawText.substring(0, rawText.length.clamp(0, 500))}',
       );
     }
 
     return ScheduleImportResultDto.fromJson(json);
   }
 
+  /// Sends the request with automatic retry for transient failures.
+  Future<String> _sendWithRetry(TextPart prompt, InlineDataPart image) async {
+    Object? lastError;
+
+    for (int attempt = 0; attempt <= _kMaxRetries; attempt++) {
+      try {
+        final response = await _model
+            .generateContent([
+              Content.multi([prompt, image]),
+            ])
+            .timeout(_kTimeoutDuration);
+
+        return response.text ?? '';
+      } on FirebaseAIException catch (e) {
+        // Don't retry on content safety / invalid argument errors
+        if (e.toString().contains('SAFETY') ||
+            e.toString().contains('INVALID_ARGUMENT')) {
+          rethrow;
+        }
+        lastError = e;
+      } catch (e) {
+        lastError = e;
+      }
+
+      // Exponential back-off before retrying
+      if (attempt < _kMaxRetries) {
+        await Future.delayed(Duration(seconds: (attempt + 1) * 2));
+      }
+    }
+
+    throw Exception(
+      'Gemini request failed after ${_kMaxRetries + 1} attempts. '
+      'Last error: $lastError',
+    );
+  }
+
+  void _enforceRateLimit() {
+    final now = DateTime.now();
+    if (_lastRequestTime != null &&
+        now.difference(_lastRequestTime!) < _kMinRequestInterval) {
+      throw Exception(
+        'Please wait a few seconds before sending another request.',
+      );
+    }
+    _lastRequestTime = now;
+  }
+
   static String _stripMarkdown(String text) {
-    // Remove ```json ... ``` or ``` ... ``` wrappers if present
     final fenced = RegExp(r'```(?:json)?\s*([\s\S]*?)```');
     final match = fenced.firstMatch(text);
     if (match != null) return match.group(1)!.trim();
@@ -84,7 +131,6 @@ class GeminiScheduleImportDataSource {
 }
 
 // ── System Prompt ────────────────────────────────────────────────────────────
-// Kept as a top-level constant so it's easy to tweak without touching class logic.
 const _kSystemPrompt = '''
 You are an expert academic schedule parser.
 Your task is to analyze the provided image of a schedule and extract all data into a strict JSON format.
@@ -98,6 +144,8 @@ RULES:
 6. Dates must be in "YYYY-MM-DD" format.
 7. If a field is not visible in the image, use null.
 8. If you cannot determine the schedule type with confidence, default to "weekly_timetable".
+9. Ignore any handwritten notes, doodles, or non-schedule content in the image.
+10. If the image does not contain a recognizable schedule, return: {"type": "weekly_timetable", "classes": []}
 
 SCHEMA FOR WEEKLY TIMETABLE:
 {
@@ -129,4 +177,3 @@ SCHEMA FOR EXAM SCHEDULE:
 
 Now analyze the image and return the JSON.
 ''';
-
