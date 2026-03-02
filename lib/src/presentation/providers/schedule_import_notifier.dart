@@ -2,11 +2,9 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/service_locator.dart';
 import '../../domain/entities/extracted_class.dart';
-import '../../domain/entities/extracted_exam.dart';
-import '../../domain/entities/schedule_type.dart';
+import '../../domain/entities/task.dart';
 import '../../domain/entities/task.dart';
 import '../../domain/usecases/extract_schedule_from_image_use_case.dart';
-import '../../domain/usecases/generate_exam_prep_tasks_use_case.dart';
 import '../../domain/usecases/generate_weekly_tasks_use_case.dart';
 import '../../domain/usecases/task_usecases.dart';
 import '../models/schedule_import_state.dart';
@@ -30,47 +28,33 @@ class ScheduleImportNotifier extends Notifier<ScheduleImportState> {
   GenerateWeeklyTasksUseCase get _generateWeeklyUseCase =>
       getIt<GenerateWeeklyTasksUseCase>();
 
-  GenerateExamPrepTasksUseCase get _generateExamUseCase =>
-      getIt<GenerateExamPrepTasksUseCase>();
-
   SaveTaskUseCase get _saveTaskUseCase => getIt<SaveTaskUseCase>();
 
   // ── Step 1 → 2 → 3 ──────────────────────────────────────────────────────
 
   /// Called when the user confirms their image selection.
-  /// Transitions to [aiLoading], calls Gemini, then routes to the
-  /// appropriate adjustment step based on schedule type.
+  /// Transitions to [aiLoading], calls Gemini, then routes to
+  /// [classSelection] for the user to pick which subjects to import.
   Future<void> processImage(Uint8List imageBytes, String mimeType) async {
     state = state.copyWith(step: ScheduleImportStep.aiLoading);
 
     try {
       final result = await _extractUseCase(imageBytes, mimeType);
 
-      if (result.type == ScheduleType.weeklyTimetable) {
-        // Collect all unique subject names for the selection step
-        final allSubjects = (result.classes ?? [])
-            .map((c) => c.subject)
-            .toSet();
+      // Collect all unique subject names for the selection step
+      final allSubjects = result.classes.map((c) => c.subject).toSet();
 
-        state = state.copyWith(
-          step: ScheduleImportStep.classSelection,
-          importResult: result,
-          adjustedClasses: result.classes ?? [],
-          selectedSubjects: allSubjects,
-          errorMessage: null,
-        );
-      } else {
-        state = state.copyWith(
-          step: ScheduleImportStep.examAdjust,
-          importResult: result,
-          adjustedExams: result.exams ?? [],
-          errorMessage: null,
-        );
-      }
+      state = state.copyWith(
+        step: ScheduleImportStep.classSelection,
+        importResult: result,
+        adjustedClasses: result.classes,
+        selectedSubjects: allSubjects,
+        errorMessage: null,
+      );
     } catch (e) {
       state = state.copyWith(
         step: ScheduleImportStep.error,
-        errorMessage: e.toString(),
+        errorMessage: _friendlyError(e),
       );
     }
   }
@@ -109,7 +93,7 @@ class ScheduleImportNotifier extends Notifier<ScheduleImportState> {
     );
   }
 
-  // ── Step 3A helpers (timetable) ──────────────────────────────────────────
+  // ── Step 3 helpers (timetable + exam settings) ───────────────────────────
 
   /// Replaces the class at [index] with [updated].
   void updateClass(int index, ExtractedClass updated) {
@@ -118,41 +102,68 @@ class ScheduleImportNotifier extends Notifier<ScheduleImportState> {
     state = state.copyWith(adjustedClasses: list);
   }
 
-  // ── Step 3B helpers (exams) ──────────────────────────────────────────────
+  /// Finds [original] by identity in [adjustedClasses] and replaces it with
+  /// [updated]. Used when the user edits a single occurrence via the edit
+  /// dialog (e.g. to fix an AI-misread subject name or time).
+  void replaceClass(ExtractedClass original, ExtractedClass updated) {
+    final list = List<ExtractedClass>.from(state.adjustedClasses);
+    final idx = list.indexOf(original);
+    if (idx != -1) {
+      list[idx] = updated;
+      state = state.copyWith(adjustedClasses: list);
+    }
+  }
 
-  /// Replaces the exam at [index] with [updated].
-  void updateExam(int index, ExtractedExam updated) {
-    final list = List<ExtractedExam>.from(state.adjustedExams);
-    list[index] = updated;
-    state = state.copyWith(adjustedExams: list);
+  /// Updates **all** occurrences of [subject] with the given settings.
+  ///
+  /// This is used by the grouped subject card so that a single toggle/slider
+  /// change applies uniformly to every occurrence of the same subject.
+  void updateSubjectGroup(
+    String subject, {
+    required bool needsHomework,
+    required double homeworkHoursPerWeek,
+    required bool hasFinalExam,
+    required DateTime? endDate,
+  }) {
+    final list = state.adjustedClasses.map((c) {
+      if (c.subject == subject) {
+        return c.copyWith(
+          needsHomework: needsHomework,
+          homeworkHoursPerWeek: homeworkHoursPerWeek,
+          hasFinalExam: hasFinalExam,
+          endDate: endDate,
+        );
+      }
+      return c;
+    }).toList();
+    state = state.copyWith(adjustedClasses: list);
   }
 
   // ── Step 3 → 4 ──────────────────────────────────────────────────────────
 
   /// Generates the task list and transitions to [preview].
-  /// For Path A this also reads existing tasks so the slot-finder
-  /// can respect already-occupied time windows.
+  /// Reads existing tasks so the slot-finder can respect already-occupied
+  /// time windows.
   Future<void> generatePreview() async {
     try {
-      final List<Task> tasks;
-
-      if (state.importResult?.type == ScheduleType.weeklyTimetable) {
-        // Read the current task list from the stream provider synchronously
-        // (it's already cached by Riverpod after the home page loaded it).
-        final existingAsync = ref.read(tasksStreamProvider);
-        final existingTasks = existingAsync.valueOrNull ?? [];
-
-        tasks = await _generateWeeklyUseCase(
-          classes: state.adjustedClasses,
-          existingTasks: existingTasks,
-          importDate: DateTime.now(),
-        );
-      } else {
-        tasks = await _generateExamUseCase(
-          exams: state.adjustedExams,
-          today: DateTime.now(),
-        );
+      // Await the task stream so we never schedule over existing tasks.
+      // A timeout prevents hanging when Firestore is unreachable.
+      List<Task> existingTasks;
+      try {
+        existingTasks = await ref
+            .read(tasksStreamProvider.future)
+            .timeout(const Duration(seconds: 5));
+      } catch (_) {
+        // Stream timed out or errored — proceed with empty list rather
+        // than blocking the user indefinitely.
+        existingTasks = [];
       }
+
+      final tasks = await _generateWeeklyUseCase(
+        classes: state.adjustedClasses,
+        existingTasks: existingTasks,
+        importDate: DateTime.now(),
+      );
 
       state = state.copyWith(
         step: ScheduleImportStep.preview,
@@ -161,7 +172,7 @@ class ScheduleImportNotifier extends Notifier<ScheduleImportState> {
     } catch (e) {
       state = state.copyWith(
         step: ScheduleImportStep.error,
-        errorMessage: e.toString(),
+        errorMessage: _friendlyError(e),
       );
     }
   }
@@ -181,7 +192,7 @@ class ScheduleImportNotifier extends Notifier<ScheduleImportState> {
     } catch (e) {
       state = state.copyWith(
         step: ScheduleImportStep.error,
-        errorMessage: e.toString(),
+        errorMessage: _friendlyError(e),
       );
     }
   }
@@ -198,17 +209,41 @@ class ScheduleImportNotifier extends Notifier<ScheduleImportState> {
         state = state.copyWith(step: ScheduleImportStep.imagePicker);
       case ScheduleImportStep.timetableAdjust:
         state = state.copyWith(step: ScheduleImportStep.classSelection);
-      case ScheduleImportStep.examAdjust:
-        state = state.copyWith(step: ScheduleImportStep.imagePicker);
       case ScheduleImportStep.preview:
-        state = state.copyWith(
-          step: state.importResult?.type == ScheduleType.weeklyTimetable
-              ? ScheduleImportStep.timetableAdjust
-              : ScheduleImportStep.examAdjust,
-        );
+        state = state.copyWith(step: ScheduleImportStep.timetableAdjust);
       default:
         break;
     }
+  }
+
+  // ── Error formatting ─────────────────────────────────────────────────────
+
+  /// Converts a raw exception into a user-friendly message.
+  static String _friendlyError(Object e) {
+    final raw = e.toString();
+
+    // Strip the "Exception: " prefix added by Dart's Exception class.
+    const prefix = 'Exception: ';
+    if (raw.startsWith(prefix)) {
+      return raw.substring(prefix.length);
+    }
+
+    // If it looks like a networking / timeout issue
+    if (raw.contains('SocketException') ||
+        raw.contains('TimeoutException') ||
+        raw.contains('ClientException')) {
+      return 'Could not connect to the server. '
+          'Please check your internet connection and try again.';
+    }
+
+    // If it looks like a format / parsing crash
+    if (raw.contains('FormatException') || raw.contains('type \'Null\'')) {
+      return 'We couldn\'t read that schedule clearly. '
+          'Please ensure the image is clear and try again.';
+    }
+
+    // Generic fallback — never show raw stack traces to users.
+    return 'Something went wrong. Please try again.';
   }
 }
 

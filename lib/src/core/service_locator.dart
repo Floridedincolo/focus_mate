@@ -1,4 +1,5 @@
 import 'package:get_it/get_it.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 // Domain
 import '../domain/repositories/task_repository.dart';
@@ -11,7 +12,6 @@ import '../domain/usecases/app_usecases.dart';
 import '../domain/usecases/accessibility_usecases.dart';
 import '../domain/usecases/extract_schedule_from_image_use_case.dart';
 import '../domain/usecases/generate_weekly_tasks_use_case.dart';
-import '../domain/usecases/generate_exam_prep_tasks_use_case.dart';
 
 // Data
 import '../data/repositories/task_repository_impl.dart';
@@ -21,7 +21,8 @@ import '../data/repositories/schedule_import_repository_impl.dart';
 import '../data/datasources/task_data_source.dart';
 import '../data/datasources/app_data_source.dart';
 import '../data/datasources/accessibility_data_source.dart';
-import '../data/datasources/gemini_schedule_import_datasource.dart';
+import '../data/datasources/schedule_import_datasource.dart';
+import '../data/datasources/implementations/cloud_function_schedule_import_datasource.dart';
 import '../data/datasources/implementations/firestore_task_datasource.dart';
 import '../data/datasources/implementations/native_app_datasource.dart';
 import '../data/datasources/implementations/shared_preferences_datasource.dart';
@@ -127,26 +128,27 @@ Future<void> setupServiceLocator() async {
 
   // ============ SCHEDULE IMPORT ============
 
-  // Data source — uses Firebase Vertex AI (no client-side API key required)
-  getIt.registerSingleton<GeminiScheduleImportDataSource>(
-    GeminiScheduleImportDataSource(),
+  // Data source — calls the `extractSchedule` Cloud Function which handles
+  // authentication, rate limiting, image validation, and prompt management
+  // server-side. See functions/src/index.ts.
+  getIt.registerSingleton<ScheduleImportDataSource>(
+    CloudFunctionScheduleImportDataSource(
+      FirebaseFunctions.instanceFor(region: 'europe-west1'),
+    ),
   );
 
   getIt.registerSingleton<ScheduleImportRepository>(
-    ScheduleImportRepositoryImpl(getIt<GeminiScheduleImportDataSource>()),
+    ScheduleImportRepositoryImpl(getIt<ScheduleImportDataSource>()),
   );
 
   // Use cases
   getIt.registerSingleton(
     ExtractScheduleFromImageUseCase(getIt<ScheduleImportRepository>()),
   );
-  // GenerateWeeklyTasksUseCase and GenerateExamPrepTasksUseCase are stateless
-  // value objects — registered as factory so each call gets a fresh _nextId counter.
+  // GenerateWeeklyTasksUseCase is a stateless value object — registered as
+  // factory so each call gets a fresh instance.
   getIt.registerFactory<GenerateWeeklyTasksUseCase>(
     GenerateWeeklyTasksUseCase.new,
-  );
-  getIt.registerFactory<GenerateExamPrepTasksUseCase>(
-    GenerateExamPrepTasksUseCase.new,
   );
 }
 

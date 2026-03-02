@@ -7,7 +7,6 @@ import '../../../presentation/models/schedule_import_state.dart';
 import 'schedule_loading_page.dart';
 import 'class_selection_page.dart';
 import 'timetable_adjustment_page.dart';
-import 'exam_adjustment_page.dart';
 
 /// Step 1 — Entry point for the Schedule Import wizard.
 ///
@@ -47,10 +46,6 @@ class _ScheduleImportPageState extends ConsumerState<ScheduleImportPage> {
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (_) => const TimetableAdjustmentPage()),
           );
-        case ScheduleImportStep.examAdjust:
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const ExamAdjustmentPage()),
-          );
         case ScheduleImportStep.error:
           // Pop back to this page (loading page is on top) and show error
           Navigator.of(context).popUntil((r) => r.isFirst || r.settings.name == '/');
@@ -69,7 +64,7 @@ class _ScheduleImportPageState extends ConsumerState<ScheduleImportPage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
-              'Upload a photo of your weekly timetable or exam schedule.',
+              'Upload a photo of your weekly timetable.',
               style: TextStyle(fontSize: 16),
             ),
             const SizedBox(height: 24),

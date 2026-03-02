@@ -14,7 +14,7 @@ import 'src/presentation/pages/add_task.dart';
 import 'src/presentation/pages/stats_page.dart';
 import 'src/presentation/pages/profile.dart';
 import 'src/presentation/pages/schedule_import/schedule_import_page.dart';
-
+import 'package:firebase_auth/firebase_auth.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -38,6 +38,8 @@ void main() async {
     // Initialize Firebase
     await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform);
+
+    await FirebaseAuth.instance.signInAnonymously();
 
     FirebaseFirestore.instance.settings = const Settings(
       persistenceEnabled: true,

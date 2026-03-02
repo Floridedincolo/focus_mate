@@ -50,7 +50,7 @@ void main() {
       );
     });
 
-    test('weekly task occurs on same day of week every 7 days', () {
+    test('weekly task occurs on flagged weekday from start date onwards', () {
       final startDate = DateTime(2024, 2, 15); // Thursday
       final task = Task(
         id: '3',
@@ -58,21 +58,27 @@ void main() {
         oneTime: false,
         startDate: startDate,
         repeatType: RepeatType.weekly,
+        days: {'Thu': true},
       );
 
+      // On the start date (Thursday) – should match
       expect(occursOnTask(task, startDate), isTrue);
+      // Next Thursday (7 days later)
       expect(
         occursOnTask(task, startDate.add(const Duration(days: 7))),
         isTrue,
       );
+      // Two weeks later (Thursday)
       expect(
         occursOnTask(task, startDate.add(const Duration(days: 14))),
         isTrue,
       );
+      // Friday – not flagged
       expect(
         occursOnTask(task, startDate.add(const Duration(days: 1))),
         isFalse,
       );
+      // Before start date
       expect(
         occursOnTask(task, startDate.subtract(const Duration(days: 1))),
         isFalse,
@@ -88,13 +94,13 @@ void main() {
         startDate: startDate,
         repeatType: RepeatType.custom,
         days: {
-          'Monday': true,
-          'Tuesday': false,
-          'Wednesday': true,
-          'Thursday': false,
-          'Friday': true,
-          'Saturday': false,
-          'Sunday': false,
+          'Mon': true,
+          'Tue': false,
+          'Wed': true,
+          'Thu': false,
+          'Fri': true,
+          'Sat': false,
+          'Sun': false,
         },
       );
 
