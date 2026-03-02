@@ -1,10 +1,10 @@
 import 'package:flutter/foundation.dart';
 import '../../domain/entities/schedule_import_result.dart';
 import '../../domain/repositories/schedule_import_repository.dart';
-import '../datasources/gemini_schedule_import_datasource.dart';
+import '../datasources/schedule_import_datasource.dart';
 
 class ScheduleImportRepositoryImpl implements ScheduleImportRepository {
-  final GeminiScheduleImportDataSource _dataSource;
+  final ScheduleImportDataSource _dataSource;
 
   ScheduleImportRepositoryImpl(this._dataSource);
 

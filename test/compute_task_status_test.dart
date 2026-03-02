@@ -57,13 +57,13 @@ void main() {
           startDate: startDate,
           repeatType: RepeatType.custom,
           days: {
-            'Monday': true,
-            'Tuesday': false,
-            'Wednesday': false,
-            'Thursday': false,
-            'Friday': false,
-            'Saturday': false,
-            'Sunday': false,
+            'Mon': true,
+            'Tue': false,
+            'Wed': false,
+            'Thu': false,
+            'Fri': false,
+            'Sat': false,
+            'Sun': false,
           },
         );
 

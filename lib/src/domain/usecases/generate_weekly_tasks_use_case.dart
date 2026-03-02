@@ -23,11 +23,17 @@ const _kHomeworkWindowEnd = 22;   // 22:00
 ///    subject (not per occurrence). The homework hours are taken from
 ///    the first occurrence that has [ExtractedClass.needsHomework] set.
 ///
-/// 3. **Deterministic IDs** – IDs follow a slug format so that
+/// 3. **Exam tasks** – If any occurrence of a subject has
+///    [ExtractedClass.hasFinalExam] == true and a non-null
+///    [ExtractedClass.examDate], a one-time "📝 Examen: <subject>"
+///    task is generated at that date (default 09:00–11:00).
+///
+/// 4. **Deterministic IDs** – IDs follow a slug format so that
 ///    re-importing the same schedule overwrites old tasks instead of
 ///    creating duplicates:
 ///      • Class: `"ai_class_<subject>_<HH>_<MM>_<eHH>_<eMM>"`
 ///      • Study: `"ai_study_<subject>"`  (per session: `"…_<idx>"`)
+///      • Exam:  `"ai_exam_<subject>"`
 class GenerateWeeklyTasksUseCase {
   /// Builds a deterministic, URL-safe slug from an arbitrary string.
   static String _slugify(String input) =>
@@ -102,6 +108,29 @@ class GenerateWeeklyTasksUseCase {
           }
         }
       }
+    }
+
+    // ── 4. Generate one-time exam tasks for subjects with hasFinalExam ──
+    final Map<String, ExtractedClass> examBySubject = {};
+    for (final c in classes.where((c) => c.hasFinalExam && c.endDate != null)) {
+      examBySubject.putIfAbsent(c.subject, () => c);
+    }
+
+    for (final entry in examBySubject.entries) {
+      final subject = entry.key;
+      final representative = entry.value;
+      final slug = _slugify(subject);
+
+      result.add(Task(
+        id: 'ai_exam_$slug',
+        title: '📝 Examen: $subject',
+        oneTime: true,
+        startDate: representative.endDate!,
+        startTime: const TimeOfDay(hour: 9, minute: 0),
+        endTime: const TimeOfDay(hour: 11, minute: 0),
+        repeatType: null,
+        days: const {},
+      ));
     }
 
     return result;

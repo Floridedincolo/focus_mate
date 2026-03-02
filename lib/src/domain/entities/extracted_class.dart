@@ -17,6 +17,13 @@ class ExtractedClass {
   /// Total homework hours per week the student estimates for this subject.
   final double homeworkHoursPerWeek;
 
+  /// Whether this subject has a final exam.
+  final bool hasFinalExam;
+
+  /// End date for weekly tasks (or exam date if [hasFinalExam] is true).
+  /// Defaults to 14 weeks from import if not set.
+  final DateTime? endDate;
+
   const ExtractedClass({
     required this.subject,
     required this.day,
@@ -25,6 +32,8 @@ class ExtractedClass {
     this.room,
     this.needsHomework = false,
     this.homeworkHoursPerWeek = 1.0,
+    this.hasFinalExam = false,
+    this.endDate,
   });
 
   ExtractedClass copyWith({
@@ -35,6 +44,8 @@ class ExtractedClass {
     String? room,
     bool? needsHomework,
     double? homeworkHoursPerWeek,
+    bool? hasFinalExam,
+    DateTime? endDate,
   }) {
     return ExtractedClass(
       subject: subject ?? this.subject,
@@ -44,6 +55,23 @@ class ExtractedClass {
       room: room ?? this.room,
       needsHomework: needsHomework ?? this.needsHomework,
       homeworkHoursPerWeek: homeworkHoursPerWeek ?? this.homeworkHoursPerWeek,
+      hasFinalExam: hasFinalExam ?? this.hasFinalExam,
+      endDate: endDate ?? this.endDate,
+    );
+  }
+
+  /// Returns a copy with [endDate] explicitly set to `null`.
+  ExtractedClass clearEndDate() {
+    return ExtractedClass(
+      subject: subject,
+      day: day,
+      startTime: startTime,
+      endTime: endTime,
+      room: room,
+      needsHomework: needsHomework,
+      homeworkHoursPerWeek: homeworkHoursPerWeek,
+      hasFinalExam: hasFinalExam,
+      endDate: null,
     );
   }
 

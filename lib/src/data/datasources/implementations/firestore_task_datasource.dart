@@ -192,28 +192,28 @@ class FirebaseRemoteTaskDataSource implements RemoteTaskDataSource {
     return count;
   }
 
+  /// 3-letter weekday abbreviations aligned with [DateTime.weekday].
+  static const _kWeekdayAbbreviations = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
   /// Determines whether a task (at DTO level) occurs on [date].
   bool _taskOccursOn(TaskDTO task, DateTime date) {
-    final targetDay = date.weekday;
     final isSameDay = date.year == task.startDate.year &&
         date.month == task.startDate.month &&
         date.day == task.startDate.day;
 
     if (task.oneTime) return isSameDay;
 
+    if (date.isBefore(task.startDate)) return false;
+
+    final dayAbbr = _kWeekdayAbbreviations[date.weekday - 1];
+
     switch (task.repeatType) {
       case 'daily':
-        return !date.isBefore(task.startDate);
+        return true;
       case 'weekly':
-        final difference = date.difference(task.startDate).inDays;
-        return difference >= 0 && difference % 7 == 0;
+        return task.days[dayAbbr] == true;
       case 'custom':
-        final weekdays = [
-          "Monday", "Tuesday", "Wednesday", "Thursday",
-          "Friday", "Saturday", "Sunday",
-        ];
-        return task.days[weekdays[targetDay - 1]] == true &&
-            !date.isBefore(task.startDate);
+        return task.days[dayAbbr] == true;
       default:
         return false;
     }

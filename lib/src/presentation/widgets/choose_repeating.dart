@@ -20,13 +20,13 @@ class ChooseRepeating extends StatefulWidget {
 class _ChooseRepeatingState extends State<ChooseRepeating> {
   late RepeatType _repeatType;
   Map<String, bool> days = {
-    'Monday': false,
-    'Tuesday': false,
-    'Wednesday': false,
-    'Thursday': false,
-    'Friday': false,
-    'Saturday': false,
-    'Sunday': false,
+    'Mon': false,
+    'Tue': false,
+    'Wed': false,
+    'Thu': false,
+    'Fri': false,
+    'Sat': false,
+    'Sun': false,
   };
 
   @override
