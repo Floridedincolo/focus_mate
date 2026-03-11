@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../core/service_locator.dart';
 import '../../domain/entities/task.dart';
@@ -8,10 +9,12 @@ import '../../domain/repositories/task_repository.dart';
 import '../../domain/usecases/compute_task_status.dart';
 import '../../domain/extensions/task_filter.dart';
 import '../providers/task_providers.dart';
+import '../providers/friend_providers.dart';
 import '../models/calendar_icon_data.dart';
 import '../widgets/calendar_icon_widget.dart';
 import '../widgets/task_item.dart';
 import 'schedule_import/schedule_import_page.dart';
+import 'friends/friends_page.dart';
 
 class Home extends ConsumerStatefulWidget {
   const Home({super.key});
@@ -188,6 +191,23 @@ class _HomeState extends ConsumerState<Home> {
           ],
         ),
         actions: [
+          // Friends button with badge
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Center(
+              child: Tooltip(
+                message: 'Friends',
+                child: GestureDetector(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const FriendsPage(),
+                    ),
+                  ),
+                  child: _FriendsBadgeIcon(),
+                ),
+              ),
+            ),
+          ),
           // Schedule Import button
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -214,10 +234,7 @@ class _HomeState extends ConsumerState<Home> {
             padding: const EdgeInsets.only(right: 16),
             child: GestureDetector(
               onTap: () => Navigator.pushNamed(context, '/profile'),
-              child: const CircleAvatar(
-                radius: 22,
-                backgroundImage: AssetImage('assets/button_bg.png'),
-              ),
+              child: const _ProfileAvatar(),
             ),
           ),
         ],
@@ -492,3 +509,68 @@ class _HomeState extends ConsumerState<Home> {
   }
 }
 
+/// People icon with a red badge dot when there are pending incoming requests.
+class _FriendsBadgeIcon extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final incomingAsync = ref.watch(watchIncomingRequestsProvider);
+    final count = incomingAsync.valueOrNull?.length ?? 0;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        const Icon(Icons.people_outline, color: Colors.white70, size: 24),
+        if (count > 0)
+          Positioned(
+            right: -4,
+            top: -4,
+            child: Container(
+              width: 16,
+              height: 16,
+              decoration: const BoxDecoration(
+                color: Colors.redAccent,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                count > 9 ? '9+' : '$count',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 9,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Small avatar showing the current user's photo or initials.
+class _ProfileAvatar extends StatelessWidget {
+  const _ProfileAvatar();
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    final photoUrl = user?.photoURL;
+    final name = user?.displayName ?? '';
+
+    return CircleAvatar(
+      radius: 22,
+      backgroundColor: Colors.blueAccent.withValues(alpha: 0.2),
+      backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
+      child: photoUrl == null
+          ? Text(
+              name.isNotEmpty ? name[0].toUpperCase() : '?',
+              style: const TextStyle(
+                color: Colors.blueAccent,
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            )
+          : null,
+    );
+  }
+}

@@ -1,5 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 import '../providers/task_providers.dart';
 
@@ -16,6 +19,11 @@ class _ProfileState extends ConsumerState<Profile> {
   @override
   Widget build(BuildContext context) {
     final tasksAsyncValue = ref.watch(tasksStreamProvider);
+    final user = FirebaseAuth.instance.currentUser;
+
+    final displayName = user?.displayName ?? 'FocusMate User';
+    final email = user?.email ?? '';
+    final photoUrl = user?.photoURL;
 
     int activeTasks = 0;
     int flawlessDays = 0;
@@ -88,23 +96,36 @@ class _ProfileState extends ConsumerState<Profile> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    const CircleAvatar(
+                    CircleAvatar(
                       radius: 50.0,
                       backgroundColor: Colors.white12,
+                      backgroundImage:
+                          photoUrl != null ? NetworkImage(photoUrl) : null,
+                      child: photoUrl == null
+                          ? Text(
+                              displayName.isNotEmpty
+                                  ? displayName[0].toUpperCase()
+                                  : '?',
+                              style: const TextStyle(
+                                  color: Colors.blueAccent,
+                                  fontSize: 36,
+                                  fontWeight: FontWeight.bold),
+                            )
+                          : null,
                     ),
                     const SizedBox(height: 10),
-                    const Text(
-                      "Teodor Marciuc",
-                      style: TextStyle(
+                    Text(
+                      displayName,
+                      style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
                         fontSize: 20.0,
                       ),
                     ),
                     const SizedBox(height: 5),
-                    const Text(
-                      "teo@example.com",
-                      style: TextStyle(color: Colors.white70),
+                    Text(
+                      email,
+                      style: const TextStyle(color: Colors.white70),
                     ),
                     const Divider(
                       color: Colors.white24,
@@ -176,6 +197,40 @@ class _ProfileState extends ConsumerState<Profile> {
                       },
                     ),
                     const SizedBox(height: 25),
+                    _buildSectionTitle("Social"),
+                    const SizedBox(height: 10),
+                    _buildPreferenceRow(
+                      icon: Icons.people,
+                      label: "Friends",
+                      trailing: const Icon(
+                          Icons.arrow_forward_ios,
+                          color: Colors.white70,
+                          size: 15),
+                      onTap: () => Navigator.of(context).pushNamed('/friends'),
+                    ),
+                    const SizedBox(height: 10),
+                    _buildPreferenceRow(
+                      icon: Icons.calendar_month,
+                      label: "Plan a Meeting",
+                      trailing: const Icon(
+                          Icons.arrow_forward_ios,
+                          color: Colors.white70,
+                          size: 15),
+                      onTap: () => Navigator.of(context).pushNamed('/plan-meeting'),
+                    ),
+                    if (kDebugMode) ...[
+                      const SizedBox(height: 10),
+                      _buildPreferenceRow(
+                        icon: Icons.bug_report,
+                        label: "🛠 Debug: Friends Testing",
+                        trailing: const Icon(
+                            Icons.arrow_forward_ios,
+                            color: Colors.orangeAccent,
+                            size: 15),
+                        onTap: () => Navigator.of(context).pushNamed('/debug-friends'),
+                      ),
+                    ],
+                    const SizedBox(height: 25),
                     _buildSectionTitle("Preferences"),
                     const SizedBox(height: 10),
                     _buildPreferenceRow(
@@ -221,6 +276,40 @@ class _ProfileState extends ConsumerState<Profile> {
                           setState(
                               () => notificationsEnabled = value);
                         },
+                      ),
+                    ),
+                    const SizedBox(height: 25),
+
+                    // ── Sign Out ────────────────────────────────
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          await GoogleSignIn().signOut();
+                          await FirebaseAuth.instance.signOut();
+                          if (context.mounted) {
+                            Navigator.of(context, rootNavigator: true)
+                                .pushNamedAndRemoveUntil('/', (_) => false);
+                          }
+                        },
+                        icon: const Icon(Icons.logout,
+                            color: Colors.redAccent, size: 20),
+                        label: const Text(
+                          'Sign Out',
+                          style: TextStyle(
+                            color: Colors.redAccent,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(
+                              color: Colors.redAccent, width: 1),
+                          shape: RoundedRectangleBorder(
+                              borderRadius:
+                                  BorderRadius.circular(12)),
+                        ),
                       ),
                     ),
                   ],
@@ -321,29 +410,33 @@ class _ProfileState extends ConsumerState<Profile> {
     required IconData icon,
     required String label,
     required Widget trailing,
+    VoidCallback? onTap,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF2A2A2A),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      padding:
-          const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.white70, size: 20),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF2A2A2A),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          children: [
+            Icon(icon, color: Colors.white70, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold),
+              ),
             ),
-          ),
-          trailing,
-        ],
+            trailing,
+          ],
+        ),
       ),
     );
   }
