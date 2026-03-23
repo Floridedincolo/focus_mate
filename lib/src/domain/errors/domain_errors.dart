@@ -57,3 +57,10 @@ class AiSuggestionException extends DomainException {
   AiSuggestionException(String message, [Exception? originalException])
       : super(message, originalException);
 }
+
+/// Thrown when the Google Places API safety rate-limit is exceeded.
+class PlacesRateLimitException extends DomainException {
+  PlacesRateLimitException(String message, [Exception? originalException])
+      : super(message, originalException);
+}
+

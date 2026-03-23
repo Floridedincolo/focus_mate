@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import '../../core/service_locator.dart';
+import '../../data/datasources/task_data_source.dart';
 import '../providers/task_providers.dart';
 
 class Profile extends ConsumerStatefulWidget {
@@ -101,6 +103,8 @@ class _ProfileState extends ConsumerState<Profile> {
                       backgroundColor: Colors.white12,
                       backgroundImage:
                           photoUrl != null ? NetworkImage(photoUrl) : null,
+                      onBackgroundImageError:
+                          photoUrl != null ? (_, __) {} : null,
                       child: photoUrl == null
                           ? Text(
                               displayName.isNotEmpty
@@ -286,6 +290,11 @@ class _ProfileState extends ConsumerState<Profile> {
                       height: 48,
                       child: OutlinedButton.icon(
                         onPressed: () async {
+                          // Clear local task cache before sign-out so
+                          // the next user never sees stale data.
+                          await getIt<LocalTaskDataSource>().clearCache();
+                          ref.invalidate(tasksStreamProvider);
+
                           await GoogleSignIn().signOut();
                           await FirebaseAuth.instance.signOut();
                           if (context.mounted) {

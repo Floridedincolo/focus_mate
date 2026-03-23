@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'firebase_options.dart';
 import 'src/core/service_locator.dart';
@@ -19,6 +20,8 @@ import 'src/presentation/pages/schedule_import/schedule_import_page.dart';
 import 'src/presentation/pages/friends/friends_page.dart';
 import 'src/presentation/pages/friends/plan_meeting_page.dart';
 import 'src/presentation/pages/debug/debug_friends_panel.dart';
+import 'src/presentation/pages/setup_profile_page.dart';
+import 'src/domain/repositories/user_location_repository.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -40,6 +43,9 @@ void main() async {
   };
 
   try {
+    // Load environment variables (.env)
+    await dotenv.load(fileName: ".env");
+
     // Initialize Firebase
     await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform);
@@ -135,14 +141,39 @@ class _AuthGate extends StatelessWidget {
           );
         }
 
-        // User is signed in → sync profile & show the app
+        // User is signed in → sync profile & check onboarding
         if (snapshot.hasData) {
           _syncProfile(snapshot.data!);
-          return const MainPage();
+          return const _OnboardingGate();
         }
 
         // Not signed in → show login
         return const LoginPage();
+      },
+    );
+  }
+}
+
+/// Checks whether the user has completed the initial location setup.
+/// Shows [SetupProfilePage] on first run, [MainPage] afterwards.
+class _OnboardingGate extends StatelessWidget {
+  const _OnboardingGate();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: getIt<UserLocationRepository>().hasCompletedSetup(),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            backgroundColor: Color(0xFF0D0D0D),
+            body: Center(
+              child: CircularProgressIndicator(color: Colors.blueAccent),
+            ),
+          );
+        }
+        if (snap.data == true) return const MainPage();
+        return const SetupProfilePage();
       },
     );
   }

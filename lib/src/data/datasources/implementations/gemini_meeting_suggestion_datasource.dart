@@ -3,8 +3,7 @@ import 'dart:convert';
 import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter/material.dart';
 
-import '../../../domain/entities/meeting_location.dart';
-import '../../../domain/entities/meeting_proposal.dart';
+import '../../dtos/gemini_raw_proposal.dart';
 import '../../../domain/entities/task.dart';
 import '../../../domain/errors/domain_errors.dart';
 import '../meeting_suggestion_data_source.dart';
@@ -12,7 +11,9 @@ import '../meeting_suggestion_data_source.dart';
 /// Gemini (Vertex AI) implementation of [MeetingSuggestionDataSource].
 ///
 /// Uses the Firebase AI SDK to send a prompt containing all members' schedules
-/// and returns parsed [MeetingProposal]s.
+/// and returns parsed [GeminiRawProposal]s with GPS midpoint + place keyword.
+///
+/// The repository layer resolves the actual place name via [LocationSearchService].
 class GeminiMeetingSuggestionDataSource implements MeetingSuggestionDataSource {
   static const _kTimeoutDuration = Duration(seconds: 45);
 
@@ -23,13 +24,13 @@ class GeminiMeetingSuggestionDataSource implements MeetingSuggestionDataSource {
       model: 'gemini-2.0-flash',
       generationConfig: GenerationConfig(
         responseMimeType: 'application/json',
-        temperature: 0.4, // slightly creative for location suggestions
+        temperature: 0.3,
       ),
     );
   }
 
   @override
-  Future<List<MeetingProposal>> suggestMeetings({
+  Future<List<GeminiRawProposal>> suggestMeetings({
     required List<List<Task>> memberSchedules,
     required int meetingDurationMinutes,
     required DateTime targetDate,
@@ -80,11 +81,14 @@ class GeminiMeetingSuggestionDataSource implements MeetingSuggestionDataSource {
         '${targetDate.day.toString().padLeft(2, '0')}';
 
     final buffer = StringBuffer();
+    buffer.writeln('You are a meeting scheduling assistant.');
+    buffer.writeln();
     buffer.writeln(
       'Analyse the following schedules for ${memberSchedules.length} people.',
     );
     buffer.writeln('Date: $weekday, $dateStr');
     buffer.writeln('Requested meeting duration: $meetingDurationMinutes minutes');
+    buffer.writeln('City context: Iași, Romania (latitude ≈ 47.16, longitude ≈ 27.58)');
     buffer.writeln();
     buffer.writeln('Schedules:');
 
@@ -101,27 +105,36 @@ class GeminiMeetingSuggestionDataSource implements MeetingSuggestionDataSource {
     }
 
     buffer.writeln();
-    buffer.writeln('Task:');
+    buffer.writeln('Instructions:');
     buffer.writeln(
-      '1. Find $maxProposals optimal time slots for a meeting of '
+      '1. Find $maxProposals optimal time slots of '
       '$meetingDurationMinutes minutes where ALL members are free.',
     );
     buffer.writeln(
-      '2. Based on context (time of day, preceding activities), '
-      'suggest a location type (e.g. Coffee Shop, Restaurant, Park, Library).',
+      '2. For each slot, compute a logical GPS midpoint (targetLatitude, '
+      'targetLongitude) within the city where the group could meet. '
+      'Use coordinates in the Iași area.',
     );
     buffer.writeln(
-      '3. Respond EXCLUSIVELY in JSON following the schema below.',
+      '3. Based on the time of day and context, choose a place category '
+      'keyword: one of "cafe", "restaurant", "park", "library", "bar", "coworking".',
+    );
+    buffer.writeln(
+      '4. DO NOT invent specific place names — only return the keyword.',
+    );
+    buffer.writeln(
+      '5. Respond EXCLUSIVELY in JSON matching this schema:',
     );
     buffer.writeln();
-    buffer.writeln('JSON schema:');
     buffer.writeln('''{
   "proposals": [
     {
       "startTime": "HH:mm",
       "endTime": "HH:mm",
-      "locationName": "Coffee Shop",
-      "rationale": "Brief explanation"
+      "targetLatitude": 47.1560,
+      "targetLongitude": 27.5885,
+      "placeKeyword": "cafe",
+      "rationale": "Brief explanation of why this slot and place type"
     }
   ]
 }''');
@@ -134,8 +147,7 @@ class GeminiMeetingSuggestionDataSource implements MeetingSuggestionDataSource {
 
   // ── Response Parsing ────────────────────────────────────────────────────
 
-  List<MeetingProposal> _parseResponse(String raw, DateTime targetDate) {
-    // Strip markdown fences if the model wraps the JSON
+  List<GeminiRawProposal> _parseResponse(String raw, DateTime targetDate) {
     var cleaned = raw.trim();
     if (cleaned.startsWith('```')) {
       cleaned = cleaned
@@ -156,19 +168,22 @@ class GeminiMeetingSuggestionDataSource implements MeetingSuggestionDataSource {
     final proposals = json['proposals'] as List<dynamic>? ?? [];
     final date = DateTime(targetDate.year, targetDate.month, targetDate.day);
 
-    return proposals.map<MeetingProposal>((p) {
+    return proposals.map<GeminiRawProposal>((p) {
       final map = p as Map<String, dynamic>;
       final start = _parseTimeStr(map['startTime'] as String? ?? '12:00', date);
       final end = _parseTimeStr(map['endTime'] as String? ?? '13:00', date);
-      final locName = map['locationName'] as String? ?? 'Suggested location';
+      final lat = (map['targetLatitude'] as num?)?.toDouble() ?? 47.1560;
+      final lng = (map['targetLongitude'] as num?)?.toDouble() ?? 27.5885;
+      final keyword = map['placeKeyword'] as String? ?? 'cafe';
       final rationale = map['rationale'] as String?;
 
-      return MeetingProposal(
+      return GeminiRawProposal(
         startTime: start,
         endTime: end,
-        location: MeetingLocation(name: locName),
-        source: ProposalSource.ai,
-        aiRationale: rationale,
+        targetLatitude: lat,
+        targetLongitude: lng,
+        placeKeyword: keyword,
+        rationale: rationale,
       );
     }).toList();
   }
@@ -177,7 +192,8 @@ class GeminiMeetingSuggestionDataSource implements MeetingSuggestionDataSource {
     final parts = hhmm.split(':');
     final hour = int.tryParse(parts[0]) ?? 12;
     final minute = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
-    return date.copyWith(hour: hour, minute: minute, second: 0, millisecond: 0, microsecond: 0);
+    return date.copyWith(
+        hour: hour, minute: minute, second: 0, millisecond: 0, microsecond: 0);
   }
 }
 

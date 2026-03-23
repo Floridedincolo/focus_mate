@@ -64,6 +64,7 @@ android/app/src/main/assets/public.pem
 *.jks
 key.properties
 android/key.properties
+.env
 
 # -----------------------
 # iOS

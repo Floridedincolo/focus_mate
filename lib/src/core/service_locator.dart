@@ -9,6 +9,7 @@ import '../domain/repositories/accessibility_repository.dart';
 import '../domain/repositories/schedule_import_repository.dart';
 import '../domain/repositories/friend_repository.dart';
 import '../domain/repositories/meeting_suggestion_repository.dart';
+import '../domain/repositories/user_location_repository.dart';
 import '../domain/usecases/task_usecases.dart';
 import '../domain/usecases/app_usecases.dart';
 import '../domain/usecases/accessibility_usecases.dart';
@@ -25,6 +26,7 @@ import '../data/repositories/accessibility_repository_impl.dart';
 import '../data/repositories/schedule_import_repository_impl.dart';
 import '../data/repositories/friend_repository_impl.dart';
 import '../data/repositories/meeting_suggestion_repository_impl.dart';
+import '../data/repositories/user_location_repository_impl.dart';
 import '../data/datasources/task_data_source.dart';
 import '../data/datasources/app_data_source.dart';
 import '../data/datasources/accessibility_data_source.dart';
@@ -38,6 +40,10 @@ import '../data/datasources/implementations/shared_preferences_datasource.dart';
 import '../data/datasources/implementations/method_channel_accessibility_datasource.dart';
 import '../data/datasources/implementations/firestore_friend_datasource.dart';
 import '../data/datasources/implementations/gemini_meeting_suggestion_datasource.dart';
+import '../data/datasources/implementations/google_places_search_service.dart';
+import '../data/datasources/location_search_service.dart';
+import '../data/datasources/transit_route_service.dart';
+import '../data/datasources/implementations/google_transit_route_service.dart';
 
 final getIt = GetIt.instance;
 
@@ -173,13 +179,22 @@ Future<void> setupServiceLocator() async {
     GeminiMeetingSuggestionDataSource(),
   );
 
+  // Location search — real Google Places API with safety rate limiter.
+  // Swap to MockLocationSearchService() for offline development.
+  getIt.registerSingleton<LocationSearchService>(
+    GooglePlacesSearchService(),
+  );
+
   // Repositories
   getIt.registerSingleton<FriendRepository>(
     FriendRepositoryImpl(getIt<FriendDataSource>()),
   );
 
   getIt.registerSingleton<MeetingSuggestionRepository>(
-    MeetingSuggestionRepositoryImpl(getIt<MeetingSuggestionDataSource>()),
+    MeetingSuggestionRepositoryImpl(
+      getIt<MeetingSuggestionDataSource>(),
+      getIt<LocationSearchService>(),
+    ),
   );
 
   // Friend use cases
@@ -208,6 +223,16 @@ Future<void> setupServiceLocator() async {
   );
   getIt.registerSingleton(
     SuggestMeetingAiUseCase(getIt<MeetingSuggestionRepository>()),
+  );
+
+  // ============ USER LOCATIONS ============
+  getIt.registerSingleton<UserLocationRepository>(
+    UserLocationRepositoryImpl(),
+  );
+
+  // ============ TRANSIT ROUTE SERVICE ============
+  getIt.registerSingleton<TransitRouteService>(
+    GoogleTransitRouteService(),
   );
 }
 

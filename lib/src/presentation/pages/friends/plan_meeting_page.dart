@@ -578,6 +578,11 @@ class _ResultsStepState extends ConsumerState<_ResultsStep> {
       startDate: proposal.startTime,
       startTime: TimeOfDay.fromDateTime(proposal.startTime),
       endTime: TimeOfDay.fromDateTime(proposal.endTime),
+      locationName: proposal.location.name != 'Location TBD'
+          ? proposal.location.name
+          : null,
+      locationLatitude: proposal.location.latitude,
+      locationLongitude: proposal.location.longitude,
     );
   }
 
