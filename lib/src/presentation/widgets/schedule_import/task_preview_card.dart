@@ -3,10 +3,21 @@ import 'package:intl/intl.dart';
 import '../../../domain/entities/task.dart';
 
 /// Read-only card that previews a [Task] before it is saved to Firestore.
+///
+/// Displays the location (if set) and offers an edit-location callback.
 class TaskPreviewCard extends StatelessWidget {
   final Task task;
 
-  const TaskPreviewCard({super.key, required this.task});
+  /// Called when the user taps the location edit icon. The parent is
+  /// responsible for showing a dialog / autocomplete and calling
+  /// `notifier.updatePreviewTaskLocation(index, newName)`.
+  final VoidCallback? onEditLocation;
+
+  const TaskPreviewCard({
+    super.key,
+    required this.task,
+    this.onEditLocation,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -23,7 +34,41 @@ class TaskPreviewCard extends StatelessWidget {
           task.title,
           style: const TextStyle(fontWeight: FontWeight.w600),
         ),
-        subtitle: Text(_subtitle()),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_subtitle()),
+            if (task.locationName != null && task.locationName!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(
+                  children: [
+                    const Icon(Icons.location_on,
+                        size: 14, color: Colors.blueAccent),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        task.locationName!,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+        trailing: onEditLocation != null
+            ? IconButton(
+                icon: const Icon(Icons.edit_location_alt_outlined, size: 20),
+                tooltip: 'Change location',
+                onPressed: onEditLocation,
+              )
+            : null,
       ),
     );
   }

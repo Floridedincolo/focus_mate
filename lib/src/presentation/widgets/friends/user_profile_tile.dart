@@ -22,6 +22,8 @@ class UserProfileTile extends StatelessWidget {
         backgroundColor: Colors.blueAccent.withValues(alpha: 0.2),
         backgroundImage:
             profile.photoUrl != null ? NetworkImage(profile.photoUrl!) : null,
+        onBackgroundImageError:
+            profile.photoUrl != null ? (_, __) {} : null,
         child: profile.photoUrl == null
             ? Text(
                 profile.displayName.isNotEmpty

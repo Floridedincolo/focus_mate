@@ -13,8 +13,9 @@ import '../providers/friend_providers.dart';
 import '../models/calendar_icon_data.dart';
 import '../widgets/calendar_icon_widget.dart';
 import '../widgets/task_item.dart';
-import 'schedule_import/schedule_import_page.dart';
+import 'add_task.dart';
 import 'friends/friends_page.dart';
+import 'schedule_import/schedule_import_page.dart';
 
 class Home extends ConsumerStatefulWidget {
   const Home({super.key});
@@ -157,7 +158,7 @@ class _HomeState extends ConsumerState<Home> {
                       offset: const Offset(1, -7),
                       child: Text(
                         suffix,
-                        textScaleFactor: 0.7,
+                        textScaler: const TextScaler.linear(0.7),
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
@@ -414,6 +415,15 @@ class _HomeState extends ConsumerState<Home> {
                               return TaskItem(
                                 task: displayTask,
                                 statusForSelectedDay: status,
+                                onEdit: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => AddTaskMenu(
+                                        existingTask: task,
+                                      ),
+                                    ),
+                                  );
+                                },
                                 onMarkCompleted: () async {
                                   final isCompleted = status == TaskCompletionStatus.completed;
                                   final newStatus =
@@ -498,12 +508,12 @@ class _HomeState extends ConsumerState<Home> {
     );
   }
 
-  /// Compares two task lists by ID to detect if the set of tasks changed.
+  /// Compares two task lists to detect if any task data changed.
   bool _taskListsEqual(List<Task>? a, List<Task>? b) {
     if (a == null || b == null) return false;
     if (a.length != b.length) return false;
     for (int i = 0; i < a.length; i++) {
-      if (a[i].id != b[i].id) return false;
+      if (a[i] != b[i]) return false;
     }
     return true;
   }
@@ -561,6 +571,7 @@ class _ProfileAvatar extends StatelessWidget {
       radius: 22,
       backgroundColor: Colors.blueAccent.withValues(alpha: 0.2),
       backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
+      onBackgroundImageError: photoUrl != null ? (_, __) {} : null,
       child: photoUrl == null
           ? Text(
               name.isNotEmpty ? name[0].toUpperCase() : '?',

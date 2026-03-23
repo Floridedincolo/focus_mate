@@ -13,6 +13,9 @@ class TaskDTO {
   final String? repeatType; // "daily", "weekly", "custom"
   final List<Map<String, dynamic>> reminders;
   final Map<String, bool> days;
+  final String? locationName;
+  final double? locationLatitude;
+  final double? locationLongitude;
 
   TaskDTO({
     required this.id,
@@ -26,6 +29,9 @@ class TaskDTO {
     this.repeatType,
     this.reminders = const [],
     this.days = const {},
+    this.locationName,
+    this.locationLatitude,
+    this.locationLongitude,
   });
 
   /// Create from Firestore document
@@ -52,6 +58,9 @@ class TaskDTO {
             (key, value) => MapEntry(key, value as bool),
           ) ??
           {},
+      locationName: data['locationName'] as String?,
+      locationLatitude: (data['locationLatitude'] as num?)?.toDouble(),
+      locationLongitude: (data['locationLongitude'] as num?)?.toDouble(),
     );
   }
 
@@ -68,6 +77,9 @@ class TaskDTO {
       'repeatType': repeatType,
       'reminders': reminders,
       'days': days,
+      if (locationName != null) 'locationName': locationName,
+      if (locationLatitude != null) 'locationLatitude': locationLatitude,
+      if (locationLongitude != null) 'locationLongitude': locationLongitude,
     };
   }
 
@@ -83,6 +95,9 @@ class TaskDTO {
     String? repeatType,
     List<Map<String, dynamic>>? reminders,
     Map<String, bool>? days,
+    String? locationName,
+    double? locationLatitude,
+    double? locationLongitude,
   }) {
     return TaskDTO(
       id: id ?? this.id,
@@ -96,6 +111,9 @@ class TaskDTO {
       repeatType: repeatType ?? this.repeatType,
       reminders: reminders ?? this.reminders,
       days: days ?? this.days,
+      locationName: locationName ?? this.locationName,
+      locationLatitude: locationLatitude ?? this.locationLatitude,
+      locationLongitude: locationLongitude ?? this.locationLongitude,
     );
   }
 }
@@ -130,4 +148,3 @@ class TaskStatusDTO {
     };
   }
 }
-

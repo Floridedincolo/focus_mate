@@ -14,6 +14,9 @@ class Task {
   final Map<String, bool> days;
   final List<Reminder> reminders;
   final int streak;
+  final String? locationName;
+  final double? locationLatitude;
+  final double? locationLongitude;
 
   Task({
     required this.id,
@@ -27,6 +30,9 @@ class Task {
     this.reminders = const [],
     this.days = const {},
     this.streak = 0,
+    this.locationName,
+    this.locationLatitude,
+    this.locationLongitude,
   });
 
   Task copyWith({
@@ -41,6 +47,11 @@ class Task {
     Map<String, bool>? days,
     List<Reminder>? reminders,
     int? streak,
+    String? locationName,
+    double? locationLatitude,
+    double? locationLongitude,
+    bool clearLocationLatitude = false,
+    bool clearLocationLongitude = false,
   }) {
     return Task(
       id: id ?? this.id,
@@ -54,6 +65,9 @@ class Task {
       days: days ?? this.days,
       reminders: reminders ?? this.reminders,
       streak: streak ?? this.streak,
+      locationName: locationName ?? this.locationName,
+      locationLatitude: clearLocationLatitude ? null : (locationLatitude ?? this.locationLatitude),
+      locationLongitude: clearLocationLongitude ? null : (locationLongitude ?? this.locationLongitude),
     );
   }
 
@@ -72,7 +86,10 @@ class Task {
         other.repeatType == repeatType &&
         _mapsEqual(other.days, days) &&
         _listsEqual(other.reminders, reminders) &&
-        other.streak == streak;
+        other.streak == streak &&
+        other.locationName == locationName &&
+        other.locationLatitude == locationLatitude &&
+        other.locationLongitude == locationLongitude;
   }
 
   @override
@@ -88,6 +105,9 @@ class Task {
         Object.hashAll(days.entries),
         Object.hashAll(reminders),
         streak,
+        locationName,
+        locationLatitude,
+        locationLongitude,
       );
 
   static bool _mapsEqual(Map<String, bool> a, Map<String, bool> b) {
@@ -106,4 +126,3 @@ class Task {
     return true;
   }
 }
-

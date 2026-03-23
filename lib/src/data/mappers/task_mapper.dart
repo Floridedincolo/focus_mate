@@ -21,6 +21,9 @@ class TaskMapper {
       repeatType: _parseRepeatType(dto.repeatType),
       reminders: dto.reminders.map((r) => Reminder.fromMap(r)).toList(),
       days: dto.days,
+      locationName: dto.locationName,
+      locationLatitude: dto.locationLatitude,
+      locationLongitude: dto.locationLongitude,
     );
   }
 
@@ -37,6 +40,9 @@ class TaskMapper {
       repeatType: task.repeatType?.name,
       reminders: task.reminders.map((r) => r.toMap()).toList(),
       days: task.days,
+      locationName: task.locationName,
+      locationLatitude: task.locationLatitude,
+      locationLongitude: task.locationLongitude,
     );
   }
 
