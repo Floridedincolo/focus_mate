@@ -1,16 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../core/service_locator.dart';
+import '../../data/datasources/transit_route_service.dart';
+import '../../domain/entities/meeting_location.dart';
 import '../../domain/entities/task.dart';
 import '../../domain/entities/task_completion_status.dart';
 import '../../domain/repositories/task_repository.dart';
 import '../../domain/usecases/compute_task_status.dart';
 import '../../domain/extensions/task_filter.dart';
 import '../providers/task_providers.dart';
+import '../providers/friend_providers.dart';
 import '../models/calendar_icon_data.dart';
 import '../widgets/calendar_icon_widget.dart';
 import '../widgets/task_item.dart';
+import 'add_task.dart';
+import 'friends/friends_page.dart';
 import 'schedule_import/schedule_import_page.dart';
 
 class Home extends ConsumerStatefulWidget {
@@ -35,6 +41,10 @@ class _HomeState extends ConsumerState<Home> {
   Future<List<Map<String, dynamic>>>? _statusesFuture;
   List<Task>? _lastTasksForDay;
   DateTime? _lastSelectedDate;
+
+  /// Transit warnings keyed by task list index.
+  Map<int, ({int transitMin, int availableMin})> _transitWarnings = {};
+  List<String>? _lastWarningTaskIds;
 
   final List<String> months = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -130,6 +140,52 @@ class _HomeState extends ConsumerState<Home> {
         .toList();
   }
 
+  /// Computes transit warnings between consecutive tasks that have locations.
+  Future<void> _computeTransitWarnings(List<Map<String, dynamic>> sortedList) async {
+    final warnings = <int, ({int transitMin, int availableMin})>{};
+    final transitService = getIt<TransitRouteService>();
+
+    for (int i = 0; i < sortedList.length - 1; i++) {
+      final taskA = sortedList[i]['task'] as Task;
+      final taskB = sortedList[i + 1]['task'] as Task;
+
+      // Both need end/start times and coordinates
+      if (taskA.endTime == null || taskB.startTime == null) continue;
+      if (taskA.locationLatitude == null || taskA.locationLongitude == null) continue;
+      if (taskB.locationLatitude == null || taskB.locationLongitude == null) continue;
+
+      final endMin = taskA.endTime!.hour * 60 + taskA.endTime!.minute;
+      final startMin = taskB.startTime!.hour * 60 + taskB.startTime!.minute;
+      final gap = startMin - endMin;
+      if (gap <= 0) continue;
+
+      try {
+        final origin = MeetingLocation(
+          name: taskA.locationName ?? '',
+          latitude: taskA.locationLatitude,
+          longitude: taskA.locationLongitude,
+        );
+        final destination = MeetingLocation(
+          name: taskB.locationName ?? '',
+          latitude: taskB.locationLatitude,
+          longitude: taskB.locationLongitude,
+        );
+
+        final transitMin = await transitService.getTransitTimeMinutes(
+          origin: origin, destination: destination, mode: 'DRIVE',
+        );
+
+        if (transitMin != null && transitMin > gap) {
+          warnings[i + 1] = (transitMin: transitMin, availableMin: gap);
+        }
+      } catch (_) {}
+    }
+
+    if (mounted) {
+      setState(() => _transitWarnings = warnings);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     String suffix = getDaySuffix(selectedDate.day);
@@ -146,15 +202,14 @@ class _HomeState extends ConsumerState<Home> {
               TextSpan(
                 children: [
                   TextSpan(
-                    text:
-                        '${weekdays[selectedDate.weekday - 1]}, ${selectedDate.day}',
+                    text: '${weekdays[selectedDate.weekday - 1]}, ${selectedDate.day}',
                   ),
                   WidgetSpan(
                     child: Transform.translate(
                       offset: const Offset(1, -7),
                       child: Text(
                         suffix,
-                        textScaleFactor: 0.7,
+                        textScaler: const TextScaler.linear(0.7),
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
@@ -163,15 +218,12 @@ class _HomeState extends ConsumerState<Home> {
                     ),
                   ),
                   TextSpan(
-                    text:
-                        ' of ${months[selectedDate.month - 1]} ${selectedDate.year}',
+                    text: ' of ${months[selectedDate.month - 1]} ${selectedDate.year}',
                   ),
                 ],
               ),
               style: const TextStyle(
-                color: Colors.white,
-                fontSize: 22.5,
-                fontWeight: FontWeight.bold,
+                color: Colors.white, fontSize: 22.5, fontWeight: FontWeight.bold,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -180,15 +232,26 @@ class _HomeState extends ConsumerState<Home> {
             Text(
               "Your plan for $currentDateText",
               style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+                color: Colors.white70, fontSize: 20, fontWeight: FontWeight.bold,
               ),
             ),
           ],
         ),
         actions: [
-          // Schedule Import button
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Center(
+              child: Tooltip(
+                message: 'Friends',
+                child: GestureDetector(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const FriendsPage()),
+                  ),
+                  child: const _FriendsBadgeIcon(),
+                ),
+              ),
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Center(
@@ -196,28 +259,19 @@ class _HomeState extends ConsumerState<Home> {
                 message: 'Import Schedule',
                 child: GestureDetector(
                   onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const ScheduleImportPage(),
-                    ),
+                    MaterialPageRoute(builder: (_) => const ScheduleImportPage()),
                   ),
-                  child: const Icon(
-                    Icons.calendar_month_outlined,
-                    color: Colors.white70,
-                    size: 24,
-                  ),
+                  child: const Icon(Icons.calendar_month_outlined,
+                      color: Colors.white70, size: 24),
                 ),
               ),
             ),
           ),
-          // Profile button
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: GestureDetector(
               onTap: () => Navigator.pushNamed(context, '/profile'),
-              child: const CircleAvatar(
-                radius: 22,
-                backgroundImage: AssetImage('assets/button_bg.png'),
-              ),
+              child: const _ProfileAvatar(),
             ),
           ),
         ],
@@ -243,6 +297,8 @@ class _HomeState extends ConsumerState<Home> {
                       onTap: () {
                         setState(() {
                           selectedDate = e.dateTime;
+                          _transitWarnings = {};
+                          _lastWarningTaskIds = null;
                           currentDateText =
                               (todayDate.day == selectedDate.day &&
                                       todayDate.month == selectedDate.month &&
@@ -285,7 +341,6 @@ class _HomeState extends ConsumerState<Home> {
                   );
                 }
 
-                // Cache the future: only re-fetch when tasks or date change
                 if (_statusesFuture == null ||
                     _lastSelectedDate != selectedDate ||
                     !_taskListsEqual(_lastTasksForDay, tasksForDay)) {
@@ -299,8 +354,7 @@ class _HomeState extends ConsumerState<Home> {
                   builder: (context, statusSnap) {
                     if (!statusSnap.hasData) {
                       return const Center(
-                        child:
-                            CircularProgressIndicator(color: Colors.white),
+                        child: CircularProgressIndicator(color: Colors.white),
                       );
                     }
 
@@ -308,8 +362,7 @@ class _HomeState extends ConsumerState<Home> {
 
                     final completedCount = list.where((e) {
                       final task = e['task'] as Task;
-                      final key =
-                          '${task.id}_${selectedDate.toIso8601String()}';
+                      final key = '${task.id}_${selectedDate.toIso8601String()}';
                       final localStatus = _localCompletions[key];
                       final finalStatus = localStatus ?? e['status'];
                       return finalStatus == TaskCompletionStatus.completed;
@@ -320,10 +373,8 @@ class _HomeState extends ConsumerState<Home> {
                     list.sort((a, b) {
                       final taskA = a['task'] as Task;
                       final taskB = b['task'] as Task;
-                      final keyA =
-                          '${taskA.id}_${selectedDate.toIso8601String()}';
-                      final keyB =
-                          '${taskB.id}_${selectedDate.toIso8601String()}';
+                      final keyA = '${taskA.id}_${selectedDate.toIso8601String()}';
+                      final keyB = '${taskB.id}_${selectedDate.toIso8601String()}';
                       final localA = _localCompletions[keyA];
                       final localB = _localCompletions[keyB];
                       final statusA = localA ?? a['status'];
@@ -340,38 +391,29 @@ class _HomeState extends ConsumerState<Home> {
                           .compareTo(bt.hour * 60 + bt.minute);
                     });
 
+                    // Compute transit warnings after sort (only when task list changes)
+                    // Scheduled post-frame to avoid setState during build.
+                    final currentIds = list.map((e) => (e['task'] as Task).id).toList();
+                    if (!_idsEqual(_lastWarningTaskIds, currentIds)) {
+                      _lastWarningTaskIds = currentIds;
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) _computeTransitWarnings(list);
+                      });
+                    }
+
                     return Column(
                       children: [
                         Padding(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 16.0,
-                            vertical: 10,
+                            horizontal: 16.0, vertical: 10,
                           ),
                           child: Row(
                             children: [
-                              Expanded(
-                                child: _slimStatPill(
-                                  "Total",
-                                  "$totalCount",
-                                  Colors.blueAccent,
-                                ),
-                              ),
+                              Expanded(child: _slimStatPill("Total", "$totalCount", Colors.blueAccent)),
                               const SizedBox(width: 10),
-                              Expanded(
-                                child: _slimStatPill(
-                                  "Completed",
-                                  "$completedCount",
-                                  Colors.green,
-                                ),
-                              ),
+                              Expanded(child: _slimStatPill("Completed", "$completedCount", Colors.green)),
                               const SizedBox(width: 10),
-                              Expanded(
-                                child: _slimStatPill(
-                                  "Remaining",
-                                  "$remainingCount",
-                                  Colors.orange,
-                                ),
-                              ),
+                              Expanded(child: _slimStatPill("Remaining", "$remainingCount", Colors.orange)),
                             ],
                           ),
                         ),
@@ -384,8 +426,7 @@ class _HomeState extends ConsumerState<Home> {
                               final firestoreStatus =
                                   entry['status'] as TaskCompletionStatus? ?? TaskCompletionStatus.upcoming;
 
-                              final key =
-                                  '${task.id}_${selectedDate.toIso8601String()}';
+                              final key = '${task.id}_${selectedDate.toIso8601String()}';
                               final localStatus = _localCompletions[key];
                               final status = localStatus ?? firestoreStatus;
 
@@ -394,49 +435,60 @@ class _HomeState extends ConsumerState<Home> {
                                   ? task.copyWith(streak: localStreak)
                                   : task;
 
-                              return TaskItem(
-                                task: displayTask,
-                                statusForSelectedDay: status,
-                                onMarkCompleted: () async {
-                                  final isCompleted = status == TaskCompletionStatus.completed;
-                                  final newStatus =
-                                      isCompleted ? TaskCompletionStatus.upcoming : TaskCompletionStatus.completed;
+                              final warning = _transitWarnings[index];
 
-                                  setState(() {
-                                    _localCompletions[key] = newStatus;
-                                  });
-
-                                  try {
-                                    int updatedStreak;
-
-                                    if (isCompleted) {
-                                      updatedStreak = await ref.read(
-                                        clearCompletionProvider(
-                                          (task, selectedDate),
-                                        ).future,
+                              return Column(
+                                children: [
+                                  // Transit warning BEFORE this task
+                                  if (warning != null)
+                                    _buildTransitWarningWidget(
+                                      transitMin: warning.transitMin,
+                                      availableMin: warning.availableMin,
+                                    ),
+                                  TaskItem(
+                                    task: displayTask,
+                                    statusForSelectedDay: status,
+                                    onEdit: () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => AddTaskMenu(existingTask: task),
+                                        ),
                                       );
-                                    } else {
-                                      updatedStreak = await ref.read(
-                                        markTaskStatusProvider(
-                                          (task, selectedDate, newStatus),
-                                        ).future,
-                                      );
-                                    }
+                                    },
+                                    onMarkCompleted: () async {
+                                      final isCompleted = status == TaskCompletionStatus.completed;
+                                      final newStatus = isCompleted
+                                          ? TaskCompletionStatus.upcoming
+                                          : TaskCompletionStatus.completed;
 
-                                    setState(() {
-                                      _localCompletions[key] = newStatus;
-                                      _localStreaks[task.id] = updatedStreak;
-                                      // Invalidate cached future so next
-                                      // stream emission picks up fresh data
-                                      _statusesFuture = null;
-                                    });
-                                  } catch (e) {
-                                    setState(() {
-                                      _localCompletions[key] =
-                                          firestoreStatus;
-                                    });
-                                  }
-                                },
+                                      setState(() {
+                                        _localCompletions[key] = newStatus;
+                                      });
+
+                                      try {
+                                        int updatedStreak;
+                                        if (isCompleted) {
+                                          updatedStreak = await ref.read(
+                                            clearCompletionProvider((task, selectedDate)).future,
+                                          );
+                                        } else {
+                                          updatedStreak = await ref.read(
+                                            markTaskStatusProvider((task, selectedDate, newStatus)).future,
+                                          );
+                                        }
+                                        setState(() {
+                                          _localCompletions[key] = newStatus;
+                                          _localStreaks[task.id] = updatedStreak;
+                                          _statusesFuture = null;
+                                        });
+                                      } catch (e) {
+                                        setState(() {
+                                          _localCompletions[key] = firestoreStatus;
+                                        });
+                                      }
+                                    },
+                                  ),
+                                ],
                               );
                             },
                           ),
@@ -446,6 +498,33 @@ class _HomeState extends ConsumerState<Home> {
                   },
                 );
               },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTransitWarningWidget({
+    required int transitMin,
+    required int availableMin,
+  }) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              "Travel takes ~$transitMin min, but you only have $availableMin min between tasks",
+              style: const TextStyle(color: Colors.orange, fontSize: 12, fontWeight: FontWeight.w500),
             ),
           ),
         ],
@@ -463,32 +542,99 @@ class _HomeState extends ConsumerState<Home> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            title,
-            style: const TextStyle(color: Colors.white70, fontSize: 13),
-          ),
+          Text(title, style: const TextStyle(color: Colors.white70, fontSize: 13)),
           const SizedBox(height: 2),
-          Text(
-            value,
-            style: TextStyle(
-              color: color,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          Text(value, style: TextStyle(
+            color: color, fontSize: 16, fontWeight: FontWeight.bold)),
         ],
       ),
     );
   }
 
-  /// Compares two task lists by ID to detect if the set of tasks changed.
+  bool _idsEqual(List<String>? a, List<String>? b) {
+    if (a == null || b == null) return false;
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
   bool _taskListsEqual(List<Task>? a, List<Task>? b) {
     if (a == null || b == null) return false;
     if (a.length != b.length) return false;
     for (int i = 0; i < a.length; i++) {
-      if (a[i].id != b[i].id) return false;
+      if (a[i] != b[i]) return false;
     }
     return true;
   }
 }
 
+/// People icon with a red badge dot when there are pending incoming requests.
+class _FriendsBadgeIcon extends ConsumerWidget {
+  const _FriendsBadgeIcon();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final incomingAsync = ref.watch(watchIncomingRequestsProvider);
+    final count = incomingAsync.valueOrNull?.length ?? 0;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        const Icon(Icons.people_outline, color: Colors.white70, size: 24),
+        if (count > 0)
+          Positioned(
+            right: -4,
+            top: -4,
+            child: Container(
+              width: 16,
+              height: 16,
+              decoration: const BoxDecoration(
+                color: Colors.redAccent,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                count > 9 ? '9+' : '$count',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 9,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Small avatar showing the current user's photo or initials.
+class _ProfileAvatar extends StatelessWidget {
+  const _ProfileAvatar();
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    final photoUrl = user?.photoURL;
+    final name = user?.displayName ?? '';
+
+    return CircleAvatar(
+      radius: 22,
+      backgroundColor: Colors.blueAccent.withValues(alpha: 0.2),
+      backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
+      onBackgroundImageError: photoUrl != null ? (_, __) {} : null,
+      child: photoUrl == null
+          ? Text(
+              name.isNotEmpty ? name[0].toUpperCase() : '?',
+              style: const TextStyle(
+                color: Colors.blueAccent,
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            )
+          : null,
+    );
+  }
+}

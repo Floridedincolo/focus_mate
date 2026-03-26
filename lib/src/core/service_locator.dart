@@ -7,26 +7,43 @@ import '../domain/repositories/app_manager_repository.dart';
 import '../domain/repositories/block_manager_repository.dart';
 import '../domain/repositories/accessibility_repository.dart';
 import '../domain/repositories/schedule_import_repository.dart';
+import '../domain/repositories/user_location_repository.dart';
+import '../domain/repositories/friend_repository.dart';
+import '../domain/repositories/meeting_suggestion_repository.dart';
 import '../domain/usecases/task_usecases.dart';
 import '../domain/usecases/app_usecases.dart';
 import '../domain/usecases/accessibility_usecases.dart';
 import '../domain/usecases/extract_schedule_from_image_use_case.dart';
 import '../domain/usecases/generate_weekly_tasks_use_case.dart';
+import '../domain/usecases/friend_usecases.dart';
+import '../domain/usecases/suggest_meeting_algorithmic_use_case.dart';
+import '../domain/usecases/suggest_meeting_ai_use_case.dart';
 
 // Data
 import '../data/repositories/task_repository_impl.dart';
 import '../data/repositories/app_repository_impl.dart';
 import '../data/repositories/accessibility_repository_impl.dart';
 import '../data/repositories/schedule_import_repository_impl.dart';
+import '../data/repositories/user_location_repository_impl.dart';
+import '../data/repositories/friend_repository_impl.dart';
+import '../data/repositories/meeting_suggestion_repository_impl.dart';
 import '../data/datasources/task_data_source.dart';
 import '../data/datasources/app_data_source.dart';
 import '../data/datasources/accessibility_data_source.dart';
 import '../data/datasources/schedule_import_datasource.dart';
+import '../data/datasources/location_search_service.dart';
+import '../data/datasources/transit_route_service.dart';
+import '../data/datasources/friend_data_source.dart';
+import '../data/datasources/meeting_suggestion_data_source.dart';
 import '../data/datasources/implementations/cloud_function_schedule_import_datasource.dart';
 import '../data/datasources/implementations/firestore_task_datasource.dart';
 import '../data/datasources/implementations/native_app_datasource.dart';
 import '../data/datasources/implementations/shared_preferences_datasource.dart';
 import '../data/datasources/implementations/method_channel_accessibility_datasource.dart';
+import '../data/datasources/implementations/google_places_search_service.dart';
+import '../data/datasources/implementations/google_transit_route_service.dart';
+import '../data/datasources/implementations/firestore_friend_datasource.dart';
+import '../data/datasources/implementations/gemini_meeting_suggestion_datasource.dart';
 
 final getIt = GetIt.instance;
 
@@ -57,6 +74,16 @@ Future<void> setupServiceLocator() async {
     MethodChannelAccessibilityDataSource(),
   );
 
+  // Location search service (Google Places)
+  getIt.registerSingleton<LocationSearchService>(
+    GooglePlacesSearchService(),
+  );
+
+  // Transit route service (Google Routes API + cache)
+  getIt.registerSingleton<TransitRouteService>(
+    GoogleTransitRouteService(),
+  );
+
   // ============ REPOSITORIES ============
 
   getIt.registerSingleton<TaskRepository>(
@@ -82,6 +109,10 @@ Future<void> setupServiceLocator() async {
     AccessibilityRepositoryImpl(
       platformDataSource: getIt<AccessibilityPlatformDataSource>(),
     ),
+  );
+
+  getIt.registerSingleton<UserLocationRepository>(
+    UserLocationRepositoryImpl(),
   );
 
   // ============ USE CASES ============
@@ -150,10 +181,60 @@ Future<void> setupServiceLocator() async {
   getIt.registerFactory<GenerateWeeklyTasksUseCase>(
     GenerateWeeklyTasksUseCase.new,
   );
+
+  // ============ FRIENDS & MEETINGS ============
+
+  // Data sources
+  getIt.registerSingleton<FriendDataSource>(
+    FirestoreFriendDataSource(),
+  );
+
+  getIt.registerSingleton<MeetingSuggestionDataSource>(
+    GeminiMeetingSuggestionDataSource(),
+  );
+
+  // Repositories
+  getIt.registerSingleton<FriendRepository>(
+    FriendRepositoryImpl(getIt<FriendDataSource>()),
+  );
+
+  getIt.registerSingleton<MeetingSuggestionRepository>(
+    MeetingSuggestionRepositoryImpl(
+      getIt<MeetingSuggestionDataSource>(),
+      getIt<LocationSearchService>(),
+    ),
+  );
+
+  // Friend use cases
+  getIt.registerSingleton(
+    SendFriendRequestUseCase(getIt<FriendRepository>()),
+  );
+  getIt.registerSingleton(
+    AcceptFriendRequestUseCase(getIt<FriendRepository>()),
+  );
+  getIt.registerSingleton(
+    DeclineFriendRequestUseCase(getIt<FriendRepository>()),
+  );
+  getIt.registerSingleton(
+    GetFriendsListUseCase(getIt<FriendRepository>()),
+  );
+  getIt.registerSingleton(
+    WatchFriendsUseCase(getIt<FriendRepository>()),
+  );
+  getIt.registerSingleton(
+    WatchIncomingRequestsUseCase(getIt<FriendRepository>()),
+  );
+
+  // Meeting suggestion use cases
+  getIt.registerSingleton(
+    const SuggestMeetingAlgorithmicUseCase(),
+  );
+  getIt.registerSingleton(
+    SuggestMeetingAiUseCase(getIt<MeetingSuggestionRepository>()),
+  );
 }
 
 /// Reset DI for testing
 void resetServiceLocator() {
   getIt.reset();
 }
-
