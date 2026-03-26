@@ -33,7 +33,6 @@ class MeetingsTab extends ConsumerWidget {
 
         return CustomScrollView(
           slivers: [
-            // ── Plan Meeting button ──────────────────────────────────
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -64,8 +63,6 @@ class MeetingsTab extends ConsumerWidget {
                 ),
               ),
             ),
-
-            // ── Empty state ──────────────────────────────────────────
             if (proposals.isEmpty)
               const SliverFillRemaining(
                 child: Center(
@@ -94,8 +91,6 @@ class MeetingsTab extends ConsumerWidget {
                   ),
                 ),
               ),
-
-            // ── Upcoming section ─────────────────────────────────────
             if (upcoming.isNotEmpty) ...[
               const SliverToBoxAdapter(
                 child: _SectionHeader(title: 'Upcoming'),
@@ -110,8 +105,6 @@ class MeetingsTab extends ConsumerWidget {
                 ),
               ),
             ],
-
-            // ── Past section ─────────────────────────────────────────
             if (past.isNotEmpty) ...[
               const SliverToBoxAdapter(
                 child: _SectionHeader(title: 'Past'),
@@ -129,8 +122,6 @@ class MeetingsTab extends ConsumerWidget {
                 ),
               ),
             ],
-
-            // Bottom padding
             const SliverPadding(padding: EdgeInsets.only(bottom: 24)),
           ],
         );
@@ -158,4 +149,3 @@ class _SectionHeader extends StatelessWidget {
     );
   }
 }
-

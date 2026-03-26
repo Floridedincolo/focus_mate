@@ -4,6 +4,7 @@ import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter/material.dart';
 
 import '../../dtos/gemini_raw_proposal.dart';
+import '../../../domain/entities/meeting_location.dart';
 import '../../../domain/entities/task.dart';
 import '../../../domain/errors/domain_errors.dart';
 import '../meeting_suggestion_data_source.dart';
@@ -30,12 +31,14 @@ class GeminiMeetingSuggestionDataSource implements MeetingSuggestionDataSource {
     required int meetingDurationMinutes,
     required DateTime targetDate,
     int maxProposals = 3,
+    List<(MeetingLocation? home, MeetingLocation? work)>? memberLocations,
   }) async {
     final prompt = _buildPrompt(
       memberSchedules: memberSchedules,
       meetingDurationMinutes: meetingDurationMinutes,
       targetDate: targetDate,
       maxProposals: maxProposals,
+      memberLocations: memberLocations,
     );
 
     final String rawText;
@@ -65,6 +68,7 @@ class GeminiMeetingSuggestionDataSource implements MeetingSuggestionDataSource {
     required int meetingDurationMinutes,
     required DateTime targetDate,
     required int maxProposals,
+    List<(MeetingLocation? home, MeetingLocation? work)>? memberLocations,
   }) {
     const weekdays = [
       'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
@@ -94,8 +98,9 @@ class GeminiMeetingSuggestionDataSource implements MeetingSuggestionDataSource {
           .map((t) =>
               '${_fmtTime(t.startTime!)}-${_fmtTime(t.endTime!)} ${t.title}')
           .join(', ');
+      final locInfo = _formatMemberLocation(i, memberLocations);
       buffer.writeln(
-        '  Person ${i + 1}: [${formatted.isEmpty ? "no activities" : formatted}]',
+        '  Person ${i + 1}: [${formatted.isEmpty ? "no activities" : formatted}]$locInfo',
       );
     }
 
@@ -105,11 +110,23 @@ class GeminiMeetingSuggestionDataSource implements MeetingSuggestionDataSource {
       '1. Find $maxProposals optimal time slots of '
       '$meetingDurationMinutes minutes where ALL members are free.',
     );
-    buffer.writeln(
-      '2. For each slot, compute a logical GPS midpoint (targetLatitude, '
-      'targetLongitude) within the city where the group could meet. '
-      'Use coordinates in the Iași area.',
-    );
+
+    final hasLocations = memberLocations != null &&
+        memberLocations.any((l) =>
+            l.$1?.hasCoordinates == true || l.$2?.hasCoordinates == true);
+    if (hasLocations) {
+      buffer.writeln(
+        '2. For each slot, compute a GPS midpoint (targetLatitude, '
+        'targetLongitude) that is conveniently located between the members\' '
+        'known locations. Pick a point roughly equidistant from all members.',
+      );
+    } else {
+      buffer.writeln(
+        '2. For each slot, compute a logical GPS midpoint (targetLatitude, '
+        'targetLongitude) within the city where the group could meet. '
+        'Use coordinates in the Iași area.',
+      );
+    }
     buffer.writeln(
       '3. Based on the time of day and context, choose a place category '
       'keyword: one of "cafe", "restaurant", "park", "library", "bar", "coworking".',
@@ -139,6 +156,23 @@ class GeminiMeetingSuggestionDataSource implements MeetingSuggestionDataSource {
 
   String _fmtTime(TimeOfDay t) =>
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+  String _formatMemberLocation(
+    int index,
+    List<(MeetingLocation? home, MeetingLocation? work)>? memberLocations,
+  ) {
+    if (memberLocations == null || index >= memberLocations.length) return '';
+    final (home, work) = memberLocations[index];
+    final parts = <String>[];
+    if (home != null && home.hasCoordinates) {
+      parts.add('home at (${home.latitude!.toStringAsFixed(4)}, ${home.longitude!.toStringAsFixed(4)})');
+    }
+    if (work != null && work.hasCoordinates) {
+      parts.add('work at (${work.latitude!.toStringAsFixed(4)}, ${work.longitude!.toStringAsFixed(4)})');
+    }
+    if (parts.isEmpty) return '';
+    return ' — located: ${parts.join(', ')}';
+  }
 
   // ── Response Parsing ────────────────────────────────────────────────────
 

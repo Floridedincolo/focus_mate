@@ -63,7 +63,6 @@ class _UserSearchTabState extends ConsumerState<UserSearchTab> {
 
   @override
   Widget build(BuildContext context) {
-    // Watch real-time outgoing pending requests & accepted friends
     final outgoingUids = ref.watch(watchOutgoingRequestsProvider).valueOrNull
         ?.map((f) => f.receiverId)
         .toSet() ?? <String>{};
@@ -76,7 +75,6 @@ class _UserSearchTabState extends ConsumerState<UserSearchTab> {
 
     return Column(
       children: [
-        // ── Search field ──────────────────────────────────────────────
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: TextField(
@@ -96,8 +94,6 @@ class _UserSearchTabState extends ConsumerState<UserSearchTab> {
             ),
           ),
         ),
-
-        // ── Results ──────────────────────────────────────────────────
         Expanded(
           child: _query.isEmpty
               ? const Center(
@@ -183,4 +179,3 @@ class _UserSearchTabState extends ConsumerState<UserSearchTab> {
     );
   }
 }
-

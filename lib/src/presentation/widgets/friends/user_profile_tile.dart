@@ -46,4 +46,3 @@ class UserProfileTile extends StatelessWidget {
     );
   }
 }
-

@@ -23,7 +23,7 @@ class _LoginPageState extends State<LoginPage> {
   final _displayNameController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
-  bool _isLogin = true; // true = sign in, false = create account
+  bool _isLogin = true;
   bool _loading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
@@ -38,18 +38,12 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  // ── Google Sign-In ──────────────────────────────────────────────────────
-
   Future<void> _signInWithGoogle() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    setState(() { _loading = true; _error = null; });
 
     try {
       final googleUser = await GoogleSignIn().signIn();
       if (googleUser == null) {
-        // User cancelled the picker
         setState(() => _loading = false);
         return;
       }
@@ -62,27 +56,21 @@ class _LoginPageState extends State<LoginPage> {
 
       final userCredential =
           await FirebaseAuth.instance.signInWithCredential(credential);
-
       await _upsertProfile(userCredential.user);
     } on FirebaseAuthException catch (e) {
       setState(() => _error = _friendlyAuthError(e.code));
     } catch (e) {
       setState(() => _error = 'Google sign-in failed. Please try again.');
-      if (kDebugMode) debugPrint('🔥 Google sign-in error: $e');
+      if (kDebugMode) debugPrint('Google sign-in error: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  // ── Email / Password ────────────────────────────────────────────────────
-
   Future<void> _submitEmailPassword() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    setState(() { _loading = true; _error = null; });
 
     try {
       final email = _emailController.text.trim();
@@ -97,7 +85,6 @@ class _LoginPageState extends State<LoginPage> {
         userCredential = await FirebaseAuth.instance
             .createUserWithEmailAndPassword(email: email, password: password);
 
-        // Set display name on the newly created account
         final displayName = _displayNameController.text.trim();
         if (displayName.isNotEmpty) {
           await userCredential.user?.updateDisplayName(displayName);
@@ -114,16 +101,12 @@ class _LoginPageState extends State<LoginPage> {
       setState(() => _error = _friendlyAuthError(e.code));
     } catch (e) {
       setState(() => _error = 'Something went wrong. Please try again.');
-      if (kDebugMode) debugPrint('🔥 Email auth error: $e');
+      if (kDebugMode) debugPrint('Email auth error: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  // ── Profile sync ────────────────────────────────────────────────────────
-
-  /// Creates / updates the `users/{uid}` Firestore document so the Friends
-  /// feature can discover this user.
   Future<void> _upsertProfile(User? user, {String? overrideDisplayName}) async {
     if (user == null) return;
 
@@ -141,8 +124,6 @@ class _LoginPageState extends State<LoginPage> {
         .doc(user.uid)
         .set(data, SetOptions(merge: true));
   }
-
-  // ── Helpers ─────────────────────────────────────────────────────────────
 
   String _friendlyAuthError(String code) {
     switch (code) {
@@ -166,8 +147,6 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // ── UI ──────────────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -179,7 +158,6 @@ class _LoginPageState extends State<LoginPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // ── Logo / Title ──────────────────────────────────────
                 const Icon(Icons.track_changes,
                     color: Colors.blueAccent, size: 64),
                 const SizedBox(height: 16),
@@ -199,21 +177,14 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 const SizedBox(height: 36),
 
-                // ── Google button ─────────────────────────────────────
+                // Google button
                 SizedBox(
                   width: double.infinity,
                   height: 52,
                   child: OutlinedButton.icon(
                     onPressed: _loading ? null : _signInWithGoogle,
-                    icon: Image.network(
-                      'https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg',
-                      width: 22,
-                      height: 22,
-                      errorBuilder: (_, __, ___) => const Icon(
-                          Icons.g_mobiledata,
-                          color: Colors.white,
-                          size: 24),
-                    ),
+                    icon: const Icon(Icons.g_mobiledata,
+                        color: Colors.white, size: 24),
                     label: const Text(
                       'Continue with Google',
                       style: TextStyle(
@@ -230,27 +201,23 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 const SizedBox(height: 24),
 
-                // ── Divider ───────────────────────────────────────────
                 const Row(
                   children: [
                     Expanded(child: Divider(color: Colors.white24)),
                     Padding(
                       padding: EdgeInsets.symmetric(horizontal: 12),
                       child: Text('or',
-                          style:
-                              TextStyle(color: Colors.white38, fontSize: 13)),
+                          style: TextStyle(color: Colors.white38, fontSize: 13)),
                     ),
                     Expanded(child: Divider(color: Colors.white24)),
                   ],
                 ),
                 const SizedBox(height: 24),
 
-                // ── Email / Password form ─────────────────────────────
                 Form(
                   key: _formKey,
                   child: Column(
                     children: [
-                      // Display name (only on sign up)
                       if (!_isLogin) ...[
                         _buildField(
                           controller: _displayNameController,
@@ -265,52 +232,36 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                         const SizedBox(height: 14),
                       ],
-
                       _buildField(
                         controller: _emailController,
                         hint: 'Email',
                         icon: Icons.email_outlined,
                         keyboardType: TextInputType.emailAddress,
                         validator: (v) {
-                          if (v == null || v.trim().isEmpty) {
-                            return 'Please enter your email';
-                          }
-                          if (!v.contains('@')) {
-                            return 'Invalid email address';
-                          }
+                          if (v == null || v.trim().isEmpty) return 'Please enter your email';
+                          if (!v.contains('@')) return 'Invalid email address';
                           return null;
                         },
                       ),
                       const SizedBox(height: 14),
-
                       _buildField(
                         controller: _passwordController,
                         hint: 'Password',
                         icon: Icons.lock_outline,
                         obscure: _obscurePassword,
                         suffix: IconButton(
-                          onPressed: () => setState(
-                              () => _obscurePassword = !_obscurePassword),
+                          onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                           icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_off
-                                : Icons.visibility,
-                            color: Colors.white38,
-                            size: 20,
+                            _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                            color: Colors.white38, size: 20,
                           ),
                         ),
                         validator: (v) {
-                          if (v == null || v.isEmpty) {
-                            return 'Please enter your password';
-                          }
-                          if (!_isLogin && v.length < 6) {
-                            return 'At least 6 characters';
-                          }
+                          if (v == null || v.isEmpty) return 'Please enter your password';
+                          if (!_isLogin && v.length < 6) return 'At least 6 characters';
                           return null;
                         },
                       ),
-
-                      // Confirm password (only on sign up)
                       if (!_isLogin) ...[
                         const SizedBox(height: 14),
                         _buildField(
@@ -319,24 +270,15 @@ class _LoginPageState extends State<LoginPage> {
                           icon: Icons.lock_outline,
                           obscure: _obscureConfirmPassword,
                           suffix: IconButton(
-                            onPressed: () => setState(() =>
-                                _obscureConfirmPassword =
-                                    !_obscureConfirmPassword),
+                            onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
                             icon: Icon(
-                              _obscureConfirmPassword
-                                  ? Icons.visibility_off
-                                  : Icons.visibility,
-                              color: Colors.white38,
-                              size: 20,
+                              _obscureConfirmPassword ? Icons.visibility_off : Icons.visibility,
+                              color: Colors.white38, size: 20,
                             ),
                           ),
                           validator: (v) {
-                            if (v == null || v.isEmpty) {
-                              return 'Please confirm your password';
-                            }
-                            if (v != _passwordController.text) {
-                              return 'Passwords do not match';
-                            }
+                            if (v == null || v.isEmpty) return 'Please confirm your password';
+                            if (v != _passwordController.text) return 'Passwords do not match';
                             return null;
                           },
                         ),
@@ -346,7 +288,6 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 const SizedBox(height: 20),
 
-                // ── Error message ─────────────────────────────────────
                 if (_error != null)
                   Container(
                     width: double.infinity,
@@ -355,18 +296,15 @@ class _LoginPageState extends State<LoginPage> {
                     decoration: BoxDecoration(
                       color: Colors.redAccent.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                          color: Colors.redAccent.withValues(alpha: 0.3)),
+                      border: Border.all(color: Colors.redAccent.withValues(alpha: 0.3)),
                     ),
                     child: Text(
                       _error!,
-                      style: const TextStyle(
-                          color: Colors.redAccent, fontSize: 13),
+                      style: const TextStyle(color: Colors.redAccent, fontSize: 13),
                       textAlign: TextAlign.center,
                     ),
                   ),
 
-                // ── Submit button ─────────────────────────────────────
                 SizedBox(
                   width: double.infinity,
                   height: 52,
@@ -379,30 +317,23 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                     child: _loading
                         ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white),
+                            width: 22, height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                           )
                         : Text(
                             _isLogin ? 'Sign In' : 'Create Account',
-                            style: const TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.w600),
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                           ),
                   ),
                 ),
                 const SizedBox(height: 20),
 
-                // ── Toggle sign in / sign up ──────────────────────────
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      _isLogin
-                          ? "Don't have an account?"
-                          : 'Already have an account?',
-                      style: const TextStyle(
-                          color: Colors.white38, fontSize: 13),
+                      _isLogin ? "Don't have an account?" : 'Already have an account?',
+                      style: const TextStyle(color: Colors.white38, fontSize: 13),
                     ),
                     TextButton(
                       onPressed: _loading
@@ -471,10 +402,8 @@ class _LoginPageState extends State<LoginPage> {
           borderSide: const BorderSide(color: Colors.redAccent),
         ),
         errorStyle: const TextStyle(color: Colors.redAccent, fontSize: 11),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       ),
     );
   }
 }
-

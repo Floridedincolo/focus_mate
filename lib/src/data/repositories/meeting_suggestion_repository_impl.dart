@@ -25,6 +25,7 @@ class MeetingSuggestionRepositoryImpl implements MeetingSuggestionRepository {
     required int meetingDurationMinutes,
     required DateTime targetDate,
     int maxProposals = 3,
+    List<(MeetingLocation? home, MeetingLocation? work)>? memberLocations,
   }) async {
     // ── Step 1: Gemini -> raw proposals (time + GPS midpoint + keyword) ──
     final rawProposals = await _dataSource.suggestMeetings(
@@ -32,6 +33,7 @@ class MeetingSuggestionRepositoryImpl implements MeetingSuggestionRepository {
       meetingDurationMinutes: meetingDurationMinutes,
       targetDate: targetDate,
       maxProposals: maxProposals,
+      memberLocations: memberLocations,
     );
 
     // ── Step 2: Places API -> resolve each proposal's location ───────────

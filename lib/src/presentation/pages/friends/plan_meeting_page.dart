@@ -12,9 +12,6 @@ import '../../widgets/friends/meeting_proposal_card.dart';
 import '../../widgets/friends/user_profile_tile.dart';
 
 /// Multi-step wizard for planning a meeting with friends.
-///
-/// Can be launched with pre-selected friends (from the friends list) or
-/// with an empty selection (user picks friends first).
 class PlanMeetingPage extends ConsumerStatefulWidget {
   final List<String> preselectedFriendUids;
   final List<String> preselectedFriendNames;
@@ -33,7 +30,6 @@ class _PlanMeetingPageState extends ConsumerState<PlanMeetingPage> {
   @override
   void initState() {
     super.initState();
-    // Reset wizard and pre-populate if friends were passed.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final notifier = ref.read(meetingSuggestionProvider.notifier);
       notifier.reset();
@@ -227,7 +223,7 @@ class _SelectFriendsStepState extends ConsumerState<_SelectFriendsStep> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Step 2: Configure (date, duration, method)
+// Step 2: Configure
 // ═══════════════════════════════════════════════════════════════════════════
 
 class _ConfigureStep extends ConsumerStatefulWidget {
@@ -255,9 +251,7 @@ class _ConfigureStepState extends ConsumerState<_ConfigureStep> {
 
   Future<void> _pickDate({required bool isStart}) async {
     final initial = isStart ? _rangeStart : _rangeEnd;
-    final first = isStart
-        ? DateTime.now()
-        : _rangeStart;
+    final first = isStart ? DateTime.now() : _rangeStart;
     final last = DateTime.now().add(const Duration(days: 90));
 
     final picked = await showDatePicker(
@@ -280,7 +274,6 @@ class _ConfigureStepState extends ConsumerState<_ConfigureStep> {
     setState(() {
       if (isStart) {
         _rangeStart = picked;
-        // If start is now after end, push end forward.
         if (_rangeStart.isAfter(_rangeEnd)) {
           _rangeEnd = _rangeStart.add(const Duration(days: 7));
         }
@@ -301,7 +294,6 @@ class _ConfigureStepState extends ConsumerState<_ConfigureStep> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Participants ─────────────────────────────────────────────
           const Text('Participants',
               style: TextStyle(
                   color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
@@ -322,7 +314,6 @@ class _ConfigureStepState extends ConsumerState<_ConfigureStep> {
           ),
           const SizedBox(height: 24),
 
-          // ── Date range pickers ───────────────────────────────────────
           const Text('Date Range',
               style: TextStyle(
                   color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
@@ -338,13 +329,12 @@ class _ConfigureStepState extends ConsumerState<_ConfigureStep> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: Text(
-              'Scanning $dayCount day${dayCount == 1 ? '' : 's'} — later hours are prioritised.',
+              'Scanning $dayCount day${dayCount == 1 ? '' : 's'}',
               style: const TextStyle(color: Colors.white38, fontSize: 12),
             ),
           ),
           const SizedBox(height: 24),
 
-          // ── Duration picker ──────────────────────────────────────────
           const Text('Duration',
               style: TextStyle(
                   color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
@@ -368,7 +358,6 @@ class _ConfigureStepState extends ConsumerState<_ConfigureStep> {
           ),
           const SizedBox(height: 24),
 
-          // ── Method toggle ────────────────────────────────────────────
           const Text('Suggestion Method',
               style: TextStyle(
                   color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
@@ -399,7 +388,6 @@ class _ConfigureStepState extends ConsumerState<_ConfigureStep> {
           ),
           const SizedBox(height: 32),
 
-          // ── Find Slots button ────────────────────────────────────────
           SizedBox(
             width: double.infinity,
             height: 52,
@@ -561,8 +549,6 @@ class _ResultsStepState extends ConsumerState<_ResultsStep> {
   final Set<int> _savedIndices = {};
   bool _savingAll = false;
 
-  /// Builds a one-time Task from a meeting proposal so it appears in
-  /// the user's task list / home screen.
   Task _taskFromProposal(MeetingProposal proposal) {
     final state = ref.read(meetingSuggestionProvider);
     final names = state.selectedFriendNames;
@@ -590,8 +576,6 @@ class _ResultsStepState extends ConsumerState<_ResultsStep> {
     try {
       final repo = ref.read(friendRepositoryProvider);
       await repo.saveMeetingProposal(proposal);
-
-      // Also create a task so it shows on the home screen.
       await ref.read(saveTaskProvider(_taskFromProposal(proposal)).future);
 
       if (mounted) {
@@ -732,7 +716,7 @@ class _ResultsStepState extends ConsumerState<_ResultsStep> {
                     : const Icon(Icons.save_alt),
                 label: Text(
                   _savedIndices.length == widget.proposals.length
-                      ? 'All Saved ✓'
+                      ? 'All Saved'
                       : 'Save All Suggestions',
                   style: const TextStyle(
                       fontSize: 15, fontWeight: FontWeight.w600),
@@ -790,4 +774,3 @@ class _ErrorStep extends ConsumerWidget {
     );
   }
 }
-

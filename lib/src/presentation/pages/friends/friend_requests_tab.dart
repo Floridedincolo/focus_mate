@@ -67,7 +67,7 @@ class _IncomingRequestTile extends ConsumerStatefulWidget {
 
 class _IncomingRequestTileState extends ConsumerState<_IncomingRequestTile> {
   bool _loading = false;
-  String? _result; // "accepted" | "declined"
+  String? _result;
   UserProfile? _requesterProfile;
   bool _profileLoading = true;
 
@@ -131,7 +131,6 @@ class _IncomingRequestTileState extends ConsumerState<_IncomingRequestTile> {
   Widget build(BuildContext context) {
     final profile = _requesterProfile;
 
-    // While we have a resolved profile, use the nice tile
     if (profile != null) {
       return UserProfileTile(
         profile: profile,
@@ -139,7 +138,6 @@ class _IncomingRequestTileState extends ConsumerState<_IncomingRequestTile> {
       );
     }
 
-    // Fallback: show UID while loading
     return ListTile(
       leading: CircleAvatar(
         backgroundColor: Colors.blueAccent.withValues(alpha: 0.2),
@@ -164,7 +162,7 @@ class _IncomingRequestTileState extends ConsumerState<_IncomingRequestTile> {
   Widget? _buildSubtitle() {
     if (_result != null) {
       return Text(
-        _result == 'accepted' ? 'Accepted ✓' : 'Declined',
+        _result == 'accepted' ? 'Accepted' : 'Declined',
         style: TextStyle(
           color: _result == 'accepted' ? Colors.green : Colors.white38,
           fontSize: 12,
@@ -203,4 +201,3 @@ class _IncomingRequestTileState extends ConsumerState<_IncomingRequestTile> {
     );
   }
 }
-

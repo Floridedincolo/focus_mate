@@ -18,4 +18,3 @@ final userLocationsProvider =
     FutureProvider<(MeetingLocation?, MeetingLocation?)>((ref) {
   return ref.watch(userLocationRepoProvider).getUserLocations();
 });
-

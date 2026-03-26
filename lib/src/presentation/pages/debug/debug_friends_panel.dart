@@ -6,15 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Debug-only panel for testing the Friends & Meeting features with
 /// a single emulator / device.
-///
-/// **What it does:**
-/// 1. Creates a fake "test buddy" user in `users/` with a deterministic UID.
-/// 2. Creates a fake friendship (pending or accepted) between the current
-///    user and the test buddy.
-/// 3. Allows toggling friendship status.
-///
-/// This widget is gated behind [kDebugMode] and should never be shown in
-/// release builds.
 class DebugFriendsPanel extends ConsumerStatefulWidget {
   const DebugFriendsPanel({super.key});
 
@@ -38,8 +29,6 @@ class _DebugFriendsPanelState extends ConsumerState<DebugFriendsPanel> {
 
     try {
       final firestore = FirebaseFirestore.instance;
-
-      // 1. Create fake user profile
       await firestore.collection('users').doc(_testBuddyUid).set({
         'displayName': _testBuddyName,
         'displayNameLower': _testBuddyName.toLowerCase(),
@@ -47,9 +36,9 @@ class _DebugFriendsPanelState extends ConsumerState<DebugFriendsPanel> {
         'photoUrl': null,
       }, SetOptions(merge: true));
 
-      setState(() => _status = '✅ Test buddy "$_testBuddyName" created in users/ collection.');
+      setState(() => _status = 'Test buddy "$_testBuddyName" created in users/ collection.');
     } catch (e) {
-      setState(() => _status = '❌ Error: $e');
+      setState(() => _status = 'Error: $e');
     } finally {
       setState(() => _loading = false);
     }
@@ -58,7 +47,7 @@ class _DebugFriendsPanelState extends ConsumerState<DebugFriendsPanel> {
   Future<void> _sendFriendRequestFromBuddy() async {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
-      setState(() => _status = '❌ Not signed in');
+      setState(() => _status = 'Not signed in');
       return;
     }
 
@@ -71,7 +60,6 @@ class _DebugFriendsPanelState extends ConsumerState<DebugFriendsPanel> {
       final firestore = FirebaseFirestore.instance;
       final now = Timestamp.now();
 
-      // Check if friendship already exists
       final existing = await firestore
           .collection('friendships')
           .where('requesterId', isEqualTo: _testBuddyUid)
@@ -81,7 +69,7 @@ class _DebugFriendsPanelState extends ConsumerState<DebugFriendsPanel> {
 
       if (existing.docs.isNotEmpty) {
         setState(
-            () => _status = 'ℹ️ Friendship already exists (id: ${existing.docs.first.id})');
+            () => _status = 'Friendship already exists (id: ${existing.docs.first.id})');
         setState(() => _loading = false);
         return;
       }
@@ -95,10 +83,10 @@ class _DebugFriendsPanelState extends ConsumerState<DebugFriendsPanel> {
       });
 
       setState(() =>
-          _status = '✅ Pending friend request created from Test Buddy → You.\n'
-              'Go to Friends → Requests tab to accept it.');
+          _status = 'Pending friend request created from Test Buddy to You.\n'
+              'Go to Friends > Requests tab to accept it.');
     } catch (e) {
-      setState(() => _status = '❌ Error: $e');
+      setState(() => _status = 'Error: $e');
     } finally {
       setState(() => _loading = false);
     }
@@ -107,7 +95,7 @@ class _DebugFriendsPanelState extends ConsumerState<DebugFriendsPanel> {
   Future<void> _createAcceptedFriendship() async {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
-      setState(() => _status = '❌ Not signed in');
+      setState(() => _status = 'Not signed in');
       return;
     }
 
@@ -120,14 +108,12 @@ class _DebugFriendsPanelState extends ConsumerState<DebugFriendsPanel> {
       final firestore = FirebaseFirestore.instance;
       final now = Timestamp.now();
 
-      // Ensure test buddy exists
       await firestore.collection('users').doc(_testBuddyUid).set({
         'displayName': _testBuddyName,
         'displayNameLower': _testBuddyName.toLowerCase(),
         'email': _testBuddyEmail,
       }, SetOptions(merge: true));
 
-      // Check if friendship already exists
       final existing = await firestore
           .collection('friendships')
           .where('requesterId', isEqualTo: _testBuddyUid)
@@ -136,12 +122,11 @@ class _DebugFriendsPanelState extends ConsumerState<DebugFriendsPanel> {
           .get();
 
       if (existing.docs.isNotEmpty) {
-        // Update existing to accepted
         await existing.docs.first.reference.update({
           'status': 'accepted',
           'updatedAt': now,
         });
-        setState(() => _status = '✅ Existing friendship set to "accepted".');
+        setState(() => _status = 'Existing friendship set to "accepted".');
       } else {
         await firestore.collection('friendships').add({
           'requesterId': _testBuddyUid,
@@ -150,11 +135,11 @@ class _DebugFriendsPanelState extends ConsumerState<DebugFriendsPanel> {
           'createdAt': now,
           'updatedAt': now,
         });
-        setState(() => _status = '✅ Accepted friendship created.\n'
-            'Go to Friends → My Friends tab to see Test Buddy.');
+        setState(() => _status = 'Accepted friendship created.\n'
+            'Go to Friends > My Friends tab to see Test Buddy.');
       }
     } catch (e) {
-      setState(() => _status = '❌ Error: $e');
+      setState(() => _status = 'Error: $e');
     } finally {
       setState(() => _loading = false);
     }
@@ -168,14 +153,11 @@ class _DebugFriendsPanelState extends ConsumerState<DebugFriendsPanel> {
 
     try {
       final firestore = FirebaseFirestore.instance;
-
-      // Add some sample tasks to test buddy's collection
       final tasksRef = firestore
           .collection('users')
           .doc(_testBuddyUid)
           .collection('tasks');
 
-      // Clear existing
       final existing = await tasksRef.get();
       for (final doc in existing.docs) {
         await doc.reference.delete();
@@ -193,13 +175,8 @@ class _DebugFriendsPanelState extends ConsumerState<DebugFriendsPanel> {
         'oneTime': false,
         'archived': false,
         'days': {
-          'Mon': true,
-          'Tue': true,
-          'Wed': true,
-          'Thu': true,
-          'Fri': true,
-          'Sat': false,
-          'Sun': false,
+          'Mon': true, 'Tue': true, 'Wed': true,
+          'Thu': true, 'Fri': true, 'Sat': false, 'Sun': false,
         },
       });
 
@@ -212,20 +189,15 @@ class _DebugFriendsPanelState extends ConsumerState<DebugFriendsPanel> {
         'oneTime': false,
         'archived': false,
         'days': {
-          'Mon': true,
-          'Tue': false,
-          'Wed': true,
-          'Thu': false,
-          'Fri': true,
-          'Sat': false,
-          'Sun': false,
+          'Mon': true, 'Tue': false, 'Wed': true,
+          'Thu': false, 'Fri': true, 'Sat': false, 'Sun': false,
         },
       });
 
-      setState(() => _status = '✅ 2 sample tasks added to Test Buddy\'s schedule.\n'
+      setState(() => _status = '2 sample tasks added to Test Buddy\'s schedule.\n'
           'Now try Plan a Meeting to see how slots are computed.');
     } catch (e) {
-      setState(() => _status = '❌ Error: $e');
+      setState(() => _status = 'Error: $e');
     } finally {
       setState(() => _loading = false);
     }
@@ -239,24 +211,19 @@ class _DebugFriendsPanelState extends ConsumerState<DebugFriendsPanel> {
 
     try {
       final firestore = FirebaseFirestore.instance;
-      final currentUser = FirebaseAuth.instance.currentUser;
 
-      // Delete friendship docs involving test buddy
-      if (currentUser != null) {
-        final q1 = await firestore
-            .collection('friendships')
-            .where('requesterId', isEqualTo: _testBuddyUid)
-            .get();
-        final q2 = await firestore
-            .collection('friendships')
-            .where('receiverId', isEqualTo: _testBuddyUid)
-            .get();
-        for (final doc in [...q1.docs, ...q2.docs]) {
-          await doc.reference.delete();
-        }
+      final q1 = await firestore
+          .collection('friendships')
+          .where('requesterId', isEqualTo: _testBuddyUid)
+          .get();
+      final q2 = await firestore
+          .collection('friendships')
+          .where('receiverId', isEqualTo: _testBuddyUid)
+          .get();
+      for (final doc in [...q1.docs, ...q2.docs]) {
+        await doc.reference.delete();
       }
 
-      // Delete test buddy tasks
       final tasks = await firestore
           .collection('users')
           .doc(_testBuddyUid)
@@ -266,12 +233,11 @@ class _DebugFriendsPanelState extends ConsumerState<DebugFriendsPanel> {
         await doc.reference.delete();
       }
 
-      // Delete test buddy profile
       await firestore.collection('users').doc(_testBuddyUid).delete();
 
-      setState(() => _status = '🧹 All test data cleaned up.');
+      setState(() => _status = 'All test data cleaned up.');
     } catch (e) {
-      setState(() => _status = '❌ Error: $e');
+      setState(() => _status = 'Error: $e');
     } finally {
       setState(() => _loading = false);
     }
@@ -286,7 +252,7 @@ class _DebugFriendsPanelState extends ConsumerState<DebugFriendsPanel> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF0D0D0D),
         iconTheme: const IconThemeData(color: Colors.white),
-        title: const Text('🛠 Debug: Friends Testing',
+        title: const Text('Debug: Friends Testing',
             style: TextStyle(color: Colors.white, fontSize: 18)),
       ),
       body: SingleChildScrollView(
@@ -296,10 +262,7 @@ class _DebugFriendsPanelState extends ConsumerState<DebugFriendsPanel> {
           children: [
             const Text(
               'Single-device testing tools',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 14,
-              ),
+              style: TextStyle(color: Colors.white70, fontSize: 14),
             ),
             const SizedBox(height: 8),
             const Text(
@@ -318,7 +281,6 @@ class _DebugFriendsPanelState extends ConsumerState<DebugFriendsPanel> {
               onPressed: _loading ? null : _seedTestBuddy,
             ),
             const SizedBox(height: 12),
-
             _buildActionButton(
               icon: Icons.mail,
               label: 'Step 2a: Send Friend Request (from buddy)',
@@ -327,7 +289,6 @@ class _DebugFriendsPanelState extends ConsumerState<DebugFriendsPanel> {
               onPressed: _loading ? null : _sendFriendRequestFromBuddy,
             ),
             const SizedBox(height: 12),
-
             _buildActionButton(
               icon: Icons.check_circle,
               label: 'Step 2b: Create Accepted Friendship',
@@ -336,7 +297,6 @@ class _DebugFriendsPanelState extends ConsumerState<DebugFriendsPanel> {
               onPressed: _loading ? null : _createAcceptedFriendship,
             ),
             const SizedBox(height: 12),
-
             _buildActionButton(
               icon: Icons.event_note,
               label: 'Step 3: Add Tasks to Test Buddy',
@@ -345,7 +305,6 @@ class _DebugFriendsPanelState extends ConsumerState<DebugFriendsPanel> {
               onPressed: _loading ? null : _addTestBuddyTasks,
             ),
             const SizedBox(height: 24),
-
             _buildActionButton(
               icon: Icons.delete_forever,
               label: 'Cleanup All Test Data',
@@ -430,4 +389,3 @@ class _DebugFriendsPanelState extends ConsumerState<DebugFriendsPanel> {
     );
   }
 }
-

@@ -100,6 +100,9 @@ class MeetingSuggestionNotifier extends Notifier<MeetingSuggestionState> {
         ...friendSchedules,
       ];
 
+      // ── Collect member locations (current user + friends) ──
+      final memberLocations = await _collectMemberLocations();
+
       final rangeStart = state.rangeStart ?? DateTime.now();
       final rangeEnd = state.rangeEnd ?? rangeStart.add(const Duration(days: 14));
       final startDate = DateTime(rangeStart.year, rangeStart.month, rangeStart.day);
@@ -129,6 +132,7 @@ class MeetingSuggestionNotifier extends Notifier<MeetingSuggestionState> {
               meetingDurationMinutes: state.meetingDurationMinutes,
               targetDate: targetDate,
               maxProposals: _maxPerDay,
+              memberLocations: memberLocations,
             );
           }
 
@@ -154,7 +158,14 @@ class MeetingSuggestionNotifier extends Notifier<MeetingSuggestionState> {
         if (currentUid != null) currentUid,
         ...state.selectedFriendUids,
       ];
-      final enrichedProposals = topProposals
+
+      // ── Resolve locations for algorithmic proposals (TBD → real place) ──
+      final resolvedProposals = await _resolveAlgorithmicLocations(
+        topProposals,
+        memberLocations,
+      );
+
+      final enrichedProposals = resolvedProposals
           .map((p) => p.copyWith(groupMemberUids: allMemberUids))
           .toList();
 
@@ -168,6 +179,98 @@ class MeetingSuggestionNotifier extends Notifier<MeetingSuggestionState> {
         step: MeetingSuggestionStep.error,
       );
     }
+  }
+
+  /// Reads the current user's home/work locations. Friends' locations are
+  /// unknown (stored in their local SharedPreferences), so we pass null.
+  Future<List<(MeetingLocation? home, MeetingLocation? work)>>
+      _collectMemberLocations() async {
+    final locationRepo = getIt<UserLocationRepository>();
+    MeetingLocation? myHome;
+    MeetingLocation? myWork;
+    try {
+      final (home, work) = await locationRepo.getUserLocations();
+      myHome = home;
+      myWork = work;
+    } catch (e) {
+      if (kDebugMode) debugPrint('Failed to read user locations: $e');
+    }
+
+    return [
+      (myHome, myWork),
+      // Friends — we don't have access to their stored locations
+      for (final _ in state.selectedFriendUids) (null, null),
+    ];
+  }
+
+  /// For algorithmic proposals (location == TBD), resolve a real place using
+  /// the GPS midpoint of all known member locations + Places API.
+  Future<List<MeetingProposal>> _resolveAlgorithmicLocations(
+    List<MeetingProposal> proposals,
+    List<(MeetingLocation? home, MeetingLocation? work)> memberLocations,
+  ) async {
+    // Only resolve if there are TBD locations
+    final hasTbd = proposals.any((p) => !p.location.hasCoordinates);
+    if (!hasTbd) return proposals;
+
+    // Compute midpoint from all known coordinates
+    final midpoint = _computeMidpoint(memberLocations);
+    if (midpoint == null) return proposals; // No coordinates available
+
+    final locationService = getIt<LocationSearchService>();
+
+    final resolved = <MeetingProposal>[];
+    for (final proposal in proposals) {
+      if (proposal.location.hasCoordinates) {
+        resolved.add(proposal);
+        continue;
+      }
+
+      final keyword = _keywordForTimeOfDay(proposal.startTime.hour);
+      try {
+        final location = await locationService.findNearestPlace(
+          latitude: midpoint.$1,
+          longitude: midpoint.$2,
+          keyword: keyword,
+        );
+        resolved.add(proposal.copyWith(location: location));
+      } catch (e) {
+        if (kDebugMode) debugPrint('Place lookup failed: $e');
+        resolved.add(proposal);
+      }
+    }
+    return resolved;
+  }
+
+  /// Averages all known coordinates from member locations into a single point.
+  (double lat, double lng)? _computeMidpoint(
+    List<(MeetingLocation? home, MeetingLocation? work)> memberLocations,
+  ) {
+    double sumLat = 0, sumLng = 0;
+    int count = 0;
+    for (final (home, work) in memberLocations) {
+      if (home != null && home.hasCoordinates) {
+        sumLat += home.latitude!;
+        sumLng += home.longitude!;
+        count++;
+      }
+      if (work != null && work.hasCoordinates) {
+        sumLat += work.latitude!;
+        sumLng += work.longitude!;
+        count++;
+      }
+    }
+    if (count == 0) return null;
+    return (sumLat / count, sumLng / count);
+  }
+
+  /// Picks a place category keyword based on the hour of day.
+  String _keywordForTimeOfDay(int hour) {
+    if (hour < 11) return 'cafe';
+    if (hour < 14) return 'restaurant';
+    if (hour < 17) return 'cafe';
+    if (hour < 20) return 'restaurant';
+    return 'bar';
   }
 }
 

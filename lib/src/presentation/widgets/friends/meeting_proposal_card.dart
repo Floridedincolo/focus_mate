@@ -149,4 +149,3 @@ class MeetingProposalCard extends StatelessWidget {
     );
   }
 }
-

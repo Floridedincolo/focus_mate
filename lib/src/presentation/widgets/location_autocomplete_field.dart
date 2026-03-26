@@ -13,36 +13,12 @@ import '../../domain/entities/meeting_location.dart';
 /// Encapsulates debouncing, session tokens, predictions fetching, and place
 /// details resolution. Returns a full [MeetingLocation] (name + lat/lng)
 /// through [onLocationSelected] when the user taps a suggestion.
-///
-/// Usage:
-/// ```dart
-/// LocationAutocompleteField(
-///   initialLocationName: 'Starbucks Palas',
-///   onLocationSelected: (loc) {
-///     // loc.name, loc.latitude, loc.longitude
-///   },
-/// )
-/// ```
 class LocationAutocompleteField extends StatefulWidget {
-  /// Pre-populate the text field (e.g. when editing an existing task).
   final String? initialLocationName;
-
-  /// Called when the user selects a prediction from the dropdown.
-  /// The [MeetingLocation] includes name, latitude, and longitude.
-  /// Called with `null` when the user clears the field.
   final ValueChanged<MeetingLocation?> onLocationSelected;
-
-  /// Called whenever the raw text changes (even without selecting a place).
-  /// Useful for storing a plain text fallback when the user types manually.
   final ValueChanged<String>? onTextChanged;
-
-  /// Optional custom decoration. Defaults to a dark-themed outlined field.
   final InputDecoration? decoration;
-
-  /// Country code restriction for autocomplete (default: `'ro'`).
   final String countryCode;
-
-  /// Optional lat/lng to bias results towards the user's area.
   final double? userLat;
   final double? userLng;
 
@@ -73,14 +49,11 @@ class _LocationAutocompleteFieldState
   Timer? _debounce;
   bool _suppress = false;
 
-  // ── Lifecycle ────────────────────────────────────────────────────────
-
   @override
   void initState() {
     super.initState();
     _controller =
         TextEditingController(text: widget.initialLocationName ?? '');
-
     _controller.addListener(_onTextChanged);
     _focusNode.addListener(_onFocusChanged);
   }
@@ -92,8 +65,6 @@ class _LocationAutocompleteFieldState
     _focusNode.dispose();
     super.dispose();
   }
-
-  // ── Listeners ────────────────────────────────────────────────────────
 
   void _onTextChanged() {
     widget.onTextChanged?.call(_controller.text);
@@ -115,14 +86,11 @@ class _LocationAutocompleteFieldState
     if (_focusNode.hasFocus) {
       _sessionToken = _uuid.v4();
     } else {
-      // Dismiss predictions with a slight delay so the tap event fires first.
       Future.delayed(const Duration(milliseconds: 200), () {
         if (mounted) setState(() => _predictions = []);
       });
     }
   }
-
-  // ── Autocomplete logic ───────────────────────────────────────────────
 
   Future<void> _fetchPredictions(String query) async {
     try {
@@ -135,19 +103,15 @@ class _LocationAutocompleteFieldState
         userLng: widget.userLng,
       );
       if (mounted) setState(() => _predictions = results);
-    } catch (_) {
-      // Silently degrade — user can still type manually.
-    }
+    } catch (_) {}
   }
 
   Future<void> _selectPrediction(AutocompletePrediction pred) async {
-    // Suppress autocomplete while programmatically setting text.
     _suppress = true;
     _controller.text = pred.mainText;
     _suppress = false;
     setState(() => _predictions = []);
 
-    // Fetch full details to get lat/lng (also closes the billing session).
     MeetingLocation? location;
     try {
       final service = getIt<LocationSearchService>();
@@ -155,18 +119,12 @@ class _LocationAutocompleteFieldState
         placeId: pred.placeId,
         sessionToken: _sessionToken,
       );
-    } catch (_) {
-      // Details fetch failed — return a name-only location as fallback.
-    }
+    } catch (_) {}
 
     location ??= MeetingLocation(name: pred.mainText);
     widget.onLocationSelected(location);
-
-    // Start a fresh session for the next search.
     _sessionToken = _uuid.v4();
   }
-
-  // ── Build ────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -184,8 +142,6 @@ class _LocationAutocompleteFieldState
       ],
     );
   }
-
-  // ── Default decoration (matches the app's dark theme) ────────────────
 
   InputDecoration _defaultDecoration() {
     return InputDecoration(
@@ -213,8 +169,6 @@ class _LocationAutocompleteFieldState
       ),
     );
   }
-
-  // ── Predictions dropdown ─────────────────────────────────────────────
 
   Widget _buildPredictionsList() {
     return Container(
@@ -270,4 +224,3 @@ class _LocationAutocompleteFieldState
     );
   }
 }
-
