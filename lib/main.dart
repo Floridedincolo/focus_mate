@@ -19,8 +19,9 @@ import 'src/presentation/pages/schedule_import/schedule_import_page.dart';
 import 'src/presentation/pages/setup_profile_page.dart';
 import 'src/presentation/pages/friends/friends_page.dart';
 import 'src/presentation/pages/friends/plan_meeting_page.dart';
-import 'src/presentation/pages/debug/debug_friends_panel.dart';
+import 'src/presentation/pages/full_schedule_page.dart';
 import 'src/domain/repositories/user_location_repository.dart';
+import 'src/domain/repositories/notification_repository.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -51,6 +52,7 @@ void main() async {
     );
 
     await setupServiceLocator();
+    await getIt<NotificationRepository>().initialize();
 
     if (kDebugMode) {
       debugPrint('Service Locator initialized');
@@ -85,8 +87,7 @@ class FocusMateApp extends StatelessWidget {
         '/login': (context) => const LoginPage(),
         '/friends': (context) => const FriendsPage(),
         '/plan-meeting': (context) => const PlanMeetingPage(),
-        if (kDebugMode)
-          '/debug-friends': (context) => const DebugFriendsPanel(),
+        '/full-schedule': (context) => const FullSchedulePage(),
       },
     );
   }

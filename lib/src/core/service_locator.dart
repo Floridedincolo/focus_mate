@@ -10,6 +10,7 @@ import '../domain/repositories/schedule_import_repository.dart';
 import '../domain/repositories/user_location_repository.dart';
 import '../domain/repositories/friend_repository.dart';
 import '../domain/repositories/meeting_suggestion_repository.dart';
+import '../domain/repositories/notification_repository.dart';
 import '../domain/usecases/task_usecases.dart';
 import '../domain/usecases/app_usecases.dart';
 import '../domain/usecases/accessibility_usecases.dart';
@@ -19,6 +20,7 @@ import '../domain/usecases/friend_usecases.dart';
 import '../domain/usecases/suggest_meeting_algorithmic_use_case.dart';
 import '../domain/usecases/suggest_meeting_ai_use_case.dart';
 import '../domain/usecases/compute_transit_warnings_use_case.dart';
+import '../domain/usecases/notification_usecases.dart';
 
 // Data
 import '../data/repositories/task_repository_impl.dart';
@@ -28,6 +30,7 @@ import '../data/repositories/schedule_import_repository_impl.dart';
 import '../data/repositories/user_location_repository_impl.dart';
 import '../data/repositories/friend_repository_impl.dart';
 import '../data/repositories/meeting_suggestion_repository_impl.dart';
+import '../data/repositories/notification_repository_impl.dart';
 import '../data/datasources/task_data_source.dart';
 import '../data/datasources/app_data_source.dart';
 import '../data/datasources/accessibility_data_source.dart';
@@ -45,6 +48,8 @@ import '../data/datasources/implementations/google_places_search_service.dart';
 import '../data/datasources/implementations/google_transit_route_service.dart';
 import '../data/datasources/implementations/firestore_friend_datasource.dart';
 import '../data/datasources/implementations/gemini_meeting_suggestion_datasource.dart';
+import '../data/datasources/notification_service.dart';
+import '../data/datasources/implementations/flutter_local_notification_service.dart';
 
 final getIt = GetIt.instance;
 
@@ -85,6 +90,11 @@ Future<void> setupServiceLocator() async {
     GoogleTransitRouteService(),
   );
 
+  // Notification service
+  getIt.registerSingleton<NotificationService>(
+    FlutterLocalNotificationService(),
+  );
+
   // ============ REPOSITORIES ============
 
   getIt.registerSingleton<TaskRepository>(
@@ -114,6 +124,10 @@ Future<void> setupServiceLocator() async {
 
   getIt.registerSingleton<UserLocationRepository>(
     UserLocationRepositoryImpl(),
+  );
+
+  getIt.registerSingleton<NotificationRepository>(
+    NotificationRepositoryImpl(getIt<NotificationService>()),
   );
 
   // ============ USE CASES ============
@@ -237,6 +251,17 @@ Future<void> setupServiceLocator() async {
   // Transit warnings
   getIt.registerSingleton(
     ComputeTransitWarningsUseCase(getIt<TransitRouteService>()),
+  );
+
+  // Notifications
+  getIt.registerSingleton(
+    ToggleNotificationsUseCase(
+      getIt<NotificationRepository>(),
+      getIt<TaskRepository>(),
+    ),
+  );
+  getIt.registerSingleton(
+    GetNotificationsEnabledUseCase(getIt<NotificationRepository>()),
   );
 }
 

@@ -5,7 +5,7 @@ import '../../domain/entities/task_completion_status.dart';
 class TaskItem extends StatelessWidget {
   final Task task;
   final TaskCompletionStatus statusForSelectedDay;
-  final VoidCallback onMarkCompleted;
+  final VoidCallback? onMarkCompleted;
 
   /// Called when the user taps the edit button or long-presses the card.
   /// The parent is responsible for navigating to AddTaskMenu with [task].
@@ -15,7 +15,7 @@ class TaskItem extends StatelessWidget {
     super.key,
     required this.task,
     required this.statusForSelectedDay,
-    required this.onMarkCompleted,
+    this.onMarkCompleted,
     this.onEdit,
   });
 
@@ -23,12 +23,15 @@ class TaskItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final isCompleted = statusForSelectedDay == TaskCompletionStatus.completed;
     final isMissed = statusForSelectedDay == TaskCompletionStatus.missed;
+    final isFutureLocked = onMarkCompleted == null && !isMissed && !isCompleted;
 
     Color accentColor;
     if (isCompleted) {
       accentColor = Colors.greenAccent;
     } else if (isMissed) {
       accentColor = Colors.redAccent;
+    } else if (isFutureLocked) {
+      accentColor = Colors.grey;
     } else {
       accentColor = Colors.blueAccent;
     }
@@ -55,7 +58,7 @@ class TaskItem extends StatelessWidget {
               children: [
                 // ── Completion circle ──
                 GestureDetector(
-                  onTap: isMissed ? null : onMarkCompleted,
+                  onTap: (isMissed || onMarkCompleted == null) ? null : onMarkCompleted,
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 250),
                     transitionBuilder: (child, anim) =>
@@ -65,7 +68,9 @@ class TaskItem extends StatelessWidget {
                           ? Icons.check_circle_rounded
                           : isMissed
                               ? Icons.cancel_rounded
-                              : Icons.radio_button_unchecked_rounded,
+                              : isFutureLocked
+                                  ? Icons.lock_outline
+                                  : Icons.radio_button_unchecked_rounded,
                       key: ValueKey(statusForSelectedDay),
                       color: accentColor,
                       size: 26,
@@ -87,7 +92,9 @@ class TaskItem extends StatelessWidget {
                               ? Colors.white54
                               : isMissed
                                   ? Colors.redAccent.withValues(alpha: 0.7)
-                                  : Colors.white,
+                                  : isFutureLocked
+                                      ? Colors.white38
+                                      : Colors.white,
                           decoration: isCompleted
                               ? TextDecoration.lineThrough
                               : null,

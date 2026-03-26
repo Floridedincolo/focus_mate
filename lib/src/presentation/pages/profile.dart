@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -10,6 +9,7 @@ import '../../domain/entities/meeting_location.dart';
 import '../providers/task_providers.dart';
 import '../providers/friend_providers.dart';
 import '../providers/user_location_providers.dart';
+import '../providers/notification_providers.dart';
 import '../widgets/location_autocomplete_field.dart';
 
 class Profile extends ConsumerStatefulWidget {
@@ -20,8 +20,6 @@ class Profile extends ConsumerStatefulWidget {
 }
 
 class _ProfileState extends ConsumerState<Profile> {
-  bool notificationsEnabled = false;
-
   @override
   Widget build(BuildContext context) {
     final tasksAsync = ref.watch(tasksStreamProvider);
@@ -296,18 +294,6 @@ class _ProfileState extends ConsumerState<Profile> {
                       onTap: () =>
                           Navigator.pushNamed(context, '/plan-meeting'),
                     ),
-                    if (kDebugMode) ...[
-                      Divider(
-                        color: Colors.white.withValues(alpha: 0.06),
-                        height: 1,
-                      ),
-                      _buildNavRow(
-                        icon: Icons.bug_report,
-                        label: 'Debug: Friends Testing',
-                        onTap: () =>
-                            Navigator.pushNamed(context, '/debug-friends'),
-                      ),
-                    ],
                   ],
                 ),
                 const SizedBox(height: 20),
@@ -319,6 +305,16 @@ class _ProfileState extends ConsumerState<Profile> {
                 const SizedBox(height: 10),
                 _SectionCard(
                   children: [
+                    _buildNavRow(
+                      icon: Icons.calendar_month_outlined,
+                      label: 'See Full Schedule',
+                      onTap: () =>
+                          Navigator.pushNamed(context, '/full-schedule'),
+                    ),
+                    Divider(
+                      color: Colors.white.withValues(alpha: 0.06),
+                      height: 1,
+                    ),
                     _buildNavRow(
                       icon: Icons.lock_outline,
                       label: 'Blocking Mode',
@@ -343,21 +339,14 @@ class _ProfileState extends ConsumerState<Profile> {
                       color: Colors.white.withValues(alpha: 0.06),
                       height: 1,
                     ),
-                    _buildNavRow(
-                      icon: Icons.apps_outlined,
-                      label: 'App Blacklist & Whitelist',
-                      onTap: () {},
-                    ),
-                    Divider(
-                      color: Colors.white.withValues(alpha: 0.06),
-                      height: 1,
-                    ),
                     _buildToggleRow(
                       icon: Icons.notifications_outlined,
                       label: 'Notifications',
-                      value: notificationsEnabled,
-                      onChanged: (v) =>
-                          setState(() => notificationsEnabled = v),
+                      value: ref.watch(notificationsEnabledProvider).valueOrNull ?? false,
+                      onChanged: (v) async {
+                        await ref.read(toggleNotificationsUseCaseProvider)(v);
+                        ref.invalidate(notificationsEnabledProvider);
+                      },
                     ),
                   ],
                 ),
@@ -696,10 +685,10 @@ class _StatMiniCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
       decoration: BoxDecoration(
         color: const Color(0xFF161616),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: Colors.white.withValues(alpha: 0.05),
           width: 1,
@@ -708,13 +697,13 @@ class _StatMiniCard extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: color, size: 22),
-          const SizedBox(height: 6),
+          Icon(icon, color: color, size: 18),
+          const SizedBox(height: 4),
           Text(
             value,
             style: TextStyle(
               color: color,
-              fontSize: 20,
+              fontSize: 16,
               fontWeight: FontWeight.bold,
             ),
           ),

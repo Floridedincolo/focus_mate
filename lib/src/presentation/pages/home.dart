@@ -382,6 +382,8 @@ class _HomeState extends ConsumerState<Home> {
                                   : task;
 
                               final warning = ref.watch(transitWarningsProvider)[index];
+                              final isFutureDate = DateTime(selectedDate.year, selectedDate.month, selectedDate.day)
+                                  .isAfter(DateTime(todayDate.year, todayDate.month, todayDate.day));
 
                               return Column(
                                 children: [
@@ -401,7 +403,7 @@ class _HomeState extends ConsumerState<Home> {
                                         ),
                                       );
                                     },
-                                    onMarkCompleted: () async {
+                                    onMarkCompleted: isFutureDate ? null : () async {
                                       final isCompleted = status == TaskCompletionStatus.completed;
                                       final newStatus = isCompleted
                                           ? TaskCompletionStatus.upcoming
