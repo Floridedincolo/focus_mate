@@ -21,7 +21,7 @@ class NotificationRepositoryImpl implements NotificationRepository {
   @override
   Future<bool> getNotificationsEnabled() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_prefKey) ?? false;
+    return prefs.getBool(_prefKey) ?? true;
   }
 
   @override

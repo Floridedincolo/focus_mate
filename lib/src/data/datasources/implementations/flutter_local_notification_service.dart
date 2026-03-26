@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest_all.dart' as tz;
 
@@ -10,6 +12,8 @@ class FlutterLocalNotificationService implements NotificationService {
   @override
   Future<void> initialize() async {
     tz.initializeTimeZones();
+    final timezoneName = await FlutterTimezone.getLocalTimezone();
+    tz.setLocalLocation(tz.getLocation(timezoneName));
 
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const darwinSettings = DarwinInitializationSettings(
@@ -26,10 +30,17 @@ class FlutterLocalNotificationService implements NotificationService {
       ),
     );
 
-    // Request permissions on Android 13+
-    _plugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
+    final androidPlugin = _plugin
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+
+    // Request notification permission on Android 13+
+    await androidPlugin?.requestNotificationsPermission();
+
+    // Request exact alarm permission on Android 12+ if not already granted
+    final canExact = await androidPlugin?.canScheduleExactNotifications();
+    if (canExact == false) {
+      await androidPlugin?.requestExactAlarmsPermission();
+    }
   }
 
   @override
@@ -56,7 +67,7 @@ class FlutterLocalNotificationService implements NotificationService {
         ),
         iOS: DarwinNotificationDetails(),
       ),
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.wallClockTime,
       matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
     );

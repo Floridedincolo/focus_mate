@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/entities/task.dart';
 import '../../domain/entities/task_completion_status.dart';
 import '../../domain/usecases/task_usecases.dart';
+import '../../domain/usecases/notification_usecases.dart';
 import '../../core/service_locator.dart';
 
 /// Provider for GetTasksUseCase
@@ -35,12 +36,21 @@ final tasksStreamProvider = StreamProvider<List<Task>>((ref) {
   return usecase();
 });
 
+/// Re-schedules all notifications only if the user has them enabled.
+Future<void> _refreshNotifications() async {
+  final enabled = await getIt<GetNotificationsEnabledUseCase>()();
+  if (enabled) {
+    await getIt<ToggleNotificationsUseCase>().scheduleAll();
+  }
+}
+
 /// Future provider for creating/updating a task
 final saveTaskProvider =
     FutureProvider.family<void, Task>((ref, task) async {
   final usecase = ref.watch(saveTaskUseCaseProvider);
   await usecase(task);
   ref.invalidate(tasksStreamProvider);
+  await _refreshNotifications();
 });
 
 /// Future provider for deleting a task
@@ -49,6 +59,7 @@ final deleteTaskProvider =
   final usecase = ref.watch(deleteTaskUseCaseProvider);
   await usecase(taskId);
   ref.invalidate(tasksStreamProvider);
+  await _refreshNotifications();
 });
 
 /// Future provider for marking task status
@@ -66,4 +77,3 @@ final clearCompletionProvider =
   final usecase = ref.watch(clearCompletionUseCaseProvider);
   return usecase(params.$1, params.$2);
 });
-
