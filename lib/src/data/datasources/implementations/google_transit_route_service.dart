@@ -14,9 +14,7 @@ import '../transit_route_service.dart';
 /// ### Fallback Strategy
 /// 1. Check **local cache** (SharedPreferences).
 /// 2. Call **Google Routes API V2** for real traffic-aware duration.
-/// 3. If the API call fails (403, network error, rate-limited, etc.),
-///    fall back to a **Haversine straight-line estimate** so the user
-///    still gets a warning instead of silent failure.
+/// 3. If the API call fails, fall back to a **Haversine straight-line estimate**.
 ///
 /// ### Caching
 /// Every origin→destination+mode pair is cached under a deterministic key
@@ -39,26 +37,14 @@ class GoogleTransitRouteService implements TransitRouteService {
 
   static const _timeout = Duration(seconds: 10);
 
-  /// SharedPreferences key prefix for transit cache entries.
-  /// Bump the version (v2, v3…) whenever the caching semantics change
-  /// (e.g. parking overhead added) to auto-invalidate stale entries.
   static const _cachePrefix = 'transit_v2_';
 
-  /// Average driving speed in km/h used for Haversine fallback.
   static const _avgDriveKmh = 30.0;
-
-  /// Average walking speed in km/h used for Haversine fallback.
   static const _avgWalkKmh = 5.0;
-
-  /// Average public-transport speed in km/h used for Haversine fallback.
   static const _avgTransitKmh = 20.0;
-
-  /// Detour multiplier — straight-line distances are multiplied by this
-  /// to approximate real-road distances (roads are rarely straight).
   static const _detourFactor = 1.4;
 
-  /// Extra minutes added to driving estimates to account for parking,
-  /// walking to/from the car, etc.
+  /// Extra minutes added to driving estimates to account for parking.
   static const parkingOverheadMinutes = 5;
 
   // ── Core method ───────────────────────────────────────────────────────
@@ -69,7 +55,6 @@ class GoogleTransitRouteService implements TransitRouteService {
     required MeetingLocation destination,
     String mode = 'DRIVE',
   }) async {
-    // Guard: both locations must have coordinates.
     if (!origin.hasCoordinates || !destination.hasCoordinates) return null;
 
     final cacheKey = _buildCacheKey(origin, destination, mode);
@@ -84,14 +69,11 @@ class GoogleTransitRouteService implements TransitRouteService {
         }
         return cached;
       }
-    } catch (_) {
-      // SharedPreferences error — proceed to API.
-    }
+    } catch (_) {}
 
     // 2. Try Google Routes API V2.
     final apiMinutes = await _fetchFromRoutesApi(origin, destination, mode);
     if (apiMinutes != null) {
-      // Cache the successful API result.
       await _cacheResult(cacheKey, apiMinutes);
       return apiMinutes;
     }
@@ -99,11 +81,8 @@ class GoogleTransitRouteService implements TransitRouteService {
     // 3. Fallback: Haversine estimate.
     final fallback = _haversineEstimate(origin, destination, mode);
     if (kDebugMode) {
-      debugPrint(
-        '🗺️ Haversine fallback → ${fallback}min ($mode)',
-      );
+      debugPrint('🗺️ Haversine fallback → ${fallback}min ($mode)');
     }
-    // Don't cache the fallback — next time the API might be available.
     return fallback;
   }
 
@@ -114,12 +93,9 @@ class GoogleTransitRouteService implements TransitRouteService {
     MeetingLocation destination,
     String mode,
   ) async {
-    // Rate limiter check.
     if (_requestCount >= _maxRequests) {
       if (kDebugMode) {
-        debugPrint(
-          '🗺️ Transit rate limit reached ($_requestCount/$_maxRequests).',
-        );
+        debugPrint('🗺️ Transit rate limit reached ($_requestCount/$_maxRequests).');
       }
       return null;
     }
@@ -171,11 +147,9 @@ class GoogleTransitRouteService implements TransitRouteService {
 
       if (response.statusCode != 200) {
         if (kDebugMode) {
-          debugPrint(
-            '🗺️ Routes API error ${response.statusCode}: ${response.body}',
-          );
+          debugPrint('🗺️ Routes API error ${response.statusCode}: ${response.body}');
         }
-        return null; // Will fall through to Haversine.
+        return null;
       }
 
       final json = jsonDecode(response.body) as Map<String, dynamic>;
@@ -186,12 +160,9 @@ class GoogleTransitRouteService implements TransitRouteService {
           (routes[0] as Map<String, dynamic>)['duration'] as String?;
       if (durationStr == null) return null;
 
-      // Parse "900s" → 900 → 15 minutes.
       final seconds = int.tryParse(durationStr.replaceAll('s', ''));
       if (seconds == null) return null;
 
-      // Minimum 1 minute — even a "0s" API response means you still
-      // need some time to physically get there.
       final minutes = (seconds / 60).ceil().clamp(1, 99999);
 
       if (kDebugMode) {
@@ -204,14 +175,12 @@ class GoogleTransitRouteService implements TransitRouteService {
       return minutes;
     } catch (e) {
       if (kDebugMode) debugPrint('🗺️ Routes API exception: $e');
-      return null; // Will fall through to Haversine.
+      return null;
     }
   }
 
   // ── Haversine fallback ────────────────────────────────────────────────
 
-  /// Estimates travel time using the Haversine great-circle distance,
-  /// a detour multiplier, and an average speed for the given mode.
   int _haversineEstimate(
     MeetingLocation origin,
     MeetingLocation destination,
@@ -227,12 +196,10 @@ class GoogleTransitRouteService implements TransitRouteService {
             ? _avgTransitKmh
             : _avgDriveKmh;
     final minutes = (roadKm / speed * 60).ceil();
-    // Minimum 1 minute even for very short distances.
     return minutes < 1 ? 1 : minutes;
   }
 
   /// Haversine formula — returns straight-line distance in kilometres.
-  /// Public so callers (e.g. add_task) can check distance thresholds.
   static double haversineKm(
     double lat1,
     double lon1,
@@ -259,9 +226,7 @@ class GoogleTransitRouteService implements TransitRouteService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('$_cachePrefix$cacheKey', minutes);
-    } catch (_) {
-      // Caching failed — non-critical.
-    }
+    } catch (_) {}
   }
 
   @override
@@ -282,7 +247,6 @@ class GoogleTransitRouteService implements TransitRouteService {
 
   // ── Key builder ───────────────────────────────────────────────────────
 
-  /// Builds a deterministic cache key from two locations + mode.
   String _buildCacheKey(
     MeetingLocation origin,
     MeetingLocation destination,
@@ -295,4 +259,3 @@ class GoogleTransitRouteService implements TransitRouteService {
     return '${oLat}_${oLng}_${dLat}_${dLng}_${mode.toUpperCase()}';
   }
 }
-

@@ -36,33 +36,17 @@ class ScheduleImportSuccessPage extends ConsumerWidget {
                 onPressed: () {
                   // Reset wizard state so it's fresh next time
                   ref.read(scheduleImportProvider.notifier).reset();
-                  if (!context.mounted) return;
-                  try {
-                    // Safely pop all wizard pages back to the root
-                    Navigator.of(context).popUntil((r) => r.isFirst);
-                  } catch (_) {
-                    // Fallback: if popUntil fails (e.g. no matching route),
-                    // push home and clear the entire stack.
-                    Navigator.of(context).pushNamedAndRemoveUntil(
-                      '/',
-                      (_) => false,
-                    );
-                  }
+                  // Pop all wizard pages back to wherever the wizard was launched
+                  Navigator.of(context).popUntil((r) => r.isFirst);
                 },
               ),
               const SizedBox(height: 12),
               TextButton(
                 onPressed: () {
                   ref.read(scheduleImportProvider.notifier).reset();
-                  if (!context.mounted) return;
-                  try {
-                    Navigator.of(context).popUntil((r) => r.isFirst);
-                  } catch (_) {
-                    Navigator.of(context).pushNamedAndRemoveUntil(
-                      '/',
-                      (_) => false,
-                    );
-                  }
+                  Navigator.of(context).popUntil((r) => r.isFirst);
+                  // Re-push the import page for another import
+                  Navigator.of(context).pushNamed('/import-schedule');
                 },
                 child: const Text('Import Another Schedule'),
               ),

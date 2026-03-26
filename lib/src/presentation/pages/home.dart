@@ -9,6 +9,7 @@ import '../../domain/repositories/task_repository.dart';
 import '../../domain/usecases/compute_task_status.dart';
 import '../../domain/extensions/task_filter.dart';
 import '../providers/task_providers.dart';
+import '../providers/transit_warning_providers.dart';
 import '../providers/friend_providers.dart';
 import '../models/calendar_icon_data.dart';
 import '../widgets/calendar_icon_widget.dart';
@@ -150,8 +151,7 @@ class _HomeState extends ConsumerState<Home> {
               TextSpan(
                 children: [
                   TextSpan(
-                    text:
-                        '${weekdays[selectedDate.weekday - 1]}, ${selectedDate.day}',
+                    text: '${weekdays[selectedDate.weekday - 1]}, ${selectedDate.day}',
                   ),
                   WidgetSpan(
                     child: Transform.translate(
@@ -167,15 +167,12 @@ class _HomeState extends ConsumerState<Home> {
                     ),
                   ),
                   TextSpan(
-                    text:
-                        ' of ${months[selectedDate.month - 1]} ${selectedDate.year}',
+                    text: ' of ${months[selectedDate.month - 1]} ${selectedDate.year}',
                   ),
                 ],
               ),
               style: const TextStyle(
-                color: Colors.white,
-                fontSize: 22.5,
-                fontWeight: FontWeight.bold,
+                color: Colors.white, fontSize: 22.5, fontWeight: FontWeight.bold,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -184,32 +181,26 @@ class _HomeState extends ConsumerState<Home> {
             Text(
               "Your plan for $currentDateText",
               style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+                color: Colors.white70, fontSize: 20, fontWeight: FontWeight.bold,
               ),
             ),
           ],
         ),
         actions: [
-          // Friends button with badge
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Center(
               child: Tooltip(
                 message: 'Friends',
                 child: GestureDetector(
                   onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const FriendsPage(),
-                    ),
+                    MaterialPageRoute(builder: (_) => const FriendsPage()),
                   ),
-                  child: _FriendsBadgeIcon(),
+                  child: const _FriendsBadgeIcon(),
                 ),
               ),
             ),
           ),
-          // Schedule Import button
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Center(
@@ -217,20 +208,14 @@ class _HomeState extends ConsumerState<Home> {
                 message: 'Import Schedule',
                 child: GestureDetector(
                   onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const ScheduleImportPage(),
-                    ),
+                    MaterialPageRoute(builder: (_) => const ScheduleImportPage()),
                   ),
-                  child: const Icon(
-                    Icons.calendar_month_outlined,
-                    color: Colors.white70,
-                    size: 24,
-                  ),
+                  child: const Icon(Icons.calendar_month_outlined,
+                      color: Colors.white70, size: 24),
                 ),
               ),
             ),
           ),
-          // Profile button
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: GestureDetector(
@@ -261,6 +246,7 @@ class _HomeState extends ConsumerState<Home> {
                       onTap: () {
                         setState(() {
                           selectedDate = e.dateTime;
+                          ref.read(transitWarningsProvider.notifier).reset();
                           currentDateText =
                               (todayDate.day == selectedDate.day &&
                                       todayDate.month == selectedDate.month &&
@@ -303,7 +289,6 @@ class _HomeState extends ConsumerState<Home> {
                   );
                 }
 
-                // Cache the future: only re-fetch when tasks or date change
                 if (_statusesFuture == null ||
                     _lastSelectedDate != selectedDate ||
                     !_taskListsEqual(_lastTasksForDay, tasksForDay)) {
@@ -317,8 +302,7 @@ class _HomeState extends ConsumerState<Home> {
                   builder: (context, statusSnap) {
                     if (!statusSnap.hasData) {
                       return const Center(
-                        child:
-                            CircularProgressIndicator(color: Colors.white),
+                        child: CircularProgressIndicator(color: Colors.white),
                       );
                     }
 
@@ -326,8 +310,7 @@ class _HomeState extends ConsumerState<Home> {
 
                     final completedCount = list.where((e) {
                       final task = e['task'] as Task;
-                      final key =
-                          '${task.id}_${selectedDate.toIso8601String()}';
+                      final key = '${task.id}_${selectedDate.toIso8601String()}';
                       final localStatus = _localCompletions[key];
                       final finalStatus = localStatus ?? e['status'];
                       return finalStatus == TaskCompletionStatus.completed;
@@ -338,10 +321,8 @@ class _HomeState extends ConsumerState<Home> {
                     list.sort((a, b) {
                       final taskA = a['task'] as Task;
                       final taskB = b['task'] as Task;
-                      final keyA =
-                          '${taskA.id}_${selectedDate.toIso8601String()}';
-                      final keyB =
-                          '${taskB.id}_${selectedDate.toIso8601String()}';
+                      final keyA = '${taskA.id}_${selectedDate.toIso8601String()}';
+                      final keyB = '${taskB.id}_${selectedDate.toIso8601String()}';
                       final localA = _localCompletions[keyA];
                       final localB = _localCompletions[keyB];
                       final statusA = localA ?? a['status'];
@@ -358,38 +339,27 @@ class _HomeState extends ConsumerState<Home> {
                           .compareTo(bt.hour * 60 + bt.minute);
                     });
 
+                    // Trigger transit warning computation via provider
+                    final sortedTasks = list.map((e) => e['task'] as Task).toList();
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) {
+                        ref.read(transitWarningsProvider.notifier).compute(sortedTasks);
+                      }
+                    });
+
                     return Column(
                       children: [
                         Padding(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 16.0,
-                            vertical: 10,
+                            horizontal: 16.0, vertical: 10,
                           ),
                           child: Row(
                             children: [
-                              Expanded(
-                                child: _slimStatPill(
-                                  "Total",
-                                  "$totalCount",
-                                  Colors.blueAccent,
-                                ),
-                              ),
+                              Expanded(child: _slimStatPill("Total", "$totalCount", Colors.blueAccent)),
                               const SizedBox(width: 10),
-                              Expanded(
-                                child: _slimStatPill(
-                                  "Completed",
-                                  "$completedCount",
-                                  Colors.green,
-                                ),
-                              ),
+                              Expanded(child: _slimStatPill("Completed", "$completedCount", Colors.green)),
                               const SizedBox(width: 10),
-                              Expanded(
-                                child: _slimStatPill(
-                                  "Remaining",
-                                  "$remainingCount",
-                                  Colors.orange,
-                                ),
-                              ),
+                              Expanded(child: _slimStatPill("Remaining", "$remainingCount", Colors.orange)),
                             ],
                           ),
                         ),
@@ -402,8 +372,7 @@ class _HomeState extends ConsumerState<Home> {
                               final firestoreStatus =
                                   entry['status'] as TaskCompletionStatus? ?? TaskCompletionStatus.upcoming;
 
-                              final key =
-                                  '${task.id}_${selectedDate.toIso8601String()}';
+                              final key = '${task.id}_${selectedDate.toIso8601String()}';
                               final localStatus = _localCompletions[key];
                               final status = localStatus ?? firestoreStatus;
 
@@ -412,58 +381,60 @@ class _HomeState extends ConsumerState<Home> {
                                   ? task.copyWith(streak: localStreak)
                                   : task;
 
-                              return TaskItem(
-                                task: displayTask,
-                                statusForSelectedDay: status,
-                                onEdit: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => AddTaskMenu(
-                                        existingTask: task,
-                                      ),
+                              final warning = ref.watch(transitWarningsProvider)[index];
+
+                              return Column(
+                                children: [
+                                  // Transit warning BEFORE this task
+                                  if (warning != null)
+                                    _buildTransitWarningWidget(
+                                      transitMin: warning.transitMin,
+                                      availableMin: warning.availableMin,
                                     ),
-                                  );
-                                },
-                                onMarkCompleted: () async {
-                                  final isCompleted = status == TaskCompletionStatus.completed;
-                                  final newStatus =
-                                      isCompleted ? TaskCompletionStatus.upcoming : TaskCompletionStatus.completed;
-
-                                  setState(() {
-                                    _localCompletions[key] = newStatus;
-                                  });
-
-                                  try {
-                                    int updatedStreak;
-
-                                    if (isCompleted) {
-                                      updatedStreak = await ref.read(
-                                        clearCompletionProvider(
-                                          (task, selectedDate),
-                                        ).future,
+                                  TaskItem(
+                                    task: displayTask,
+                                    statusForSelectedDay: status,
+                                    onEdit: () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => AddTaskMenu(existingTask: task),
+                                        ),
                                       );
-                                    } else {
-                                      updatedStreak = await ref.read(
-                                        markTaskStatusProvider(
-                                          (task, selectedDate, newStatus),
-                                        ).future,
-                                      );
-                                    }
+                                    },
+                                    onMarkCompleted: () async {
+                                      final isCompleted = status == TaskCompletionStatus.completed;
+                                      final newStatus = isCompleted
+                                          ? TaskCompletionStatus.upcoming
+                                          : TaskCompletionStatus.completed;
 
-                                    setState(() {
-                                      _localCompletions[key] = newStatus;
-                                      _localStreaks[task.id] = updatedStreak;
-                                      // Invalidate cached future so next
-                                      // stream emission picks up fresh data
-                                      _statusesFuture = null;
-                                    });
-                                  } catch (e) {
-                                    setState(() {
-                                      _localCompletions[key] =
-                                          firestoreStatus;
-                                    });
-                                  }
-                                },
+                                      setState(() {
+                                        _localCompletions[key] = newStatus;
+                                      });
+
+                                      try {
+                                        int updatedStreak;
+                                        if (isCompleted) {
+                                          updatedStreak = await ref.read(
+                                            clearCompletionProvider((task, selectedDate)).future,
+                                          );
+                                        } else {
+                                          updatedStreak = await ref.read(
+                                            markTaskStatusProvider((task, selectedDate, newStatus)).future,
+                                          );
+                                        }
+                                        setState(() {
+                                          _localCompletions[key] = newStatus;
+                                          _localStreaks[task.id] = updatedStreak;
+                                          _statusesFuture = null;
+                                        });
+                                      } catch (e) {
+                                        setState(() {
+                                          _localCompletions[key] = firestoreStatus;
+                                        });
+                                      }
+                                    },
+                                  ),
+                                ],
                               );
                             },
                           ),
@@ -473,6 +444,33 @@ class _HomeState extends ConsumerState<Home> {
                   },
                 );
               },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTransitWarningWidget({
+    required int transitMin,
+    required int availableMin,
+  }) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              "Travel takes ~$transitMin min, but you only have $availableMin min between tasks",
+              style: const TextStyle(color: Colors.orange, fontSize: 12, fontWeight: FontWeight.w500),
             ),
           ),
         ],
@@ -490,25 +488,15 @@ class _HomeState extends ConsumerState<Home> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            title,
-            style: const TextStyle(color: Colors.white70, fontSize: 13),
-          ),
+          Text(title, style: const TextStyle(color: Colors.white70, fontSize: 13)),
           const SizedBox(height: 2),
-          Text(
-            value,
-            style: TextStyle(
-              color: color,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          Text(value, style: TextStyle(
+            color: color, fontSize: 16, fontWeight: FontWeight.bold)),
         ],
       ),
     );
   }
 
-  /// Compares two task lists to detect if any task data changed.
   bool _taskListsEqual(List<Task>? a, List<Task>? b) {
     if (a == null || b == null) return false;
     if (a.length != b.length) return false;
@@ -521,6 +509,8 @@ class _HomeState extends ConsumerState<Home> {
 
 /// People icon with a red badge dot when there are pending incoming requests.
 class _FriendsBadgeIcon extends ConsumerWidget {
+  const _FriendsBadgeIcon();
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final incomingAsync = ref.watch(watchIncomingRequestsProvider);

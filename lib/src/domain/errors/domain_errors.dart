@@ -51,14 +51,11 @@ class FriendshipPermissionException extends DomainException {
 
 // ── Meeting Suggestions ───────────────────────────────────────────────────────
 
-/// Thrown when the AI backend fails to return valid meeting proposals
-/// (network error, malformed JSON, quota exceeded, etc.).
 class AiSuggestionException extends DomainException {
   AiSuggestionException(String message, [Exception? originalException])
       : super(message, originalException);
 }
 
-/// Thrown when the Google Places API safety rate-limit is exceeded.
 class PlacesRateLimitException extends DomainException {
   PlacesRateLimitException(String message, [Exception? originalException])
       : super(message, originalException);

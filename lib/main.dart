@@ -1,4 +1,3 @@
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -17,36 +16,32 @@ import 'src/presentation/pages/stats_page.dart';
 import 'src/presentation/pages/profile.dart';
 import 'src/presentation/pages/login_page.dart';
 import 'src/presentation/pages/schedule_import/schedule_import_page.dart';
+import 'src/presentation/pages/setup_profile_page.dart';
 import 'src/presentation/pages/friends/friends_page.dart';
 import 'src/presentation/pages/friends/plan_meeting_page.dart';
 import 'src/presentation/pages/debug/debug_friends_panel.dart';
-import 'src/presentation/pages/setup_profile_page.dart';
 import 'src/domain/repositories/user_location_repository.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Catch Flutter framework errors
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
     if (kDebugMode) {
-      debugPrint('🔥 FlutterError: ${details.exceptionAsString()}');
+      debugPrint('FlutterError: ${details.exceptionAsString()}');
     }
   };
 
-  // Catch async errors not handled by Flutter
   PlatformDispatcher.instance.onError = (error, stack) {
     if (kDebugMode) {
-      debugPrint('🔥 PlatformError: $error\n$stack');
+      debugPrint('PlatformError: $error\n$stack');
     }
     return true;
   };
 
   try {
-    // Load environment variables (.env)
     await dotenv.load(fileName: ".env");
 
-    // Initialize Firebase
     await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform);
 
@@ -55,21 +50,19 @@ void main() async {
       cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
     );
 
-    // Initialize dependency injection
     await setupServiceLocator();
 
     if (kDebugMode) {
-      debugPrint('✅ Service Locator initialized');
+      debugPrint('Service Locator initialized');
     }
   } catch (e, stack) {
     if (kDebugMode) {
-      debugPrint('🔥 Initialization failed: $e\n$stack');
+      debugPrint('Initialization failed: $e\n$stack');
     }
     runApp(const _InitErrorApp());
     return;
   }
 
-  // Run app
   runApp(const ProviderScope(child: FocusMateApp()));
 }
 
@@ -80,7 +73,6 @@ class FocusMateApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      // Use the auth gate as the home widget
       home: const _AuthGate(),
       routes: {
         '/profile': (context) => const Profile(),
@@ -90,9 +82,9 @@ class FocusMateApp extends StatelessWidget {
         '/stats': (context) => const StatsPage(),
         '/main': (context) => const MainPage(),
         '/import-schedule': (context) => const ScheduleImportPage(),
+        '/login': (context) => const LoginPage(),
         '/friends': (context) => const FriendsPage(),
         '/plan-meeting': (context) => const PlanMeetingPage(),
-        '/login': (context) => const LoginPage(),
         if (kDebugMode)
           '/debug-friends': (context) => const DebugFriendsPanel(),
       },
@@ -100,14 +92,10 @@ class FocusMateApp extends StatelessWidget {
   }
 }
 
-/// Listens to Firebase Auth state changes and shows either the [LoginPage]
-/// or the [MainPage]. Also ensures the user's public profile stays in sync.
+/// Listens to Firebase Auth state and shows [LoginPage] or checks onboarding.
 class _AuthGate extends StatelessWidget {
   const _AuthGate();
 
-  /// Syncs the authenticated user's profile to Firestore so the Friends
-  /// feature can discover them, even if they signed in before the feature
-  /// was added.
   Future<void> _syncProfile(User user) async {
     try {
       final name = user.displayName ?? user.email ?? 'User';
@@ -122,7 +110,7 @@ class _AuthGate extends StatelessWidget {
           .doc(user.uid)
           .set(data, SetOptions(merge: true));
     } catch (e) {
-      if (kDebugMode) debugPrint('⚠️ Profile sync failed: $e');
+      if (kDebugMode) debugPrint('Profile sync failed: $e');
     }
   }
 
@@ -131,7 +119,6 @@ class _AuthGate extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        // Still loading
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             backgroundColor: Color(0xFF0D0D0D),
@@ -141,21 +128,18 @@ class _AuthGate extends StatelessWidget {
           );
         }
 
-        // User is signed in → sync profile & check onboarding
         if (snapshot.hasData) {
           _syncProfile(snapshot.data!);
           return const _OnboardingGate();
         }
 
-        // Not signed in → show login
         return const LoginPage();
       },
     );
   }
 }
 
-/// Checks whether the user has completed the initial location setup.
-/// Shows [SetupProfilePage] on first run, [MainPage] afterwards.
+/// Checks whether the user has completed initial location setup.
 class _OnboardingGate extends StatelessWidget {
   const _OnboardingGate();
 
@@ -200,9 +184,7 @@ class _InitErrorApp extends StatelessWidget {
                 Text(
                   'Failed to start FocusMate',
                   style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+                    color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold,
                   ),
                 ),
                 SizedBox(height: 8),
@@ -219,4 +201,3 @@ class _InitErrorApp extends StatelessWidget {
     );
   }
 }
-

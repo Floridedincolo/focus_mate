@@ -115,8 +115,6 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
     );
 
     // ── Smart Transit Warning ─────────────────────────────────────────
-    // Before saving, check whether the user has enough time to travel
-    // from the previous task's location to this one.
     final shouldSave = await _checkTransitWarning(task);
     if (!shouldSave || !mounted) return;
 
@@ -133,8 +131,8 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(_isEditing
-                ? '✅ Task updated successfully!'
-                : '✅ Task created successfully!'),
+                ? 'Task updated successfully!'
+                : 'Task created successfully!'),
             backgroundColor: Colors.green,
           ),
         );
@@ -150,67 +148,47 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
   /// Returns `true` if the task should be saved (either no conflict, or the
   /// user chose "Save anyway"). Returns `false` if the user cancelled.
   Future<bool> _checkTransitWarning(Task newTask) async {
-    // Need at least a start time and a date to check anything.
-    if (newTask.startTime == null || _startDate == null) {
-      debugPrint('⏭️ Transit check skipped: startTime=${newTask.startTime}, date=$_startDate');
-      return true;
-    }
+    if (newTask.startTime == null || _startDate == null) return true;
 
-    // Get existing tasks for the same day.
     List<Task> allTasks;
     try {
       allTasks = await ref
           .read(tasksStreamProvider.future)
           .timeout(const Duration(seconds: 3));
     } catch (_) {
-      debugPrint('⏭️ Transit check skipped: could not fetch tasks');
-      return true; // Can't fetch — allow save.
+      return true;
     }
 
     final dayTasks = allTasks
         .where((t) =>
-            t.id != newTask.id && // Exclude the task being edited
+            t.id != newTask.id &&
             t.occursOn(_startDate!) &&
             t.startTime != null &&
             t.endTime != null)
         .toList();
-
-    debugPrint('🔎 Transit check: ${dayTasks.length} other tasks on ${_startDate!.toIso8601String().substring(0, 10)}');
-    for (final t in dayTasks) {
-      debugPrint('   📋 "${t.title}" ${t.startTime?.format(context)}–${t.endTime?.format(context)} '
-          'loc=${t.locationName ?? "none"} coords=(${t.locationLatitude}, ${t.locationLongitude})');
-    }
 
     if (dayTasks.isEmpty) return true;
 
     final newStart = newTask.startTime!.hour * 60 + newTask.startTime!.minute;
     final newEnd = newTask.endTime != null
         ? newTask.endTime!.hour * 60 + newTask.endTime!.minute
-        : newStart + 1; // Treat point-in-time tasks as 1-min.
+        : newStart + 1;
 
     // ── 1. Check for time overlaps ───────────────────────────────────
     for (final t in dayTasks) {
       final tStart = t.startTime!.hour * 60 + t.startTime!.minute;
       final tEnd = t.endTime!.hour * 60 + t.endTime!.minute;
-
-      // Overlap = !(one ends before the other starts)
       final overlaps = newStart < tEnd && tStart < newEnd;
       if (overlaps) {
         if (!mounted) return false;
-        final proceed = await _showOverlapDialog(t, newTask);
-        return proceed;
+        return await _showOverlapDialog(t, newTask);
       }
     }
 
     // ── 2. Check transit time for adjacent tasks ──────────────────────
-    // Both tasks must have coordinates for this to work.
-    if (newTask.locationLatitude == null ||
-        newTask.locationLongitude == null) {
-      debugPrint('⏭️ Transit check skipped: new task "${newTask.title}" has no coordinates');
+    if (newTask.locationLatitude == null || newTask.locationLongitude == null) {
       return true;
     }
-
-    debugPrint('🚗 Transit check: new task "${newTask.title}" at (${newTask.locationLatitude}, ${newTask.locationLongitude})');
 
     final newLoc = MeetingLocation(
       name: newTask.locationName ?? '',
@@ -218,7 +196,6 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
       longitude: newTask.locationLongitude,
     );
 
-    // Collect warnings for both legs so we can show ONE combined dialog.
     final legs = <_TransitLeg>[];
 
     // ── 2a. Closest PRECEDING task ───────────────────────────────────
@@ -238,26 +215,17 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
 
     if (prevTask != null) {
       final gapMinutes = newStart - prevEndMinutes;
-      debugPrint('   ⬅️ Prev: "${prevTask.title}" ends at $prevEndMinutes, gap=${gapMinutes}min');
       final origin = MeetingLocation(
         name: prevTask.locationName ?? '',
         latitude: prevTask.locationLatitude,
         longitude: prevTask.locationLongitude,
       );
-
       final modes = await _buildTransitWarning(
-        origin: origin,
-        destination: newLoc,
-        gapMinutes: gapMinutes,
-      );
-
+        origin: origin, destination: newLoc, gapMinutes: gapMinutes);
       if (modes != null) {
         legs.add(_TransitLeg(
-          fromTitle: prevTask.title,
-          toTitle: newTask.title,
-          gapMinutes: gapMinutes,
-          modes: modes,
-        ));
+          fromTitle: prevTask.title, toTitle: newTask.title,
+          gapMinutes: gapMinutes, modes: modes));
       }
     }
 
@@ -278,154 +246,100 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
 
     if (nextTask != null) {
       final gapMinutes = nextStartMinutes - newEnd;
-      debugPrint('   ➡️ Next: "${nextTask.title}" starts at $nextStartMinutes, gap=${gapMinutes}min');
       final nextLoc = MeetingLocation(
         name: nextTask.locationName ?? '',
         latitude: nextTask.locationLatitude,
         longitude: nextTask.locationLongitude,
       );
-
       final modes = await _buildTransitWarning(
-        origin: newLoc,
-        destination: nextLoc,
-        gapMinutes: gapMinutes,
-      );
-
+        origin: newLoc, destination: nextLoc, gapMinutes: gapMinutes);
       if (modes != null) {
         legs.add(_TransitLeg(
-          fromTitle: newTask.title,
-          toTitle: nextTask.title,
-          gapMinutes: gapMinutes,
-          modes: modes,
-        ));
+          fromTitle: newTask.title, toTitle: nextTask.title,
+          gapMinutes: gapMinutes, modes: modes));
       }
     }
 
-    // ── Show ONE combined dialog if any leg has a problem ─────────────
-    debugPrint('🚗 Transit result: ${legs.length} leg(s) with warnings');
     if (legs.isEmpty) return true;
     if (!mounted) return false;
-
-    final proceed = await _showTransitDialog(legs: legs);
-    return proceed;
+    return await _showTransitDialog(legs: legs);
   }
 
-  // ── Transit warning data ─────────────────────────────────────────────
+  // ── Transit warning helpers ────────────────────────────────────────────
 
-  /// Holds multi-mode transit estimates for the warning dialog.
-  /// Only modes that exceed the gap are included.
-
-  /// Fetches DRIVE, WALK and TRANSIT estimates. Returns a list of mode
-  /// results if at least one exceeds [gapMinutes]; null otherwise.
   Future<List<_TransitModeResult>?> _buildTransitWarning({
     required MeetingLocation origin,
     required MeetingLocation destination,
     required int gapMinutes,
   }) async {
     final transitService = getIt<TransitRouteService>();
-
-    // Straight-line distance to decide whether WALK makes sense.
     final distKm = GoogleTransitRouteService.haversineKm(
-      origin.latitude!,
-      origin.longitude!,
-      destination.latitude!,
-      destination.longitude!,
+      origin.latitude!, origin.longitude!,
+      destination.latitude!, destination.longitude!,
     );
 
     final results = <_TransitModeResult>[];
     bool anyExceeds = false;
 
-    // ── DRIVE ──
+    // DRIVE
     try {
       final raw = await transitService.getTransitTimeMinutes(
-        origin: origin,
-        destination: destination,
-        mode: 'DRIVE',
-      );
+        origin: origin, destination: destination, mode: 'DRIVE');
       if (raw != null) {
-        // Add parking overhead (finding parking, walking to/from car).
         final total = raw + GoogleTransitRouteService.parkingOverheadMinutes;
         final exceeds = total > gapMinutes;
         if (exceeds) anyExceeds = true;
         results.add(_TransitModeResult(
-          icon: Icons.directions_car,
-          label: 'Drive',
-          minutes: total,
+          icon: Icons.directions_car, label: 'Drive', minutes: total,
           detail: '~${raw}min + ~${GoogleTransitRouteService.parkingOverheadMinutes}min parking',
-          exceeds: exceeds,
-        ));
+          exceeds: exceeds));
       }
     } catch (_) {}
 
-    // ── WALK (skip if > 5 km) ──
+    // WALK (skip if > 5 km)
     if (distKm <= 5.0) {
       try {
         final raw = await transitService.getTransitTimeMinutes(
-          origin: origin,
-          destination: destination,
-          mode: 'WALK',
-        );
+          origin: origin, destination: destination, mode: 'WALK');
         if (raw != null) {
           final exceeds = raw > gapMinutes;
           if (exceeds) anyExceeds = true;
           results.add(_TransitModeResult(
-            icon: Icons.directions_walk,
-            label: 'Walk',
-            minutes: raw,
-            detail: '~${distKm.toStringAsFixed(1)} km',
-            exceeds: exceeds,
-          ));
+            icon: Icons.directions_walk, label: 'Walk', minutes: raw,
+            detail: '~${distKm.toStringAsFixed(1)} km', exceeds: exceeds));
         }
       } catch (_) {}
     }
 
-    // ── TRANSIT (public transport) ──
+    // TRANSIT
     try {
       final raw = await transitService.getTransitTimeMinutes(
-        origin: origin,
-        destination: destination,
-        mode: 'TRANSIT',
-      );
+        origin: origin, destination: destination, mode: 'TRANSIT');
       if (raw != null) {
         final exceeds = raw > gapMinutes;
         if (exceeds) anyExceeds = true;
         results.add(_TransitModeResult(
-          icon: Icons.directions_bus,
-          label: 'Transit',
-          minutes: raw,
-          detail: 'bus / tram',
-          exceeds: exceeds,
-        ));
+          icon: Icons.directions_bus, label: 'Transit', minutes: raw,
+          detail: 'bus / tram', exceeds: exceeds));
       }
     } catch (_) {}
 
-    // Only show the dialog if at least one mode exceeds the gap.
     if (!anyExceeds || results.isEmpty) return null;
     return results;
   }
 
-  /// Shows a dialog warning about a time overlap with an existing task.
   Future<bool> _showOverlapDialog(Task existing, Task newTask) async {
     final existStart = existing.startTime!.format(context);
     final existEnd = existing.endTime!.format(context);
-
     final proceed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        icon: const Icon(
-          Icons.schedule,
-          color: Colors.redAccent,
-          size: 48,
-        ),
-        title: const Text(
-          'Time Overlap Detected',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        icon: const Icon(Icons.schedule, color: Colors.redAccent, size: 48),
+        title: const Text('Time Overlap Detected',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         content: Text(
           'This task overlaps with "${existing.title}" '
           '($existStart – $existEnd).\n\n'
@@ -434,47 +348,28 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
           textAlign: TextAlign.center,
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel',
-                style: TextStyle(color: Colors.white54)),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.redAccent,
-            ),
-            child: const Text('Save Anyway'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+              child: const Text('Save Anyway')),
         ],
       ),
     );
     return proceed ?? false;
   }
 
-  /// Shows a single dialog with all transit-warning legs (prev + next).
-  Future<bool> _showTransitDialog({
-    required List<_TransitLeg> legs,
-  }) async {
+  Future<bool> _showTransitDialog({required List<_TransitLeg> legs}) async {
     final proceed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        icon: const Icon(
-          Icons.warning_amber_rounded,
-          color: Colors.orangeAccent,
-          size: 48,
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        icon: const Icon(Icons.warning_amber_rounded, color: Colors.orangeAccent, size: 48),
         title: Text(
-          legs.length > 1
-              ? 'Multiple Schedule Conflicts'
-              : 'Tight Schedule Warning',
-          style: const TextStyle(
-              color: Colors.white, fontWeight: FontWeight.bold),
+          legs.length > 1 ? 'Multiple Schedule Conflicts' : 'Tight Schedule Warning',
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         content: SingleChildScrollView(
           child: Column(
@@ -486,141 +381,67 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
                   const Divider(color: Colors.white12),
                   const SizedBox(height: 12),
                 ],
-                // Leg header
-                Text(
-                  '"${legs[i].fromTitle}" → "${legs[i].toTitle}"',
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600),
-                  textAlign: TextAlign.center,
-                ),
+                Text('"${legs[i].fromTitle}" → "${legs[i].toTitle}"',
+                    style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                    textAlign: TextAlign.center),
                 const SizedBox(height: 12),
-                // Gap bar
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      vertical: 8, horizontal: 12),
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
                   decoration: BoxDecoration(
-                    color: Colors.blueAccent.withOpacity(0.15),
+                    color: Colors.blueAccent.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                        color: Colors.blueAccent.withOpacity(0.3)),
+                    border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.3)),
                   ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.timer_outlined,
-                          color: Colors.blueAccent, size: 20),
-                      const SizedBox(width: 8),
-                      const Text('Available gap',
-                          style: TextStyle(
-                              color: Colors.white54, fontSize: 13)),
-                      const Spacer(),
-                      Text(
-                        '${legs[i].gapMinutes} min',
-                        style: const TextStyle(
-                          color: Colors.blueAccent,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
+                  child: Row(children: [
+                    const Icon(Icons.timer_outlined, color: Colors.blueAccent, size: 20),
+                    const SizedBox(width: 8),
+                    const Text('Available gap', style: TextStyle(color: Colors.white54, fontSize: 13)),
+                    const Spacer(),
+                    Text('${legs[i].gapMinutes} min',
+                        style: const TextStyle(color: Colors.blueAccent, fontSize: 16, fontWeight: FontWeight.bold)),
+                  ]),
                 ),
                 const SizedBox(height: 8),
-                // Mode rows
                 ...legs[i].modes.map((m) => Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 8, horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: m.exceeds
-                              ? Colors.redAccent.withOpacity(0.12)
-                              : Colors.green.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: m.exceeds
-                                ? Colors.redAccent.withOpacity(0.3)
-                                : Colors.green.withOpacity(0.3),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(m.icon,
-                                color: m.exceeds
-                                    ? Colors.redAccent
-                                    : Colors.green,
-                                size: 20),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    m.label,
-                                    style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600),
-                                  ),
-                                  Text(
-                                    m.detail,
-                                    style: const TextStyle(
-                                        color: Colors.white38,
-                                        fontSize: 11),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Text(
-                              '${m.minutes} min',
-                              style: TextStyle(
-                                color: m.exceeds
-                                    ? Colors.redAccent
-                                    : Colors.green,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            Icon(
-                              m.exceeds
-                                  ? Icons.cancel_rounded
-                                  : Icons.check_circle_rounded,
-                              color: m.exceeds
-                                  ? Colors.redAccent
-                                  : Colors.green,
-                              size: 18,
-                            ),
-                          ],
-                        ),
-                      ),
-                    )),
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: (m.exceeds ? Colors.redAccent : Colors.green).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: (m.exceeds ? Colors.redAccent : Colors.green).withValues(alpha: 0.3)),
+                    ),
+                    child: Row(children: [
+                      Icon(m.icon, color: m.exceeds ? Colors.redAccent : Colors.green, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(m.label, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                        Text(m.detail, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                      ])),
+                      Text('${m.minutes} min',
+                          style: TextStyle(color: m.exceeds ? Colors.redAccent : Colors.green,
+                              fontSize: 16, fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 4),
+                      Icon(m.exceeds ? Icons.cancel_rounded : Icons.check_circle_rounded,
+                          color: m.exceeds ? Colors.redAccent : Colors.green, size: 18),
+                    ]),
+                  ),
+                )),
               ],
             ],
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel',
-                style: TextStyle(color: Colors.white54)),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.orangeAccent,
-            ),
-            child: const Text('Save Anyway'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(backgroundColor: Colors.orangeAccent),
+              child: const Text('Save Anyway')),
         ],
       ),
     );
-
     return proceed ?? false;
   }
-
 
   void _showError(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -656,12 +477,10 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
     return InputDecoration(
       hintText: hint,
       hintStyle: const TextStyle(color: Colors.white38),
-      prefixIcon:
-          prefixIcon != null ? Icon(prefixIcon, color: Colors.white38) : null,
+      prefixIcon: prefixIcon != null ? Icon(prefixIcon, color: Colors.white38) : null,
       filled: true,
       fillColor: _card,
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide.none,
@@ -704,32 +523,23 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Task type toggle ────────────────────────────────────
               _buildTypeToggle(),
               const SizedBox(height: 20),
 
-              // ── Title ───────────────────────────────────────────────
               _sectionLabel('TITLE'),
               const SizedBox(height: 8),
               TextFormField(
                 controller: _titleController,
                 style: const TextStyle(color: Colors.white),
-                decoration: _inputDecoration(
-                  hint: 'Enter task title',
-                  prefixIcon: Icons.edit_outlined,
-                ),
+                decoration: _inputDecoration(hint: 'Enter task title', prefixIcon: Icons.edit_outlined),
               ),
               const SizedBox(height: 20),
 
-              // ── Location with Autocomplete ──────────────────────────
               _sectionLabel('LOCATION'),
               const SizedBox(height: 8),
               LocationAutocompleteField(
                 initialLocationName: widget.existingTask?.locationName,
-                decoration: _inputDecoration(
-                  hint: 'Search for a place…',
-                  prefixIcon: Icons.location_on_outlined,
-                ),
+                decoration: _inputDecoration(hint: 'Search for a place…', prefixIcon: Icons.location_on_outlined),
                 onLocationSelected: (MeetingLocation? loc) {
                   setState(() {
                     _locationName = loc?.name;
@@ -738,17 +548,10 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
                   });
                 },
                 onTextChanged: (text) {
-                  // The controller's initial value triggers onTextChanged
-                  // once when the listener is first attached. Skip that
-                  // so we don't wipe the coordinates loaded in initState.
                   if (!_locationTextInitialized) {
                     _locationTextInitialized = true;
-                    // Only skip if editing an existing task with a location
-                    if (_isEditing && widget.existingTask?.locationName != null) {
-                      return;
-                    }
+                    if (_isEditing && widget.existingTask?.locationName != null) return;
                   }
-                  // User is manually typing — old coordinates are stale.
                   _locationName = text.trim().isNotEmpty ? text.trim() : null;
                   _locationLatitude = null;
                   _locationLongitude = null;
@@ -756,7 +559,6 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
               ),
               const SizedBox(height: 20),
 
-              // ── Date ────────────────────────────────────────────────
               _sectionLabel('DATE'),
               const SizedBox(height: 8),
               DatePickerField(
@@ -765,7 +567,6 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
               ),
               const SizedBox(height: 20),
 
-              // ── Repeat (only for recurring) ─────────────────────────
               if (!_oneTime) ...[
                 _sectionLabel('REPEAT'),
                 const SizedBox(height: 8),
@@ -780,31 +581,15 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
                 const SizedBox(height: 20),
               ],
 
-              // ── Time interval ───────────────────────────────────────
               _sectionLabel('TIME'),
               const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: TimePicker(
-                      label: 'Start',
-                      initialTime: _startTime,
-                      onTimeSelected: (t) => _startTime = t,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TimePicker(
-                      label: 'End',
-                      initialTime: _endTime,
-                      onTimeSelected: (t) => _endTime = t,
-                    ),
-                  ),
-                ],
-              ),
+              Row(children: [
+                Expanded(child: TimePicker(label: 'Start', initialTime: _startTime, onTimeSelected: (t) => _startTime = t)),
+                const SizedBox(width: 12),
+                Expanded(child: TimePicker(label: 'End', initialTime: _endTime, onTimeSelected: (t) => _endTime = t)),
+              ]),
               const SizedBox(height: 20),
 
-              // ── Reminders ───────────────────────────────────────────
               _sectionLabel('REMINDERS'),
               const SizedBox(height: 8),
               ..._reminders.asMap().entries.map(_buildReminderTile),
@@ -814,8 +599,6 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
           ),
         ),
       ),
-
-      // ── Save button ───────────────────────────────────────────────────
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -824,21 +607,13 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
             style: FilledButton.styleFrom(
               backgroundColor: _accent,
               minimumSize: const Size(double.infinity, 54),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
             child: _saving
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2.5, color: Colors.white),
-                  )
-                : Text(
-                    _isEditing ? 'Save Changes' : 'Create Task',
-                    style: const TextStyle(
-                        fontSize: 17, fontWeight: FontWeight.w600),
-                  ),
+                ? const SizedBox(width: 22, height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+                : Text(_isEditing ? 'Save Changes' : 'Create Task',
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
           ),
         ),
       ),
@@ -848,48 +623,26 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
   // ── Extracted widgets ──────────────────────────────────────────────────
 
   Widget _sectionLabel(String text) {
-    return Text(
-      text,
-      style: const TextStyle(
-        color: Colors.white70,
-        fontSize: 13,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.8,
-      ),
-    );
+    return Text(text, style: const TextStyle(
+      color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 0.8));
   }
 
   Widget _buildTypeToggle() {
     return Container(
-      decoration: BoxDecoration(
-        color: _card,
-        borderRadius: BorderRadius.circular(12),
-      ),
+      decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(12)),
       padding: const EdgeInsets.all(4),
-      child: Row(
-        children: [
-          _toggleButton(
-            label: 'One-time',
-            icon: Icons.event_outlined,
-            selected: _oneTime,
-            onTap: () => setState(() => _oneTime = true),
-          ),
-          _toggleButton(
-            label: 'Recurring',
-            icon: Icons.repeat,
-            selected: !_oneTime,
-            onTap: () => setState(() => _oneTime = false),
-          ),
-        ],
-      ),
+      child: Row(children: [
+        _toggleButton(label: 'One-time', icon: Icons.event_outlined, selected: _oneTime,
+            onTap: () => setState(() => _oneTime = true)),
+        _toggleButton(label: 'Recurring', icon: Icons.repeat, selected: !_oneTime,
+            onTap: () => setState(() => _oneTime = false)),
+      ]),
     );
   }
 
   Widget _toggleButton({
-    required String label,
-    required IconData icon,
-    required bool selected,
-    required VoidCallback onTap,
+    required String label, required IconData icon,
+    required bool selected, required VoidCallback onTap,
   }) {
     return Expanded(
       child: GestureDetector(
@@ -901,21 +654,12 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
             color: selected ? _accent : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: Colors.white, size: 18),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                  fontSize: 15,
-                ),
-              ),
-            ],
-          ),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(icon, color: Colors.white, size: 18),
+            const SizedBox(width: 6),
+            Text(label, style: TextStyle(color: Colors.white,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w400, fontSize: 15)),
+          ]),
         ),
       ),
     );
@@ -924,48 +668,25 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
   Widget _buildReminderTile(MapEntry<int, Reminder> entry) {
     final i = entry.key;
     final r = entry.value;
-    final days = r.days.entries
-        .where((d) => d.value)
-        .map((d) => d.key)
-        .toList();
-
+    final days = r.days.entries.where((d) => d.value).map((d) => d.key).toList();
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: _card,
-        borderRadius: BorderRadius.circular(12),
+        color: _card, borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
       ),
-      child: Row(
-        children: [
-          const Icon(Icons.notifications_active_outlined,
-              color: Colors.amber, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(r.time.format(context),
-                    style: const TextStyle(
-                        color: Colors.white, fontSize: 15)),
-                if (days.isNotEmpty)
-                  Text(days.join(', '),
-                      style: const TextStyle(
-                          color: Colors.white38, fontSize: 12)),
-                if (r.message.isNotEmpty)
-                  Text(r.message,
-                      style: const TextStyle(
-                          color: Colors.white54, fontSize: 12)),
-              ],
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.close, color: Colors.redAccent, size: 20),
-            onPressed: () => _deleteReminder(i),
-          ),
-        ],
-      ),
+      child: Row(children: [
+        const Icon(Icons.notifications_active_outlined, color: Colors.amber, size: 20),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(r.time.format(context), style: const TextStyle(color: Colors.white, fontSize: 15)),
+          if (days.isNotEmpty) Text(days.join(', '), style: const TextStyle(color: Colors.white38, fontSize: 12)),
+          if (r.message.isNotEmpty) Text(r.message, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+        ])),
+        IconButton(icon: const Icon(Icons.close, color: Colors.redAccent, size: 20),
+            onPressed: () => _deleteReminder(i)),
+      ]),
     );
   }
 
@@ -976,24 +697,14 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
-          color: _card,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.08),
-            style: BorderStyle.solid,
-          ),
+          color: _card, borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08), style: BorderStyle.solid),
         ),
-        child: const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.add_alert_outlined, color: Colors.white54, size: 20),
-            SizedBox(width: 8),
-            Text(
-              'Add Reminder',
-              style: TextStyle(color: Colors.white54, fontSize: 15),
-            ),
-          ],
-        ),
+        child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(Icons.add_alert_outlined, color: Colors.white54, size: 20),
+          SizedBox(width: 8),
+          Text('Add Reminder', style: TextStyle(color: Colors.white54, fontSize: 15)),
+        ]),
       ),
     );
   }
@@ -1007,10 +718,8 @@ class _TransitLeg {
   final List<_TransitModeResult> modes;
 
   const _TransitLeg({
-    required this.fromTitle,
-    required this.toTitle,
-    required this.gapMinutes,
-    required this.modes,
+    required this.fromTitle, required this.toTitle,
+    required this.gapMinutes, required this.modes,
   });
 }
 
@@ -1023,10 +732,7 @@ class _TransitModeResult {
   final bool exceeds;
 
   const _TransitModeResult({
-    required this.icon,
-    required this.label,
-    required this.minutes,
-    required this.detail,
-    required this.exceeds,
+    required this.icon, required this.label,
+    required this.minutes, required this.detail, required this.exceeds,
   });
 }

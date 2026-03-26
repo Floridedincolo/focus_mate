@@ -35,14 +35,10 @@ dependencies:
   # Unique IDs
   uuid: ^4.5.1
 
-  # Google Sign-In
-  google_sign_in: ^6.2.1
-
-  # Environment variables
+  # Location & Transit
   flutter_dotenv: ^5.2.1
-
-  # HTTP client for Places API
   http: ^1.2.2
+  google_sign_in: ^6.2.2
 
 dev_dependencies:
   flutter_test:

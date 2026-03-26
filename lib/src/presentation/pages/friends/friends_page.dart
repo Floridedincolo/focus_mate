@@ -7,13 +7,12 @@ import 'friend_requests_tab.dart';
 import 'friends_list_tab.dart';
 import 'meetings_tab.dart';
 
-/// Main Friends page with 4 tabs: Search · Requests · Friends · Meetings.
+/// Main Friends page with 4 tabs: Search, Requests, Friends, Meetings.
 class FriendsPage extends ConsumerWidget {
   const FriendsPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Badge count for incoming requests
     final incomingAsync = ref.watch(watchIncomingRequestsProvider);
     final badgeCount = incomingAsync.valueOrNull?.length ?? 0;
 
@@ -74,4 +73,3 @@ class FriendsPage extends ConsumerWidget {
     );
   }
 }
-

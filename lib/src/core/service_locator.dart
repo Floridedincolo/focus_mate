@@ -7,9 +7,9 @@ import '../domain/repositories/app_manager_repository.dart';
 import '../domain/repositories/block_manager_repository.dart';
 import '../domain/repositories/accessibility_repository.dart';
 import '../domain/repositories/schedule_import_repository.dart';
+import '../domain/repositories/user_location_repository.dart';
 import '../domain/repositories/friend_repository.dart';
 import '../domain/repositories/meeting_suggestion_repository.dart';
-import '../domain/repositories/user_location_repository.dart';
 import '../domain/usecases/task_usecases.dart';
 import '../domain/usecases/app_usecases.dart';
 import '../domain/usecases/accessibility_usecases.dart';
@@ -18,19 +18,22 @@ import '../domain/usecases/generate_weekly_tasks_use_case.dart';
 import '../domain/usecases/friend_usecases.dart';
 import '../domain/usecases/suggest_meeting_algorithmic_use_case.dart';
 import '../domain/usecases/suggest_meeting_ai_use_case.dart';
+import '../domain/usecases/compute_transit_warnings_use_case.dart';
 
 // Data
 import '../data/repositories/task_repository_impl.dart';
 import '../data/repositories/app_repository_impl.dart';
 import '../data/repositories/accessibility_repository_impl.dart';
 import '../data/repositories/schedule_import_repository_impl.dart';
+import '../data/repositories/user_location_repository_impl.dart';
 import '../data/repositories/friend_repository_impl.dart';
 import '../data/repositories/meeting_suggestion_repository_impl.dart';
-import '../data/repositories/user_location_repository_impl.dart';
 import '../data/datasources/task_data_source.dart';
 import '../data/datasources/app_data_source.dart';
 import '../data/datasources/accessibility_data_source.dart';
 import '../data/datasources/schedule_import_datasource.dart';
+import '../data/datasources/location_search_service.dart';
+import '../data/datasources/transit_route_service.dart';
 import '../data/datasources/friend_data_source.dart';
 import '../data/datasources/meeting_suggestion_data_source.dart';
 import '../data/datasources/implementations/cloud_function_schedule_import_datasource.dart';
@@ -38,12 +41,10 @@ import '../data/datasources/implementations/firestore_task_datasource.dart';
 import '../data/datasources/implementations/native_app_datasource.dart';
 import '../data/datasources/implementations/shared_preferences_datasource.dart';
 import '../data/datasources/implementations/method_channel_accessibility_datasource.dart';
+import '../data/datasources/implementations/google_places_search_service.dart';
+import '../data/datasources/implementations/google_transit_route_service.dart';
 import '../data/datasources/implementations/firestore_friend_datasource.dart';
 import '../data/datasources/implementations/gemini_meeting_suggestion_datasource.dart';
-import '../data/datasources/implementations/google_places_search_service.dart';
-import '../data/datasources/location_search_service.dart';
-import '../data/datasources/transit_route_service.dart';
-import '../data/datasources/implementations/google_transit_route_service.dart';
 
 final getIt = GetIt.instance;
 
@@ -74,6 +75,16 @@ Future<void> setupServiceLocator() async {
     MethodChannelAccessibilityDataSource(),
   );
 
+  // Location search service (Google Places)
+  getIt.registerSingleton<LocationSearchService>(
+    GooglePlacesSearchService(),
+  );
+
+  // Transit route service (Google Routes API + cache)
+  getIt.registerSingleton<TransitRouteService>(
+    GoogleTransitRouteService(),
+  );
+
   // ============ REPOSITORIES ============
 
   getIt.registerSingleton<TaskRepository>(
@@ -99,6 +110,10 @@ Future<void> setupServiceLocator() async {
     AccessibilityRepositoryImpl(
       platformDataSource: getIt<AccessibilityPlatformDataSource>(),
     ),
+  );
+
+  getIt.registerSingleton<UserLocationRepository>(
+    UserLocationRepositoryImpl(),
   );
 
   // ============ USE CASES ============
@@ -168,7 +183,7 @@ Future<void> setupServiceLocator() async {
     GenerateWeeklyTasksUseCase.new,
   );
 
-  // ============ FRIENDS & MEETING SUGGESTIONS ============
+  // ============ FRIENDS & MEETINGS ============
 
   // Data sources
   getIt.registerSingleton<FriendDataSource>(
@@ -177,12 +192,6 @@ Future<void> setupServiceLocator() async {
 
   getIt.registerSingleton<MeetingSuggestionDataSource>(
     GeminiMeetingSuggestionDataSource(),
-  );
-
-  // Location search — real Google Places API with safety rate limiter.
-  // Swap to MockLocationSearchService() for offline development.
-  getIt.registerSingleton<LocationSearchService>(
-    GooglePlacesSearchService(),
   );
 
   // Repositories
@@ -225,14 +234,9 @@ Future<void> setupServiceLocator() async {
     SuggestMeetingAiUseCase(getIt<MeetingSuggestionRepository>()),
   );
 
-  // ============ USER LOCATIONS ============
-  getIt.registerSingleton<UserLocationRepository>(
-    UserLocationRepositoryImpl(),
-  );
-
-  // ============ TRANSIT ROUTE SERVICE ============
-  getIt.registerSingleton<TransitRouteService>(
-    GoogleTransitRouteService(),
+  // Transit warnings
+  getIt.registerSingleton(
+    ComputeTransitWarningsUseCase(getIt<TransitRouteService>()),
   );
 }
 
@@ -240,4 +244,3 @@ Future<void> setupServiceLocator() async {
 void resetServiceLocator() {
   getIt.reset();
 }
-

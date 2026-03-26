@@ -86,7 +86,7 @@ class TaskItem extends StatelessWidget {
                           color: isCompleted
                               ? Colors.white54
                               : isMissed
-                                  ? Colors.redAccent.withOpacity(0.7)
+                                  ? Colors.redAccent.withValues(alpha: 0.7)
                                   : Colors.white,
                           decoration: isCompleted
                               ? TextDecoration.lineThrough
@@ -209,4 +209,3 @@ class TaskItem extends StatelessWidget {
     );
   }
 }
-

@@ -9,11 +9,6 @@ import '../../../domain/errors/domain_errors.dart';
 import '../meeting_suggestion_data_source.dart';
 
 /// Gemini (Vertex AI) implementation of [MeetingSuggestionDataSource].
-///
-/// Uses the Firebase AI SDK to send a prompt containing all members' schedules
-/// and returns parsed [GeminiRawProposal]s with GPS midpoint + place keyword.
-///
-/// The repository layer resolves the actual place name via [LocationSearchService].
 class GeminiMeetingSuggestionDataSource implements MeetingSuggestionDataSource {
   static const _kTimeoutDuration = Duration(seconds: 45);
 
@@ -196,4 +191,3 @@ class GeminiMeetingSuggestionDataSource implements MeetingSuggestionDataSource {
         hour: hour, minute: minute, second: 0, millisecond: 0, microsecond: 0);
   }
 }
-

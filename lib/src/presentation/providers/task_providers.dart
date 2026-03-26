@@ -2,9 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/entities/task.dart';
 import '../../domain/entities/task_completion_status.dart';
 import '../../domain/usecases/task_usecases.dart';
-import '../../data/datasources/task_data_source.dart';
 import '../../core/service_locator.dart';
-import 'friend_providers.dart'; // for currentUserUidProvider
 
 /// Provider for GetTasksUseCase
 final getTasksUseCaseProvider = Provider<GetTasksUseCase>(
@@ -31,21 +29,8 @@ final clearCompletionUseCaseProvider = Provider<ClearCompletionUseCase>(
   (ref) => getIt<ClearCompletionUseCase>(),
 );
 
-/// Stream provider for watching tasks.
-///
-/// Watches [currentUserUidProvider] so the stream automatically resets
-/// (new Firestore listener for the new UID) whenever the user signs in,
-/// signs out, or switches accounts.  The local in-memory cache is also
-/// cleared to prevent stale data from a previous user leaking through.
+/// Stream provider for watching tasks
 final tasksStreamProvider = StreamProvider<List<Task>>((ref) {
-  final uid = ref.watch(currentUserUidProvider);
-
-  // Clear the local cache so a new user never sees stale tasks.
-  getIt<LocalTaskDataSource>().clearCache();
-
-  // If there is no signed-in user, emit an empty list.
-  if (uid == null) return const Stream.empty();
-
   final usecase = ref.watch(getTasksUseCaseProvider);
   return usecase();
 });

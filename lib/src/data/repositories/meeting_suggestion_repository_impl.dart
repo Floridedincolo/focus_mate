@@ -9,9 +9,9 @@ import '../datasources/meeting_suggestion_data_source.dart';
 /// Concrete implementation of [MeetingSuggestionRepository].
 ///
 /// Implements a **2-step pipeline**:
-/// 1. [MeetingSuggestionDataSource] (Gemini) → raw proposals with GPS midpoint
+/// 1. [MeetingSuggestionDataSource] (Gemini) -> raw proposals with GPS midpoint
 ///    + place keyword.
-/// 2. [LocationSearchService] (Places API / mock) → resolves each midpoint +
+/// 2. [LocationSearchService] (Places API / mock) -> resolves each midpoint +
 ///    keyword into a real [MeetingLocation] with name and coordinates.
 class MeetingSuggestionRepositoryImpl implements MeetingSuggestionRepository {
   final MeetingSuggestionDataSource _dataSource;
@@ -26,7 +26,7 @@ class MeetingSuggestionRepositoryImpl implements MeetingSuggestionRepository {
     required DateTime targetDate,
     int maxProposals = 3,
   }) async {
-    // ── Step 1: Gemini → raw proposals (time + GPS midpoint + keyword) ──
+    // ── Step 1: Gemini -> raw proposals (time + GPS midpoint + keyword) ──
     final rawProposals = await _dataSource.suggestMeetings(
       memberSchedules: memberSchedules,
       meetingDurationMinutes: meetingDurationMinutes,
@@ -34,7 +34,7 @@ class MeetingSuggestionRepositoryImpl implements MeetingSuggestionRepository {
       maxProposals: maxProposals,
     );
 
-    // ── Step 2: Places API → resolve each proposal's location ───────────
+    // ── Step 2: Places API -> resolve each proposal's location ───────────
     try {
       final resolved = await Future.wait(
         rawProposals.map((raw) async {
@@ -81,4 +81,3 @@ class MeetingSuggestionRepositoryImpl implements MeetingSuggestionRepository {
   static String _capitalize(String s) =>
       s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
 }
-

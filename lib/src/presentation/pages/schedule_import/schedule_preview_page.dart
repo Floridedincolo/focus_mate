@@ -3,8 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/schedule_import_notifier.dart';
 import '../../../presentation/models/schedule_import_state.dart';
 import '../../widgets/schedule_import/task_preview_card.dart';
-import '../../widgets/location_autocomplete_field.dart';
-import '../../../domain/entities/meeting_location.dart';
 import 'schedule_import_success_page.dart';
 
 /// Step 4 — Read-only preview of all tasks that will be created.
@@ -47,11 +45,7 @@ class SchedulePreviewPage extends ConsumerWidget {
           : ListView.builder(
               padding: const EdgeInsets.symmetric(vertical: 8),
               itemCount: tasks.length,
-              itemBuilder: (_, i) => TaskPreviewCard(
-                task: tasks[i],
-                onEditLocation: () =>
-                    _showEditLocationSheet(context, notifier, i, tasks[i]),
-              ),
+              itemBuilder: (_, i) => TaskPreviewCard(task: tasks[i]),
             ),
       bottomNavigationBar: SafeArea(
         child: Padding(
@@ -72,105 +66,6 @@ class SchedulePreviewPage extends ConsumerWidget {
           ),
         ),
       ),
-    );
-  }
-
-  /// Shows a bottom sheet with a full LocationAutocompleteField so the user
-  /// gets real Google Places suggestions (and we capture lat/lng).
-  void _showEditLocationSheet(
-    BuildContext context,
-    ScheduleImportNotifier notifier,
-    int index,
-    dynamic task,
-  ) {
-    MeetingLocation? selectedLocation;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFF1A1A1A),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setSheetState) {
-            return Padding(
-              padding: EdgeInsets.fromLTRB(
-                20,
-                20,
-                20,
-                20 + MediaQuery.of(ctx).viewInsets.bottom,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Handle bar
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.white24,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Edit Location',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  LocationAutocompleteField(
-                    initialLocationName: task.locationName,
-                    onLocationSelected: (loc) {
-                      setSheetState(() => selectedLocation = loc);
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.white70,
-                            side: const BorderSide(color: Colors.white24),
-                          ),
-                          child: const Text('Cancel'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: () {
-                            if (selectedLocation != null) {
-                              notifier.updatePreviewTaskLocation(
-                                index,
-                                selectedLocation!.name,
-                                latitude: selectedLocation!.latitude,
-                                longitude: selectedLocation!.longitude,
-                              );
-                            }
-                            Navigator.pop(ctx);
-                          },
-                          child: const Text('Save'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
     );
   }
 }

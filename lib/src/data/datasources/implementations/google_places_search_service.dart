@@ -11,30 +11,16 @@ import '../location_search_service.dart';
 
 /// Real Google Places API implementation of [LocationSearchService].
 ///
-/// Performs a Nearby Search request to find the closest real place matching
-/// a keyword near a GPS coordinate.
-///
 /// ### Safety Limiter
 /// To prevent accidental cost overruns during development, this service
 /// includes a hard cap of [_maxRequests] API calls per app session.
 /// Once exceeded, it throws a [PlacesRateLimitException].
-///
-/// ### Usage
-/// Registered in `service_locator.dart` as the [LocationSearchService]
-/// singleton — swap back to [MockLocationSearchService] for offline dev.
 class GooglePlacesSearchService implements LocationSearchService {
   // ── Rate Limiter ──────────────────────────────────────────────────────
 
-  /// Maximum Google Places requests allowed per app session.
   static const int _maxRequests = 20;
-
-  /// Running counter — persists for the lifetime of the singleton.
   static int _requestCount = 0;
-
-  /// How many requests have been made this session (for debugging).
   static int get requestCount => _requestCount;
-
-  /// Reset the counter (useful in tests).
   static void resetCounter() => _requestCount = 0;
 
   // ── Constants ─────────────────────────────────────────────────────────
@@ -48,10 +34,7 @@ class GooglePlacesSearchService implements LocationSearchService {
   static const _placeDetailsUrl =
       'https://maps.googleapis.com/maps/api/place/details/json';
 
-  /// Search radius in metres.
   static const _radiusMetres = 1500;
-
-  /// HTTP timeout.
   static const _timeout = Duration(seconds: 10);
 
   // ── Core method ───────────────────────────────────────────────────────
@@ -62,7 +45,6 @@ class GooglePlacesSearchService implements LocationSearchService {
     required double longitude,
     required String keyword,
   }) async {
-    // ── Rate-limit guard ──────────────────────────────────────────────
     if (_requestCount >= _maxRequests) {
       throw PlacesRateLimitException(
         'Safety limit reached: $_maxRequests Places API requests per session. '
@@ -70,10 +52,8 @@ class GooglePlacesSearchService implements LocationSearchService {
       );
     }
 
-    // ── Read API key ──────────────────────────────────────────────────
     final apiKey = _requireApiKey();
 
-    // ── Build URL ─────────────────────────────────────────────────────
     final uri = Uri.parse(_baseUrl).replace(queryParameters: {
       'location': '$latitude,$longitude',
       'radius': '$_radiusMetres',
@@ -81,7 +61,6 @@ class GooglePlacesSearchService implements LocationSearchService {
       'key': apiKey,
     });
 
-    // ── Make request ──────────────────────────────────────────────────
     _requestCount++;
     if (kDebugMode) {
       debugPrint(
@@ -107,7 +86,6 @@ class GooglePlacesSearchService implements LocationSearchService {
       );
     }
 
-    // ── Parse response ────────────────────────────────────────────────
     final Map<String, dynamic> json;
     try {
       json = jsonDecode(response.body) as Map<String, dynamic>;
@@ -122,7 +100,6 @@ class GooglePlacesSearchService implements LocationSearchService {
       if (kDebugMode) {
         debugPrint('⚠️ Places API status: $status');
       }
-      // Return a fallback with the keyword as name.
       return MeetingLocation(
         name: _capitalize(keyword),
         latitude: latitude,
@@ -139,7 +116,6 @@ class GooglePlacesSearchService implements LocationSearchService {
       );
     }
 
-    // Take the first (closest / most relevant) result.
     final place = results.first as Map<String, dynamic>;
     final name = place['name'] as String? ?? _capitalize(keyword);
     final geometry = place['geometry'] as Map<String, dynamic>?;
@@ -170,7 +146,6 @@ class GooglePlacesSearchService implements LocationSearchService {
   }) async {
     if (input.trim().isEmpty) return const [];
 
-    // Rate-limit guard
     if (_requestCount >= _maxRequests) {
       throw PlacesRateLimitException(
         'Safety limit reached: $_maxRequests Places API requests per session.',
@@ -187,7 +162,7 @@ class GooglePlacesSearchService implements LocationSearchService {
     if (sessionToken != null) params['sessiontoken'] = sessionToken;
     if (userLat != null && userLng != null) {
       params['location'] = '$userLat,$userLng';
-      params['radius'] = '50000'; // 50 km bias
+      params['radius'] = '50000';
     }
 
     final uri =
@@ -238,7 +213,6 @@ class GooglePlacesSearchService implements LocationSearchService {
   }) async {
     if (placeId.isEmpty) return null;
 
-    // Rate-limit guard
     if (_requestCount >= _maxRequests) {
       throw PlacesRateLimitException(
         'Safety limit reached: $_maxRequests Places API requests per session.',
@@ -306,4 +280,3 @@ class GooglePlacesSearchService implements LocationSearchService {
   static String _capitalize(String s) =>
       s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
 }
-

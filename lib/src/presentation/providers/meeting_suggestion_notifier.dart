@@ -3,9 +3,12 @@ import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/service_locator.dart';
+import '../../data/datasources/location_search_service.dart';
+import '../../domain/entities/meeting_location.dart';
 import '../../domain/entities/meeting_proposal.dart';
 import '../../domain/entities/task.dart';
 import '../../domain/repositories/friend_repository.dart';
+import '../../domain/repositories/user_location_repository.dart';
 import '../../domain/usecases/suggest_meeting_ai_use_case.dart';
 import '../../domain/usecases/suggest_meeting_algorithmic_use_case.dart';
 import '../models/meeting_suggestion_state.dart';
@@ -60,20 +63,14 @@ class MeetingSuggestionNotifier extends Notifier<MeetingSuggestionState> {
 
   // ── Business logic ────────────────────────────────────────────────────
 
-  /// Maximum total proposals to return across all scanned days.
   static const _maxProposals = 5;
-
-  /// Maximum slots to collect per day before filtering (generous to allow
-  /// later-hour sorting across the full range).
   static const _maxPerDay = 8;
 
   Future<void> _runSuggestion() async {
     try {
-      // Get current user's tasks from the existing stream.
       final tasksAsync = ref.read(tasksStreamProvider);
       final myTasks = tasksAsync.valueOrNull ?? <Task>[];
 
-      // Fetch each friend's tasks from Firestore
       final friendRepo = getIt<FriendRepository>();
       final friendSchedules = <List<Task>>[];
       for (final friendUid in state.selectedFriendUids) {
@@ -88,7 +85,7 @@ class MeetingSuggestionNotifier extends Notifier<MeetingSuggestionState> {
                 .toList(),
           );
         } catch (e) {
-          if (kDebugMode) debugPrint('⚠️ Failed to fetch tasks for $friendUid: $e');
+          if (kDebugMode) debugPrint('Failed to fetch tasks for $friendUid: $e');
           friendSchedules.add(<Task>[]);
         }
       }
@@ -103,14 +100,12 @@ class MeetingSuggestionNotifier extends Notifier<MeetingSuggestionState> {
         ...friendSchedules,
       ];
 
-      // Determine the scan range from state.
       final rangeStart = state.rangeStart ?? DateTime.now();
       final rangeEnd = state.rangeEnd ?? rangeStart.add(const Duration(days: 14));
       final startDate = DateTime(rangeStart.year, rangeStart.month, rangeStart.day);
       final endDate = DateTime(rangeEnd.year, rangeEnd.month, rangeEnd.day);
       final totalDays = endDate.difference(startDate).inDays + 1;
 
-      // Scan every day in the range and collect ALL candidate slots.
       final allCandidates = <MeetingProposal>[];
 
       for (int dayOffset = 0; dayOffset < totalDays; dayOffset++) {
@@ -140,27 +135,20 @@ class MeetingSuggestionNotifier extends Notifier<MeetingSuggestionState> {
           allCandidates.addAll(dayProposals);
         } catch (e) {
           if (kDebugMode) {
-            debugPrint('⚠️ No slots on ${targetDate.toIso8601String()}: $e');
+            debugPrint('No slots on ${targetDate.toIso8601String()}: $e');
           }
         }
       }
 
-      // Sort: prefer later hours in the day. For slots with the same start
-      // hour, prefer earlier dates so the user gets the soonest options.
       allCandidates.sort((a, b) {
-        // Primary: later time-of-day first (descending by hour/minute).
         final aMinutes = a.startTime.hour * 60 + a.startTime.minute;
         final bMinutes = b.startTime.hour * 60 + b.startTime.minute;
         if (aMinutes != bMinutes) return bMinutes.compareTo(aMinutes);
-        // Tiebreak: earlier date first (ascending).
         return a.startTime.compareTo(b.startTime);
       });
 
-      // Take the top N.
       final topProposals = allCandidates.take(_maxProposals).toList();
 
-      // Ensure every proposal has the group member UIDs populated so
-      // they can be saved to Firestore and queried per-user.
       final currentUid = FirebaseAuth.instance.currentUser?.uid;
       final allMemberUids = [
         if (currentUid != null) currentUid,
@@ -183,9 +171,7 @@ class MeetingSuggestionNotifier extends Notifier<MeetingSuggestionState> {
   }
 }
 
-/// The global provider for the meeting suggestion wizard.
 final meetingSuggestionProvider =
     NotifierProvider<MeetingSuggestionNotifier, MeetingSuggestionState>(
   MeetingSuggestionNotifier.new,
 );
-
