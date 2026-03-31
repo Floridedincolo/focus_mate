@@ -125,6 +125,7 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen> {
       ),
       body: Column(
         children: [
+          // Name + Type settings
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: Column(
@@ -143,26 +144,29 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen> {
                   decoration: InputDecoration(
                     hintText: 'e.g. Study Mode, Work Focus...',
                     hintStyle: const TextStyle(color: Colors.white38),
-                    prefixIcon:
-                        const Icon(Icons.label_outline, color: Colors.white38),
+                    prefixIcon: const Icon(Icons.label_outline,
+                        color: Colors.white38),
                     filled: true,
                     fillColor: _card,
                     contentPadding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 14),
                     border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none),
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
                     enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(
-                            color: Colors.white.withValues(alpha: 0.06))),
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.06)),
+                    ),
                     focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide:
-                            const BorderSide(color: _accent, width: 1.5)),
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: _accent, width: 1.5),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
+
                 const Text('TYPE',
                     style: TextStyle(
                         color: Colors.white70,
@@ -174,20 +178,24 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen> {
                   decoration: BoxDecoration(
                       color: _card, borderRadius: BorderRadius.circular(12)),
                   padding: const EdgeInsets.all(4),
-                  child: Row(children: [
-                    _typeToggle(
+                  child: Row(
+                    children: [
+                      _typeToggle(
                         label: 'Blacklist',
                         icon: Icons.block,
                         selected: !_isWhitelist,
                         color: Colors.redAccent,
-                        onTap: () => setState(() => _isWhitelist = false)),
-                    _typeToggle(
+                        onTap: () => setState(() => _isWhitelist = false),
+                      ),
+                      _typeToggle(
                         label: 'Whitelist',
                         icon: Icons.check_circle_outline,
                         selected: _isWhitelist,
                         color: Colors.greenAccent,
-                        onTap: () => setState(() => _isWhitelist = true)),
-                  ]),
+                        onTap: () => setState(() => _isWhitelist = true),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Padding(
@@ -200,6 +208,8 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
+
+                // Search
                 const Text('APPS',
                     style: TextStyle(
                         color: Colors.white70,
@@ -220,17 +230,23 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen> {
                     contentPadding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 12),
                     border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none),
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text('${_selectedPackages.length} selected',
-                    style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+                Text(
+                  '${_selectedPackages.length} selected',
+                  style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                ),
               ],
             ),
           ),
+
           const SizedBox(height: 8),
+
+          // Apps list
           Expanded(
             child: _loadingApps
                 ? const Center(
@@ -242,20 +258,26 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen> {
                       final app = filteredApps[index];
                       final isSelected =
                           _selectedPackages.contains(app.packageName);
+
                       return ListTile(
                         leading: app.iconBytes != null
                             ? Image.memory(
                                 Uint8List.fromList(app.iconBytes!),
                                 width: 36,
-                                height: 36)
+                                height: 36,
+                              )
                             : const Icon(Icons.android,
                                 color: Colors.white, size: 36),
-                        title: Text(app.appName,
-                            style: const TextStyle(
-                                color: Colors.white, fontSize: 14)),
-                        subtitle: Text(app.packageName,
-                            style: TextStyle(
-                                color: Colors.grey[600], fontSize: 11)),
+                        title: Text(
+                          app.appName,
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 14),
+                        ),
+                        subtitle: Text(
+                          app.packageName,
+                          style:
+                              TextStyle(color: Colors.grey[600], fontSize: 11),
+                        ),
                         trailing: Checkbox(
                           value: isSelected,
                           activeColor: _isWhitelist
@@ -297,9 +319,11 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen> {
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14)),
             ),
-            child: Text(_isEditing ? 'Save Changes' : 'Create Template',
-                style: const TextStyle(
-                    fontSize: 17, fontWeight: FontWeight.w600)),
+            child: Text(
+              _isEditing ? 'Save Changes' : 'Create Template',
+              style:
+                  const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+            ),
           ),
         ),
       ),
@@ -320,23 +344,27 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen> {
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color:
-                selected ? color.withValues(alpha: 0.25) : Colors.transparent,
+            color: selected ? color.withValues(alpha: 0.25) : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
             border: selected
                 ? Border.all(color: color.withValues(alpha: 0.5))
                 : null,
           ),
-          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(icon, color: selected ? color : Colors.white54, size: 18),
-            const SizedBox(width: 6),
-            Text(label,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: selected ? color : Colors.white54, size: 18),
+              const SizedBox(width: 6),
+              Text(
+                label,
                 style: TextStyle(
                     color: selected ? color : Colors.white54,
                     fontWeight:
                         selected ? FontWeight.w600 : FontWeight.w400,
-                    fontSize: 15)),
-          ]),
+                    fontSize: 15),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -9,6 +9,7 @@ import '../../domain/entities/meeting_location.dart';
 import '../../domain/entities/reminder.dart';
 import '../../domain/entities/repeat_type.dart';
 import '../../domain/extensions/task_filter.dart';
+import '../providers/block_template_providers.dart';
 import '../providers/task_providers.dart';
 import '../widgets/datepicker.dart';
 import '../widgets/choose_repeating.dart';
@@ -42,6 +43,9 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
   Map<String, bool> _repeatDays = {};
   bool _saving = false;
 
+  // ── Block template state ─────────────────────────────────────────────
+  String? _blockTemplateId;
+
   // ── Location state (filled by LocationAutocompleteField) ─────────────
   String? _locationName;
   double? _locationLatitude;
@@ -69,6 +73,7 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
       _locationName = t.locationName;
       _locationLatitude = t.locationLatitude;
       _locationLongitude = t.locationLongitude;
+      _blockTemplateId = t.blockTemplateId;
     }
   }
 
@@ -112,6 +117,7 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
           _locationName != null && _locationName!.isNotEmpty ? _locationName : null,
       locationLatitude: _locationLatitude,
       locationLongitude: _locationLongitude,
+      blockTemplateId: _blockTemplateId,
     );
 
     // ── Smart Transit Warning ─────────────────────────────────────────
@@ -590,6 +596,11 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
               ]),
               const SizedBox(height: 20),
 
+              _sectionLabel('FOCUS PROFILE'),
+              const SizedBox(height: 8),
+              _buildFocusProfileSelector(),
+              const SizedBox(height: 20),
+
               _sectionLabel('REMINDERS'),
               const SizedBox(height: 8),
               ..._reminders.asMap().entries.map(_buildReminderTile),
@@ -687,6 +698,79 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
         IconButton(icon: const Icon(Icons.close, color: Colors.redAccent, size: 20),
             onPressed: () => _deleteReminder(i)),
       ]),
+    );
+  }
+
+  Widget _buildFocusProfileSelector() {
+    final templatesAsync = ref.watch(blockTemplatesProvider);
+
+    return templatesAsync.when(
+      data: (templates) {
+        // Build dropdown items: None + all templates
+        final items = <DropdownMenuItem<String?>> [
+          const DropdownMenuItem<String?>(
+            value: null,
+            child: Text('None', style: TextStyle(color: Colors.white70)),
+          ),
+          ...templates.map((t) => DropdownMenuItem<String?>(
+                value: t.id,
+                child: Row(
+                  children: [
+                    Icon(
+                      t.isWhitelist ? Icons.check_circle_outline : Icons.block,
+                      color: t.isWhitelist
+                          ? Colors.greenAccent
+                          : Colors.redAccent,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        t.name,
+                        style: const TextStyle(color: Colors.white),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              )),
+        ];
+
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          decoration: BoxDecoration(
+            color: _card,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+                color: Colors.white.withValues(alpha: 0.06)),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String?>(
+              value: _blockTemplateId,
+              items: items,
+              isExpanded: true,
+              dropdownColor: const Color(0xFF2A2A2A),
+              hint: const Text('Select a focus profile...',
+                  style: TextStyle(color: Colors.white38)),
+              icon: const Icon(Icons.shield_outlined,
+                  color: Colors.white38, size: 20),
+              onChanged: (val) => setState(() => _blockTemplateId = val),
+            ),
+          ),
+        );
+      },
+      loading: () => const SizedBox(
+        height: 48,
+        child: Center(
+          child: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: Colors.blueAccent)),
+        ),
+      ),
+      error: (_, __) => const Text('Could not load profiles',
+          style: TextStyle(color: Colors.redAccent, fontSize: 12)),
     );
   }
 

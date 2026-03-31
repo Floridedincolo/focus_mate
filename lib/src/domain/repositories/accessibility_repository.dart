@@ -17,5 +17,21 @@ abstract class AccessibilityRepository {
 
   /// Watch app opening events
   Stream<String> watchAppOpeningEvents();
+
+  /// Apply a blocking template to the native side
+  Future<void> applyBlockingTemplate({
+    required List<String> packages,
+    required bool isWhitelist,
+    String? taskName,
+  });
+
+  /// Clear all blocking
+  Future<void> clearBlocking();
+
+  /// Set the current task name to display on the blocking overlay
+  Future<void> setCurrentTaskName(String? taskName);
+
+  /// Clear the current task name from the blocking overlay
+  Future<void> clearCurrentTaskName();
 }
 

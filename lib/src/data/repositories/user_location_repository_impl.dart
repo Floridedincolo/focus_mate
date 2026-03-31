@@ -1,115 +1,135 @@
-import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../domain/entities/meeting_location.dart';
 import '../../domain/repositories/user_location_repository.dart';
+import '../dtos/user_profile_dto.dart';
 
-/// SharedPreferences-backed implementation of [UserLocationRepository].
+/// Firestore-backed implementation of [UserLocationRepository].
 ///
-/// All keys are scoped by the current Firebase UID so each user has
-/// their own home/work locations and onboarding state on the same device.
+/// Locations are stored as sub-fields (`homeLocation`, `workLocation`) inside
+/// the user's Firestore document at `users/{uid}`. This ensures the data
+/// persists across device reinstalls and is tied to the authenticated user.
 class UserLocationRepositoryImpl implements UserLocationRepository {
-  static const _homeKeySuffix = '_home_location';
-  static const _workKeySuffix = '_work_location';
-  static const _setupCompleteKeySuffix = '_setup_complete';
+  final FirebaseFirestore _firestore;
+  final FirebaseAuth _auth;
 
-  /// Returns the current user's UID, or `'anonymous'` as a fallback.
-  String get _uid =>
-      FirebaseAuth.instance.currentUser?.uid ?? 'anonymous';
+  UserLocationRepositoryImpl({
+    FirebaseFirestore? firestore,
+    FirebaseAuth? auth,
+  })  : _firestore = firestore ?? FirebaseFirestore.instance,
+        _auth = auth ?? FirebaseAuth.instance;
 
-  String get _homeKey => '$_uid$_homeKeySuffix';
-  String get _workKey => '$_uid$_workKeySuffix';
-  String get _setupCompleteKey => '$_uid$_setupCompleteKeySuffix';
+  /// Returns a [DocumentReference] to the current user's profile document.
+  /// Returns `null` if the user is not authenticated.
+  DocumentReference<Map<String, dynamic>>? get _userDocRef {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return null;
+    return _firestore.collection('users').doc(uid);
+  }
 
   @override
   Future<void> saveUserLocations({
     MeetingLocation? home,
     MeetingLocation? work,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
+    final docRef = _userDocRef;
+    if (docRef == null) {
+      if (kDebugMode) {
+        debugPrint('⚠️ Cannot save locations: user not authenticated');
+      }
+      return;
+    }
+
+    final Map<String, dynamic> updates = {};
+
     if (home != null) {
-      await prefs.setString(_homeKey, _encode(home));
+      updates['homeLocation'] = LocationFieldDto(
+        name: home.name,
+        latitude: home.latitude,
+        longitude: home.longitude,
+      ).toMap();
     } else {
-      await prefs.remove(_homeKey);
+      updates['homeLocation'] = FieldValue.delete();
     }
+
     if (work != null) {
-      await prefs.setString(_workKey, _encode(work));
+      updates['workLocation'] = LocationFieldDto(
+        name: work.name,
+        latitude: work.latitude,
+        longitude: work.longitude,
+      ).toMap();
     } else {
-      await prefs.remove(_workKey);
+      updates['workLocation'] = FieldValue.delete();
     }
 
-    // Sync home location to Firestore so friends can read it.
-    _syncHomeToFirestore(home);
-  }
-
-  /// Writes home location to the user's Firestore document (fire-and-forget).
-  void _syncHomeToFirestore(MeetingLocation? home) {
-    final uid = _uid;
-    if (uid == 'anonymous') return;
-
-    final data = home != null && home.hasCoordinates
-        ? {
-            'homeName': home.name,
-            'homeLatitude': home.latitude,
-            'homeLongitude': home.longitude,
-          }
-        : {
-            'homeName': FieldValue.delete(),
-            'homeLatitude': FieldValue.delete(),
-            'homeLongitude': FieldValue.delete(),
-          };
-
-    FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .set(data, SetOptions(merge: true))
-        .catchError((e) {
-      if (kDebugMode) debugPrint('[LOCATION] Failed to sync home to Firestore: $e');
-    });
+    await docRef.set(updates, SetOptions(merge: true));
   }
 
   @override
   Future<(MeetingLocation?, MeetingLocation?)> getUserLocations() async {
-    final prefs = await SharedPreferences.getInstance();
-    final homeJson = prefs.getString(_homeKey);
-    final workJson = prefs.getString(_workKey);
-    return (_decode(homeJson), _decode(workJson));
+    final docRef = _userDocRef;
+    if (docRef == null) return (null, null);
+
+    try {
+      final snapshot = await docRef.get();
+      if (!snapshot.exists) return (null, null);
+
+      final data = snapshot.data()!;
+
+      final home = data['homeLocation'] != null
+          ? _locationFromMap(data['homeLocation'] as Map<String, dynamic>)
+          : null;
+      final work = data['workLocation'] != null
+          ? _locationFromMap(data['workLocation'] as Map<String, dynamic>)
+          : null;
+
+      return (home, work);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ Error reading locations from Firestore: $e');
+      }
+      return (null, null);
+    }
   }
 
   @override
   Future<bool> hasCompletedSetup() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_setupCompleteKey) ?? false;
+    final docRef = _userDocRef;
+    if (docRef == null) return false;
+
+    try {
+      final snapshot = await docRef.get();
+      if (!snapshot.exists) return false;
+
+      final data = snapshot.data()!;
+      return data['locationSetupComplete'] == true;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ Error checking setup status: $e');
+      }
+      return false;
+    }
   }
 
   @override
   Future<void> markSetupComplete() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_setupCompleteKey, true);
+    final docRef = _userDocRef;
+    if (docRef == null) return;
+
+    await docRef.set(
+      {'locationSetupComplete': true},
+      SetOptions(merge: true),
+    );
   }
 
-  // ── JSON helpers ─────────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────
 
-  String _encode(MeetingLocation loc) => jsonEncode({
-        'name': loc.name,
-        'latitude': loc.latitude,
-        'longitude': loc.longitude,
-      });
-
-  MeetingLocation? _decode(String? json) {
-    if (json == null) return null;
-    try {
-      final map = jsonDecode(json) as Map<String, dynamic>;
-      return MeetingLocation(
-        name: map['name'] as String? ?? '',
-        latitude: (map['latitude'] as num?)?.toDouble(),
-        longitude: (map['longitude'] as num?)?.toDouble(),
-      );
-    } catch (_) {
-      return null;
-    }
+  MeetingLocation _locationFromMap(Map<String, dynamic> map) {
+    return MeetingLocation(
+      name: map['name'] as String? ?? '',
+      latitude: (map['latitude'] as num?)?.toDouble(),
+      longitude: (map['longitude'] as num?)?.toDouble(),
+    );
   }
 }
-

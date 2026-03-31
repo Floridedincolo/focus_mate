@@ -7,6 +7,8 @@ class MethodChannelAccessibilityDataSource
     implements AccessibilityPlatformDataSource {
   static const _accessibilityChannel =
       MethodChannel('focus_mate/accessibility');
+  static const _blockerChannel =
+      MethodChannel('com.block_app/blocker');
   static const _accessibilityEventChannel =
       EventChannel('accessibility_events');
 
@@ -99,5 +101,67 @@ class MethodChannelAccessibilityDataSource
         // Return empty to prevent breaking the stream
       },
     );
+  }
+
+  @override
+  Future<void> applyBlockingTemplate({
+    required List<String> packages,
+    required bool isWhitelist,
+    String? taskName,
+  }) async {
+    try {
+      await _blockerChannel.invokeMethod('updateBlockedApps', {
+        'apps': packages,
+        'isWhitelist': isWhitelist,
+      }).timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => null,
+      );
+      await setCurrentTaskName(taskName);
+    } catch (e) {
+      if (kDebugMode) debugPrint('❌ Error applying blocking template: $e');
+    }
+  }
+
+  @override
+  Future<void> clearBlocking() async {
+    try {
+      await _blockerChannel.invokeMethod('updateBlockedApps', {
+        'apps': <String>[],
+        'isWhitelist': false,
+      }).timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => null,
+      );
+      await clearCurrentTaskName();
+    } catch (e) {
+      if (kDebugMode) debugPrint('❌ Error clearing blocking: $e');
+    }
+  }
+
+  @override
+  Future<void> setCurrentTaskName(String? taskName) async {
+    try {
+      await _blockerChannel.invokeMethod('setCurrentTaskName', {
+        'taskName': taskName,
+      }).timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => null,
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('❌ Error setting current task name: $e');
+    }
+  }
+
+  @override
+  Future<void> clearCurrentTaskName() async {
+    try {
+      await _blockerChannel.invokeMethod('clearCurrentTaskName').timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => null,
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('❌ Error clearing current task name: $e');
+    }
   }
 }

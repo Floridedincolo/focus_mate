@@ -36,8 +36,7 @@ class AppBlockTemplate {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, isWhitelist, Object.hashAll(packages));
+  int get hashCode => Object.hash(id, name, isWhitelist, Object.hashAll(packages));
 
   static bool _listEquals(List<String> a, List<String> b) {
     if (a.length != b.length) return false;
