@@ -66,3 +66,55 @@ class WatchAppOpeningEventsUseCase {
   }
 }
 
+/// Use case: Apply a blocking template to the native side
+class ApplyBlockingTemplateUseCase {
+  final AccessibilityRepository _repository;
+
+  ApplyBlockingTemplateUseCase(this._repository);
+
+  Future<void> call({
+    required List<String> packages,
+    required bool isWhitelist,
+    String? taskName,
+  }) {
+    return _repository.applyBlockingTemplate(
+      packages: packages,
+      isWhitelist: isWhitelist,
+      taskName: taskName,
+    );
+  }
+}
+
+/// Use case: Clear all blocking
+class ClearBlockingUseCase {
+  final AccessibilityRepository _repository;
+
+  ClearBlockingUseCase(this._repository);
+
+  Future<void> call() {
+    return _repository.clearBlocking();
+  }
+}
+
+/// Use case: Set the current task name on the blocking overlay
+class SetCurrentTaskNameUseCase {
+  final AccessibilityRepository _repository;
+
+  SetCurrentTaskNameUseCase(this._repository);
+
+  Future<void> call(String? taskName) {
+    return _repository.setCurrentTaskName(taskName);
+  }
+}
+
+/// Use case: Clear the current task name from the blocking overlay
+class ClearCurrentTaskNameUseCase {
+  final AccessibilityRepository _repository;
+
+  ClearCurrentTaskNameUseCase(this._repository);
+
+  Future<void> call() {
+    return _repository.clearCurrentTaskName();
+  }
+}
+

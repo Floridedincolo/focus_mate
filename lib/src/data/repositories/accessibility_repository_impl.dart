@@ -36,5 +36,33 @@ class AccessibilityRepositoryImpl implements AccessibilityRepository {
   Stream<String> watchAppOpeningEvents() {
     return platformDataSource.watchAppOpeningEvents();
   }
+
+  @override
+  Future<void> applyBlockingTemplate({
+    required List<String> packages,
+    required bool isWhitelist,
+    String? taskName,
+  }) {
+    return platformDataSource.applyBlockingTemplate(
+      packages: packages,
+      isWhitelist: isWhitelist,
+      taskName: taskName,
+    );
+  }
+
+  @override
+  Future<void> clearBlocking() {
+    return platformDataSource.clearBlocking();
+  }
+
+  @override
+  Future<void> setCurrentTaskName(String? taskName) {
+    return platformDataSource.setCurrentTaskName(taskName);
+  }
+
+  @override
+  Future<void> clearCurrentTaskName() {
+    return platformDataSource.clearCurrentTaskName();
+  }
 }
 

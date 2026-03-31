@@ -11,6 +11,7 @@ import '../domain/repositories/user_location_repository.dart';
 import '../domain/repositories/friend_repository.dart';
 import '../domain/repositories/meeting_suggestion_repository.dart';
 import '../domain/repositories/notification_repository.dart';
+import '../domain/repositories/block_template_repository.dart';
 import '../domain/usecases/task_usecases.dart';
 import '../domain/usecases/app_usecases.dart';
 import '../domain/usecases/accessibility_usecases.dart';
@@ -31,6 +32,7 @@ import '../data/repositories/user_location_repository_impl.dart';
 import '../data/repositories/friend_repository_impl.dart';
 import '../data/repositories/meeting_suggestion_repository_impl.dart';
 import '../data/repositories/notification_repository_impl.dart';
+import '../data/repositories/block_template_repository_impl.dart';
 import '../data/datasources/task_data_source.dart';
 import '../data/datasources/app_data_source.dart';
 import '../data/datasources/accessibility_data_source.dart';
@@ -130,6 +132,10 @@ Future<void> setupServiceLocator() async {
     NotificationRepositoryImpl(getIt<NotificationService>()),
   );
 
+  getIt.registerSingleton<BlockTemplateRepository>(
+    BlockTemplateRepositoryImpl(),
+  );
+
   // ============ USE CASES ============
 
   // Task use cases
@@ -170,6 +176,18 @@ Future<void> setupServiceLocator() async {
   );
   getIt.registerSingleton(
     WatchAppOpeningEventsUseCase(getIt<AccessibilityRepository>()),
+  );
+  getIt.registerSingleton(
+    SetCurrentTaskNameUseCase(getIt<AccessibilityRepository>()),
+  );
+  getIt.registerSingleton(
+    ClearCurrentTaskNameUseCase(getIt<AccessibilityRepository>()),
+  );
+  getIt.registerSingleton(
+    ApplyBlockingTemplateUseCase(getIt<AccessibilityRepository>()),
+  );
+  getIt.registerSingleton(
+    ClearBlockingUseCase(getIt<AccessibilityRepository>()),
   );
 
   // ============ SCHEDULE IMPORT ============

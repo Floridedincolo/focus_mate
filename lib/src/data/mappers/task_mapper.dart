@@ -24,6 +24,7 @@ class TaskMapper {
       locationName: dto.locationName,
       locationLatitude: dto.locationLatitude,
       locationLongitude: dto.locationLongitude,
+      blockTemplateId: dto.blockTemplateId,
     );
   }
 
@@ -43,6 +44,7 @@ class TaskMapper {
       locationName: task.locationName,
       locationLatitude: task.locationLatitude,
       locationLongitude: task.locationLongitude,
+      blockTemplateId: task.blockTemplateId,
     );
   }
 

@@ -16,6 +16,7 @@ class TaskDTO {
   final String? locationName;
   final double? locationLatitude;
   final double? locationLongitude;
+  final String? blockTemplateId;
 
   TaskDTO({
     required this.id,
@@ -32,6 +33,7 @@ class TaskDTO {
     this.locationName,
     this.locationLatitude,
     this.locationLongitude,
+    this.blockTemplateId,
   });
 
   /// Create from Firestore document
@@ -61,6 +63,7 @@ class TaskDTO {
       locationName: data['locationName'] as String?,
       locationLatitude: (data['locationLatitude'] as num?)?.toDouble(),
       locationLongitude: (data['locationLongitude'] as num?)?.toDouble(),
+      blockTemplateId: data['blockTemplateId'] as String?,
     );
   }
 
@@ -80,6 +83,7 @@ class TaskDTO {
       if (locationName != null) 'locationName': locationName,
       if (locationLatitude != null) 'locationLatitude': locationLatitude,
       if (locationLongitude != null) 'locationLongitude': locationLongitude,
+      if (blockTemplateId != null) 'blockTemplateId': blockTemplateId,
     };
   }
 
@@ -98,6 +102,7 @@ class TaskDTO {
     String? locationName,
     double? locationLatitude,
     double? locationLongitude,
+    String? blockTemplateId,
   }) {
     return TaskDTO(
       id: id ?? this.id,
@@ -114,6 +119,7 @@ class TaskDTO {
       locationName: locationName ?? this.locationName,
       locationLatitude: locationLatitude ?? this.locationLatitude,
       locationLongitude: locationLongitude ?? this.locationLongitude,
+      blockTemplateId: blockTemplateId ?? this.blockTemplateId,
     );
   }
 }

@@ -36,6 +36,8 @@ class AppBlockService : AccessibilityService() {
     private var lastActionTime = 0L
 
     private var blockedApps: MutableSet<String> = mutableSetOf()
+    private var isWhitelist: Boolean = false
+    private var currentTaskName: String? = null
     private var updateReceiver: BroadcastReceiver? = null
     private var prefsListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
 
@@ -50,11 +52,11 @@ class AppBlockService : AccessibilityService() {
             // Înregistrăm un listener pentru SharedPreferences ca fallback robust
             val prefs = getSharedPreferences("focus_mate_prefs", Context.MODE_PRIVATE)
             prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPrefs, key ->
-                if (key == "blocked_apps") {
+                if (key == "blocked_apps" || key == "current_task_name" || key == "is_whitelist") {
                     Log.d("AppAccessibilityService", "🔔 SharedPreferences change detected for key: $key")
                     val oldSize = blockedApps.size
                     loadBlockedApps()
-                    Log.d("AppAccessibilityService", "🔄 Blocked apps refreshed via prefs listener: $oldSize → ${blockedApps.size} apps")
+                    Log.d("AppAccessibilityService", "🔄 Blocked apps refreshed via prefs listener: $oldSize → ${blockedApps.size} apps, task: $currentTaskName")
                 }
             }
             prefsListener?.let { prefs.registerOnSharedPreferenceChangeListener(it) }
@@ -64,13 +66,38 @@ class AppBlockService : AccessibilityService() {
         }
     }
 
+    companion object {
+        // Packages that must NEVER be blocked regardless of whitelist/blacklist mode.
+        // Blocking these would lock the user out of their device.
+        private val SYSTEM_EXEMPT_PACKAGES = setOf(
+            "com.example.focus_mate",                    // Our own app
+            "com.google.android.apps.nexuslauncher",     // Pixel launcher
+            "com.sec.android.app.launcher",              // Samsung launcher
+            "com.miui.home",                             // Xiaomi launcher
+            "com.huawei.android.launcher",               // Huawei launcher
+            "com.oppo.launcher",                         // Oppo launcher
+            "com.android.launcher",                      // AOSP launcher
+            "com.android.launcher3",                     // AOSP launcher 3
+            "com.android.settings",                      // System settings
+            "com.android.systemui",                      // System UI
+            "com.android.phone",                         // Phone / dialer
+            "com.android.server.telecom",                // Telecom
+            "com.android.emergency",                     // Emergency info
+            "com.google.android.inputmethod.latin",      // Gboard
+            "com.samsung.android.honeyboard",            // Samsung keyboard
+            "com.swiftkey.languageprovider",             // SwiftKey
+            "com.touchtype.swiftkey",                    // SwiftKey (alt package)
+            "com.android.inputmethod.latin",             // AOSP keyboard
+        )
+    }
+
     private fun loadBlockedApps() {
         val prefs: SharedPreferences = getSharedPreferences("focus_mate_prefs", Context.MODE_PRIVATE)
         blockedApps = prefs.getStringSet("blocked_apps", setOf())?.toMutableSet() ?: mutableSetOf()
-        Log.d("AppAccessibilityService", "📋 Loaded ${blockedApps.size} blocked apps from SharedPreferences")
-        blockedApps.forEach {
-            Log.d("AppAccessibilityService", "  - Blocked: $it")
-        }
+        isWhitelist = prefs.getBoolean("is_whitelist", false)
+        currentTaskName = prefs.getString("current_task_name", null)
+        Log.d("AppAccessibilityService", "📋 Loaded ${blockedApps.size} apps, whitelist=$isWhitelist")
+        Log.d("AppAccessibilityService", "📋 Current task name: $currentTaskName")
     }
 
     private fun registerUpdateReceiver() {
@@ -130,11 +157,22 @@ class AppBlockService : AccessibilityService() {
             if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
 
             val packageName = event.packageName?.toString() ?: return
-            Log.d("AppAccessibilityService", "Foreground app: $packageName")
-            Log.d("AppAccessibilityService", "Blocked apps list: $blockedApps")
-            Log.d("AppAccessibilityService", "Is blocked? ${blockedApps.contains(packageName)}")
+            Log.d("AppAccessibilityService", "Foreground app: $packageName, whitelist=$isWhitelist")
 
-            if (blockedApps.contains(packageName)) {
+            // Never block system-exempt packages
+            if (SYSTEM_EXEMPT_PACKAGES.contains(packageName)) return
+
+            val shouldBlock = if (isWhitelist) {
+                // Whitelist mode: block everything NOT in the list
+                !blockedApps.contains(packageName)
+            } else {
+                // Blacklist mode: block only what IS in the list
+                blockedApps.contains(packageName)
+            }
+
+            Log.d("AppAccessibilityService", "Should block $packageName? $shouldBlock")
+
+            if (shouldBlock) {
                 val now = System.currentTimeMillis()
                 if (now - lastActionTime < 1000) return
                 lastActionTime = now
@@ -240,9 +278,8 @@ class AppBlockService : AccessibilityService() {
         }
         card.addView(iconView)
 
-        // TODO: În viitor, înlocuiește "Focus Mate" cu numele taskului curent
-        // Exemplu: "by Complete Math Homework" sau "by Study for Exam"
-        val currentTaskName = "Focus Mate" // Placeholder - va fi înlocuit cu task real
+        // Citește numele task-ului curent din SharedPreferences (setat de Flutter)
+        val taskName = currentTaskName
 
         val title = TextView(this).apply {
             text = "$appName is blocked"
@@ -256,17 +293,45 @@ class AppBlockService : AccessibilityService() {
         }
         card.addView(title)
 
-        val subtitle = TextView(this).apply {
-            text = "by $currentTaskName"
-            textSize = 16f
-            setTextColor(Color.parseColor("#AAFFFFFF"))
-            gravity = Gravity.CENTER
-            typeface = android.graphics.Typeface.create("sans-serif-light", android.graphics.Typeface.NORMAL)
-            layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = (32 * scale).toInt()
+        // Afișează numele task-ului dacă este disponibil
+        if (!taskName.isNullOrBlank()) {
+            val focusLabel = TextView(this).apply {
+                text = "You should focus on:"
+                textSize = 14f
+                setTextColor(Color.parseColor("#AAFFFFFF"))
+                gravity = Gravity.CENTER
+                typeface = android.graphics.Typeface.create("sans-serif-light", android.graphics.Typeface.NORMAL)
+                layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = (8 * scale).toInt()
+                }
             }
+            card.addView(focusLabel)
+
+            val taskNameView = TextView(this).apply {
+                text = taskName
+                textSize = 18f
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+                layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = (4 * scale).toInt()
+                    bottomMargin = (32 * scale).toInt()
+                }
+            }
+            card.addView(taskNameView)
+        } else {
+            val subtitle = TextView(this).apply {
+                text = "by Focus Mate"
+                textSize = 16f
+                setTextColor(Color.parseColor("#AAFFFFFF"))
+                gravity = Gravity.CENTER
+                typeface = android.graphics.Typeface.create("sans-serif-light", android.graphics.Typeface.NORMAL)
+                layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                    bottomMargin = (32 * scale).toInt()
+                }
+            }
+            card.addView(subtitle)
         }
-        card.addView(subtitle)
 
         val btnExit = Button(this).apply {
             text = "Go Back"

@@ -1,12 +1,13 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/service_locator.dart';
-import '../../domain/entities/blocked_app.dart';
-import '../../domain/entities/installed_application.dart';
+import '../../domain/entities/app_block_template.dart';
+import '../../domain/repositories/block_template_repository.dart';
 import '../../domain/usecases/accessibility_usecases.dart';
-import '../../domain/usecases/app_usecases.dart';
+import '../providers/block_template_providers.dart';
+import '../providers/task_providers.dart';
+import 'create_template_screen.dart';
 
 class FocusPage extends ConsumerStatefulWidget {
   const FocusPage({super.key});
@@ -17,17 +18,16 @@ class FocusPage extends ConsumerStatefulWidget {
 
 class _FocusPageState extends ConsumerState<FocusPage>
     with WidgetsBindingObserver {
-  List<BlockedApp> _blockedApps = [];
-  bool _blockingEnabled = false;
-
   bool _isAccessibilityEnabled = false;
   bool _hasOverlayPermission = false;
+
+  // Track the last applied template to avoid redundant calls
+  String? _lastAppliedTemplateId;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadBlockedApps();
     _checkPermissions();
   }
 
@@ -60,143 +60,57 @@ class _FocusPageState extends ConsumerState<FocusPage>
     }
   }
 
-  Future<void> _loadBlockedApps() async {
-    final blockedApps = await getIt<GetBlockedAppsUseCase>()();
-
-    setState(() {
-      _blockedApps = blockedApps;
-      _blockingEnabled = _blockedApps.isNotEmpty;
-    });
-  }
-
-  Future<void> _applyBlocking() async {
-    if (_blockingEnabled && _blockedApps.isNotEmpty) {
-      await getIt<SetBlockedAppsUseCase>()(_blockedApps);
-    } else {
-      await getIt<SetBlockedAppsUseCase>()([]);
-    }
-  }
-
-  void _showAppSelector() async {
-    if (!mounted) return;
-
-    List<InstalledApplication> apps =
-        await getIt<GetAllAppsUseCase>()();
-    apps.sort((a, b) =>
-        a.appName.toLowerCase().compareTo(b.appName.toLowerCase()));
-
-    if (!mounted) return;
-
-    showModalBottomSheet(
+  Future<void> _deleteTemplate(AppBlockTemplate template) async {
+    final confirm = await showDialog<bool>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) {
-          return Container(
-            height: MediaQuery.of(context).size.height * 0.8,
-            decoration: const BoxDecoration(
-              color: Color(0xFF1E1E1E),
-              borderRadius:
-                  BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            child: Column(
-              children: [
-                const SizedBox(height: 12),
-                Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[600],
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Text(
-                    "Select Apps to Block",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: apps.length,
-                    itemBuilder: (context, index) {
-                      final app = apps[index];
-                      final isBlocked = _blockedApps.any(
-                          (b) => b.packageName == app.packageName);
-
-                      return ListTile(
-                        leading: app.iconBytes != null
-                            ? Image.memory(
-                                Uint8List.fromList(app.iconBytes!),
-                                width: 40,
-                                height: 40,
-                              )
-                            : const Icon(Icons.android,
-                                color: Colors.white),
-                        title: Text(
-                          app.appName,
-                          style:
-                              const TextStyle(color: Colors.white),
-                        ),
-                        subtitle: Text(
-                          app.packageName,
-                          style: TextStyle(
-                            color: Colors.grey[500],
-                            fontSize: 11,
-                          ),
-                        ),
-                        trailing: Checkbox(
-                          value: isBlocked,
-                          activeColor: Colors.redAccent,
-                          onChanged: (val) async {
-                            setModalState(() {
-                              if (val == true) {
-                                if (!_blockedApps.any((b) =>
-                                    b.packageName ==
-                                    app.packageName)) {
-                                  _blockedApps.add(BlockedApp(
-                                    packageName: app.packageName,
-                                    appName: app.appName,
-                                  ));
-                                }
-                              } else {
-                                _blockedApps.removeWhere((b) =>
-                                    b.packageName ==
-                                    app.packageName);
-                              }
-                            });
-                            setState(() {});
-                            if (_blockingEnabled) {
-                              await _applyBlocking();
-                            }
-                          },
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Delete Template',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: Text(
+          'Are you sure you want to delete "${template.name}"?',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel',
+                  style: TextStyle(color: Colors.white54))),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+              child: const Text('Delete')),
+        ],
       ),
     );
+    if (confirm == true) {
+      await getIt<BlockTemplateRepository>().deleteTemplate(template.id);
+      ref.invalidate(blockTemplatesProvider);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final bgColor = const Color(0xFF0D0D0D);
-    final cardColor = const Color(0xFF1E1E1E);
-    final accentColor = Colors.blueAccent;
+    final templatesAsync = ref.watch(blockTemplatesProvider);
+
+    // Reactive blocking: watch active task and apply its template
+    _watchAndApplyActiveTask();
 
     return Scaffold(
-      backgroundColor: bgColor,
+      backgroundColor: const Color(0xFF0D0D0D),
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'focus_page_fab',
+        backgroundColor: Colors.blueAccent,
+        onPressed: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const CreateTemplateScreen()),
+          );
+          ref.invalidate(blockTemplatesProvider);
+        },
+        child: const Icon(Icons.add, color: Colors.white),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           child: Padding(
@@ -214,209 +128,36 @@ class _FocusPageState extends ConsumerState<FocusPage>
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  "Stay productive, silence distractions.",
-                  style:
-                      TextStyle(color: Colors.grey[500], fontSize: 14),
+                  "Create blocking profiles for your tasks.",
+                  style: TextStyle(color: Colors.grey[500], fontSize: 14),
                 ),
                 const SizedBox(height: 20),
 
-                // Accessibility banner
-                if (!_isAccessibilityEnabled)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withAlpha(26),
-                      border: Border.all(
-                          color: Colors.orange, width: 2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                            Icons.warning_amber_rounded,
-                            color: Colors.orange,
-                            size: 24),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text(
-                                "Service inactiv",
-                                style: TextStyle(
-                                    color: Colors.orange,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                              Text(
-                                "Activează Accessibility",
-                                style: TextStyle(
-                                    color: Colors.grey[400],
-                                    fontSize: 11),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        ElevatedButton(
-                          onPressed: () async {
-                            await getIt<
-                                RequestAccessibilityUseCase>()();
-                            await Future.delayed(
-                                const Duration(milliseconds: 500));
-                            await _checkPermissions();
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.orange,
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 6),
-                            shape: RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(8)),
-                          ),
-                          child: const Text(
-                            "Enable",
-                            style: TextStyle(
-                                color: Colors.black,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                // Permission banners
+                if (!_isAccessibilityEnabled) _buildAccessibilityBanner(),
+                if (!_hasOverlayPermission) _buildOverlayBanner(),
 
-                // Overlay banner
-                if (!_hasOverlayPermission)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withAlpha(26),
-                      border:
-                          Border.all(color: Colors.red, width: 2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.block,
-                            color: Colors.red, size: 24),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text(
-                                "Overlay lipsă",
-                                style: TextStyle(
-                                    color: Colors.red,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                              Text(
-                                "Activează 'Display over other apps'",
-                                style: TextStyle(
-                                    color: Colors.grey[400],
-                                    fontSize: 11),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        ElevatedButton(
-                          onPressed: () async {
-                            await getIt<
-                                RequestOverlayPermissionUseCase>()();
-                            await Future.delayed(
-                                const Duration(milliseconds: 500));
-                            await _checkPermissions();
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red,
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 6),
-                            shape: RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(8)),
-                          ),
-                          child: const Text(
-                            "Enable",
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                const SizedBox(height: 12),
 
-                const SizedBox(height: 20),
-
-                // Blocked apps card
-                GestureDetector(
-                  onTap: _showAppSelector,
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: cardColor,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.redAccent.withAlpha(26),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(Icons.block,
-                              color: Colors.redAccent),
-                        ),
-                        const SizedBox(width: 15),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                "Blocked Apps",
-                                style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                              Text(
-                                _blockedApps.isEmpty
-                                    ? "Tap to select apps"
-                                    : "${_blockedApps.length} apps selected",
-                                style: TextStyle(
-                                    color: Colors.grey[500],
-                                    fontSize: 12),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Switch(
-                          value: _blockingEnabled,
-                          onChanged: (val) async {
-                            setState(() =>
-                                _blockingEnabled = val);
-                            await _applyBlocking();
-                          },
-                          activeColor: accentColor,
-                        ),
-                      ],
-                    ),
+                // Templates list
+                templatesAsync.when(
+                  data: (templates) {
+                    if (templates.isEmpty) {
+                      return _buildEmptyState();
+                    }
+                    return Column(
+                      children: templates
+                          .map((t) => _buildTemplateCard(t))
+                          .toList(),
+                    );
+                  },
+                  loading: () => const Padding(
+                    padding: EdgeInsets.only(top: 40),
+                    child: CircularProgressIndicator(color: Colors.blueAccent),
                   ),
+                  error: (e, _) => Text('Error: $e',
+                      style: const TextStyle(color: Colors.redAccent)),
                 ),
-                const SizedBox(height: 20),
               ],
             ),
           ),
@@ -424,5 +165,283 @@ class _FocusPageState extends ConsumerState<FocusPage>
       ),
     );
   }
-}
 
+  void _watchAndApplyActiveTask() {
+    final activeTask = ref.watch(currentActiveTaskProvider);
+    final templateId = activeTask?.blockTemplateId;
+
+    // Also watch templates so edits (whitelist<->blacklist, app changes)
+    // trigger a re-apply even when the templateId hasn't changed.
+    final templates = ref.watch(blockTemplatesProvider).valueOrNull;
+
+    // Build a fingerprint that changes when either the active template ID
+    // or the template contents change.
+    String? fingerprint;
+    if (templateId != null && templates != null) {
+      final t = templates.where((t) => t.id == templateId).firstOrNull;
+      if (t != null) {
+        fingerprint = '${t.id}_${t.isWhitelist}_${t.packages.join(',')}';
+      }
+    }
+
+    final currentKey = fingerprint ?? templateId;
+    if (currentKey == _lastAppliedTemplateId) return;
+    _lastAppliedTemplateId = currentKey;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (templateId != null && templates != null) {
+        final template =
+            templates.where((t) => t.id == templateId).firstOrNull;
+        if (template != null) {
+          await getIt<ApplyBlockingTemplateUseCase>()(
+            packages: template.packages,
+            isWhitelist: template.isWhitelist,
+            taskName: activeTask?.title,
+          );
+        }
+      } else if (templateId == null) {
+        await getIt<ClearBlockingUseCase>()();
+      }
+    });
+  }
+
+  Widget _buildEmptyState() {
+    return Container(
+      margin: const EdgeInsets.only(top: 40),
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.shield_outlined, color: Colors.grey[600], size: 56),
+          const SizedBox(height: 16),
+          const Text(
+            'No Focus Profiles yet',
+            style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Tap + to create your first blocking template.',
+            style: TextStyle(color: Colors.grey[500], fontSize: 14),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTemplateCard(AppBlockTemplate template) {
+    final typeLabel = template.isWhitelist ? 'Whitelist' : 'Blacklist';
+    final typeColor =
+        template.isWhitelist ? Colors.greenAccent : Colors.redAccent;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: typeColor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              template.isWhitelist ? Icons.check_circle_outline : Icons.block,
+              color: typeColor,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  template.name,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: typeColor.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        typeLabel,
+                        style: TextStyle(
+                            color: typeColor,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${template.packages.length} apps',
+                      style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.edit_outlined,
+                color: Colors.white54, size: 20),
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      CreateTemplateScreen(existingTemplate: template),
+                ),
+              );
+              ref.invalidate(blockTemplatesProvider);
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline,
+                color: Colors.redAccent, size: 20),
+            onPressed: () => _deleteTemplate(template),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAccessibilityBanner() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.orange.withAlpha(26),
+        border: Border.all(color: Colors.orange, width: 2),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded,
+              color: Colors.orange, size: 24),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  "Service inactiv",
+                  style: TextStyle(
+                      color: Colors.orange,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  "Activează Accessibility",
+                  style: TextStyle(color: Colors.grey[400], fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          ElevatedButton(
+            onPressed: () async {
+              await getIt<RequestAccessibilityUseCase>()();
+              await Future.delayed(const Duration(milliseconds: 500));
+              await _checkPermissions();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text(
+              "Enable",
+              style: TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOverlayBanner() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.red.withAlpha(26),
+        border: Border.all(color: Colors.red, width: 2),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.block, color: Colors.red, size: 24),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  "Overlay lipsă",
+                  style: TextStyle(
+                      color: Colors.red,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  "Activează 'Display over other apps'",
+                  style: TextStyle(color: Colors.grey[400], fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          ElevatedButton(
+            onPressed: () async {
+              await getIt<RequestOverlayPermissionUseCase>()();
+              await Future.delayed(const Duration(milliseconds: 500));
+              await _checkPermissions();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text(
+              "Enable",
+              style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

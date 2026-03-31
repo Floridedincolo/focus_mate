@@ -93,3 +93,25 @@ final requestOverlayPermissionProvider = FutureProvider<void>((ref) {
   final usecase = ref.watch(requestOverlayPermissionUseCaseProvider);
   return usecase();
 });
+
+/// Provider for SetCurrentTaskNameUseCase
+final setCurrentTaskNameUseCaseProvider = Provider<SetCurrentTaskNameUseCase>(
+  (ref) => getIt<SetCurrentTaskNameUseCase>(),
+);
+
+/// Provider for ClearCurrentTaskNameUseCase
+final clearCurrentTaskNameUseCaseProvider =
+    Provider<ClearCurrentTaskNameUseCase>(
+  (ref) => getIt<ClearCurrentTaskNameUseCase>(),
+);
+
+/// Provider for ApplyBlockingTemplateUseCase
+final applyBlockingTemplateUseCaseProvider =
+    Provider<ApplyBlockingTemplateUseCase>(
+  (ref) => getIt<ApplyBlockingTemplateUseCase>(),
+);
+
+/// Provider for ClearBlockingUseCase
+final clearBlockingUseCaseProvider = Provider<ClearBlockingUseCase>(
+  (ref) => getIt<ClearBlockingUseCase>(),
+);

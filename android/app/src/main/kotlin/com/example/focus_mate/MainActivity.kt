@@ -193,14 +193,32 @@ class MainActivity : FlutterActivity() {
                 "updateBlockedApps" -> {
                     try {
                         val apps = call.argument<List<String>>("apps")
+                        val isWhitelist = call.argument<Boolean>("isWhitelist") ?: false
                         if (apps != null) {
-                            saveBlockedApps(apps)
+                            saveBlockedApps(apps, isWhitelist)
                             result.success(true)
                         } else {
                             result.error("INVALID_ARGUMENT", "Apps list is null", null)
                         }
                     } catch (e: Exception) {
                         result.error("ERROR", "Failed to update blocked apps: ${e.message}", null)
+                    }
+                }
+                "setCurrentTaskName" -> {
+                    try {
+                        val taskName = call.argument<String?>("taskName")
+                        saveCurrentTaskName(taskName)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("ERROR", "Failed to set current task name: ${e.message}", null)
+                    }
+                }
+                "clearCurrentTaskName" -> {
+                    try {
+                        saveCurrentTaskName(null)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("ERROR", "Failed to clear current task name: ${e.message}", null)
                     }
                 }
                 else -> result.notImplemented()
@@ -247,10 +265,23 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun saveBlockedApps(apps: List<String>) {
+    private fun saveCurrentTaskName(taskName: String?) {
+        val prefs: SharedPreferences = getSharedPreferences("focus_mate_prefs", Context.MODE_PRIVATE)
+        val editor = prefs.edit()
+        if (taskName != null) {
+            editor.putString("current_task_name", taskName)
+        } else {
+            editor.remove("current_task_name")
+        }
+        editor.apply()
+        Log.d("MainActivity", "📤 Current task name updated: $taskName")
+    }
+
+    private fun saveBlockedApps(apps: List<String>, isWhitelist: Boolean = false) {
         val prefs: SharedPreferences = getSharedPreferences("focus_mate_prefs", Context.MODE_PRIVATE)
         val editor = prefs.edit()
         editor.putStringSet("blocked_apps", apps.toSet())
+        editor.putBoolean("is_whitelist", isWhitelist)
         editor.apply()
 
         // Notifică serviciul de accessibility despre schimbare (broadcast EXPLICIT pentru Android 12+)

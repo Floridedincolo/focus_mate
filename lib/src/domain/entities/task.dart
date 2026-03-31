@@ -17,6 +17,7 @@ class Task {
   final String? locationName;
   final double? locationLatitude;
   final double? locationLongitude;
+  final String? blockTemplateId;
 
   Task({
     required this.id,
@@ -33,6 +34,7 @@ class Task {
     this.locationName,
     this.locationLatitude,
     this.locationLongitude,
+    this.blockTemplateId,
   });
 
   Task copyWith({
@@ -52,6 +54,8 @@ class Task {
     double? locationLongitude,
     bool clearLocationLatitude = false,
     bool clearLocationLongitude = false,
+    String? blockTemplateId,
+    bool clearBlockTemplateId = false,
   }) {
     return Task(
       id: id ?? this.id,
@@ -68,6 +72,7 @@ class Task {
       locationName: locationName ?? this.locationName,
       locationLatitude: clearLocationLatitude ? null : (locationLatitude ?? this.locationLatitude),
       locationLongitude: clearLocationLongitude ? null : (locationLongitude ?? this.locationLongitude),
+      blockTemplateId: clearBlockTemplateId ? null : (blockTemplateId ?? this.blockTemplateId),
     );
   }
 
@@ -89,7 +94,8 @@ class Task {
         other.streak == streak &&
         other.locationName == locationName &&
         other.locationLatitude == locationLatitude &&
-        other.locationLongitude == locationLongitude;
+        other.locationLongitude == locationLongitude &&
+        other.blockTemplateId == blockTemplateId;
   }
 
   @override
@@ -108,6 +114,7 @@ class Task {
         locationName,
         locationLatitude,
         locationLongitude,
+        blockTemplateId,
       );
 
   static bool _mapsEqual(Map<String, bool> a, Map<String, bool> b) {

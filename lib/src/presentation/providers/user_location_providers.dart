@@ -13,7 +13,7 @@ final hasCompletedSetupProvider = FutureProvider<bool>((ref) {
   return ref.watch(userLocationRepoProvider).hasCompletedSetup();
 });
 
-/// Returns `(home, work)` locations from SharedPreferences.
+/// Returns `(home, work)` locations from Firestore.
 final userLocationsProvider =
     FutureProvider<(MeetingLocation?, MeetingLocation?)>((ref) {
   return ref.watch(userLocationRepoProvider).getUserLocations();
