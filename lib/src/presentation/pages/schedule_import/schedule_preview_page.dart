@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../domain/entities/meeting_location.dart';
 import '../../providers/schedule_import_notifier.dart';
 import '../../../presentation/models/schedule_import_state.dart';
+import '../../widgets/location_autocomplete_field.dart';
 import '../../widgets/schedule_import/task_preview_card.dart';
 import 'schedule_import_success_page.dart';
 
-/// Step 4 — Read-only preview of all tasks that will be created.
-/// The user can go back and adjust, or confirm and save.
+/// Step 4 — Preview of all tasks that will be created.
+/// Each task shows its auto-filled location (from saved work location)
+/// which the user can tap to edit via a bottom sheet with autocomplete.
 class SchedulePreviewPage extends ConsumerWidget {
   const SchedulePreviewPage({super.key});
 
@@ -45,7 +48,11 @@ class SchedulePreviewPage extends ConsumerWidget {
           : ListView.builder(
               padding: const EdgeInsets.symmetric(vertical: 8),
               itemCount: tasks.length,
-              itemBuilder: (_, i) => TaskPreviewCard(task: tasks[i]),
+              itemBuilder: (_, i) => TaskPreviewCard(
+                task: tasks[i],
+                onEditLocation: () =>
+                    _showEditLocationSheet(context, ref, i),
+              ),
             ),
       bottomNavigationBar: SafeArea(
         child: Padding(
@@ -68,5 +75,60 @@ class SchedulePreviewPage extends ConsumerWidget {
       ),
     );
   }
-}
 
+  void _showEditLocationSheet(
+      BuildContext context, WidgetRef ref, int index) {
+    final task = ref.read(scheduleImportProvider).previewTasks[index];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF121212),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Location for "${task.title}"',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 12),
+            LocationAutocompleteField(
+              initialLocationName: task.locationName,
+              onLocationSelected: (MeetingLocation? loc) {
+                final notifier =
+                    ref.read(scheduleImportProvider.notifier);
+                if (loc != null) {
+                  notifier.updatePreviewTaskLocation(
+                    index,
+                    loc.name,
+                    latitude: loc.latitude,
+                    longitude: loc.longitude,
+                  );
+                } else {
+                  notifier.updatePreviewTaskLocation(index, '');
+                }
+                Navigator.of(ctx).pop();
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}

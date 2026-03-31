@@ -14,6 +14,7 @@ class FlutterLocalNotificationService implements NotificationService {
     tz.initializeTimeZones();
     final timezoneName = await FlutterTimezone.getLocalTimezone();
     tz.setLocalLocation(tz.getLocation(timezoneName));
+    debugPrint('[NOTIF] Timezone: $timezoneName');
 
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const darwinSettings = DarwinInitializationSettings(
@@ -34,10 +35,12 @@ class FlutterLocalNotificationService implements NotificationService {
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
 
     // Request notification permission on Android 13+
-    await androidPlugin?.requestNotificationsPermission();
+    final notifGranted = await androidPlugin?.requestNotificationsPermission();
+    debugPrint('[NOTIF] Notification permission granted: $notifGranted');
 
     // Request exact alarm permission on Android 12+ if not already granted
     final canExact = await androidPlugin?.canScheduleExactNotifications();
+    debugPrint('[NOTIF] canScheduleExactNotifications: $canExact');
     if (canExact == false) {
       await androidPlugin?.requestExactAlarmsPermission();
     }
@@ -71,6 +74,66 @@ class FlutterLocalNotificationService implements NotificationService {
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.wallClockTime,
       matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
     );
+  }
+
+  @override
+  Future<void> scheduleOneTimeNotification({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime scheduledDate,
+    required int hour,
+    required int minute,
+  }) async {
+    final scheduledTZ = tz.TZDateTime(
+      tz.local,
+      scheduledDate.year,
+      scheduledDate.month,
+      scheduledDate.day,
+      hour,
+      minute,
+    );
+
+    final now = tz.TZDateTime.now(tz.local);
+    debugPrint('[NOTIF] scheduleOneTime: scheduledTZ=$scheduledTZ now=$now '
+        'isBefore=${scheduledTZ.isBefore(now)}');
+
+    // Don't schedule if the date is already in the past
+    if (scheduledTZ.isBefore(now)) {
+      debugPrint('[NOTIF] SKIPPED — scheduled time is in the past!');
+      return;
+    }
+
+    try {
+      await _plugin.zonedSchedule(
+        id,
+        title,
+        body,
+        scheduledTZ,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'task_reminders',
+            'Task Reminders',
+            channelDescription: 'Reminders for your scheduled tasks',
+            importance: Importance.high,
+            priority: Priority.high,
+          ),
+          iOS: DarwinNotificationDetails(),
+        ),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.wallClockTime,
+      );
+      debugPrint('[NOTIF] zonedSchedule call succeeded for id=$id');
+
+      final pending = await _plugin.pendingNotificationRequests();
+      debugPrint('[NOTIF] Pending notifications after schedule: ${pending.length}');
+      for (final p in pending) {
+        debugPrint('[NOTIF]   pending: id=${p.id} title=${p.title}');
+      }
+    } catch (e, st) {
+      debugPrint('[NOTIF] ERROR scheduling one-time notification: $e');
+      debugPrint('[NOTIF] Stack trace: $st');
+    }
   }
 
   @override

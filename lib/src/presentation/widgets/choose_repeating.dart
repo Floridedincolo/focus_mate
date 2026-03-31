@@ -52,7 +52,10 @@ class _ChooseRepeatingState extends State<ChooseRepeating> {
             children: [
               GestureDetector(
                 onTap: () {
-                  setState(() => _repeatType = RepeatType.daily);
+                  setState(() {
+                    _repeatType = RepeatType.daily;
+                    days = {for (final d in days.keys) d: false};
+                  });
                   widget.onRepeatChanged(_repeatType, days);
                 },
                 child: Container(
@@ -72,7 +75,10 @@ class _ChooseRepeatingState extends State<ChooseRepeating> {
               ),
               GestureDetector(
                 onTap: () {
-                  setState(() => _repeatType = RepeatType.weekly);
+                  setState(() {
+                    _repeatType = RepeatType.weekly;
+                    days = {for (final d in days.keys) d: false};
+                  });
                   widget.onRepeatChanged(_repeatType, days);
                 },
                 child: Container(
@@ -113,7 +119,7 @@ class _ChooseRepeatingState extends State<ChooseRepeating> {
             ],
           ),
         ),
-        if (_repeatType == RepeatType.custom) ...[
+        if (_repeatType == RepeatType.custom || _repeatType == RepeatType.weekly) ...[
           const SizedBox(height: 10),
           Wrap(
             spacing: 10.0,

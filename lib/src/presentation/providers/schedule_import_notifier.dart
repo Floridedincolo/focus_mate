@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/service_locator.dart';
 import '../../domain/entities/extracted_class.dart';
 import '../../domain/entities/task.dart';
-import '../../domain/entities/task.dart';
+import '../../domain/repositories/user_location_repository.dart';
 import '../../domain/usecases/extract_schedule_from_image_use_case.dart';
 import '../../domain/usecases/generate_weekly_tasks_use_case.dart';
 import '../../domain/usecases/task_usecases.dart';
@@ -159,11 +159,30 @@ class ScheduleImportNotifier extends Notifier<ScheduleImportState> {
         existingTasks = [];
       }
 
-      final tasks = await _generateWeeklyUseCase(
+      var tasks = await _generateWeeklyUseCase(
         classes: state.adjustedClasses,
         existingTasks: existingTasks,
         importDate: DateTime.now(),
       );
+
+      // Auto-fill the saved work/university location on every generated task.
+      try {
+        final userLocRepo = getIt<UserLocationRepository>();
+        final (_, workLoc) = await userLocRepo.getUserLocations();
+        if (workLoc != null && workLoc.name.isNotEmpty) {
+          tasks = tasks
+              .map((t) => t.locationName == null || t.locationName!.isEmpty
+                  ? t.copyWith(
+                      locationName: workLoc.name,
+                      locationLatitude: workLoc.latitude,
+                      locationLongitude: workLoc.longitude,
+                    )
+                  : t)
+              .toList();
+        }
+      } catch (_) {
+        // Location lookup failed — leave tasks without location.
+      }
 
       state = state.copyWith(
         step: ScheduleImportStep.preview,
@@ -175,6 +194,25 @@ class ScheduleImportNotifier extends Notifier<ScheduleImportState> {
         errorMessage: _friendlyError(e),
       );
     }
+  }
+
+  /// Updates the location of a single preview task (called from the edit
+  /// location bottom sheet on the preview page).
+  void updatePreviewTaskLocation(
+    int index,
+    String locationName, {
+    double? latitude,
+    double? longitude,
+  }) {
+    final list = List<Task>.from(state.previewTasks);
+    list[index] = list[index].copyWith(
+      locationName: locationName.isNotEmpty ? locationName : null,
+      locationLatitude: latitude,
+      locationLongitude: longitude,
+      clearLocationLatitude: latitude == null,
+      clearLocationLongitude: longitude == null,
+    );
+    state = state.copyWith(previewTasks: list);
   }
 
   // ── Step 4 → 5 → 6 ──────────────────────────────────────────────────────

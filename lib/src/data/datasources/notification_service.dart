@@ -11,5 +11,14 @@ abstract class NotificationService {
     required int weekday, // 1=Monday..7=Sunday
   });
 
+  Future<void> scheduleOneTimeNotification({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime scheduledDate,
+    required int hour,
+    required int minute,
+  });
+
   Future<void> cancelAll();
 }

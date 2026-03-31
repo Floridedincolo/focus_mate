@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_data_source.dart';
 import '../../dtos/app_dto.dart';
@@ -6,11 +8,10 @@ import '../../dtos/app_dto.dart';
 class SharedPreferencesBlockedAppsDataSource
     implements LocalBlockedAppsDataSource {
   static const _blockedAppsKey = 'focus_mate_blocked_apps';
+  static const _blockerChannel = MethodChannel('com.block_app/blocker');
 
   late SharedPreferences _prefs;
-
-  // Listeners for stream updates
-  final List<Function()> _listeners = [];
+  final _controller = StreamController<List<BlockedAppDTO>>.broadcast();
 
   SharedPreferencesBlockedAppsDataSource();
 
@@ -29,12 +30,10 @@ class SharedPreferencesBlockedAppsDataSource
 
   @override
   Stream<List<BlockedAppDTO>> watchBlockedApps() async* {
-    while (true) {
-      final apps = await getBlockedApps();
-      yield apps;
-      // Emit changes every 500ms (simple polling)
-      await Future.delayed(const Duration(milliseconds: 500));
-    }
+    // Emit current state immediately
+    yield await getBlockedApps();
+    // Then yield whenever setBlockedApps/remove/clear pushes an update
+    yield* _controller.stream;
   }
 
   @override
@@ -57,18 +56,27 @@ class SharedPreferencesBlockedAppsDataSource
   Future<void> setBlockedApps(List<BlockedAppDTO> apps) async {
     final jsonList = apps.map((app) => app.toJson()).toList();
     await _prefs.setStringList(_blockedAppsKey, jsonList);
-    // Notify listeners
-    for (final listener in _listeners) {
-      listener();
+
+    // Sync to Android native side so AppBlockService sees the blocked list
+    try {
+      final packageNames = apps.map((app) => app.packageName).toList();
+      await _blockerChannel.invokeMethod('setBlockedApps', {'packages': packageNames});
+    } catch (_) {
+      // Platform call may fail on non-Android or in tests
     }
+
+    _controller.add(apps);
   }
 
   @override
   Future<void> clearBlockedApps() async {
     await _prefs.remove(_blockedAppsKey);
-    for (final listener in _listeners) {
-      listener();
-    }
+
+    try {
+      await _blockerChannel.invokeMethod('setBlockedApps', {'apps': <String>[]});
+    } catch (_) {}
+
+    _controller.add([]);
   }
 
   @override
@@ -76,13 +84,4 @@ class SharedPreferencesBlockedAppsDataSource
     final apps = await getBlockedApps();
     return apps.any((app) => app.packageName == packageName);
   }
-
-  void addListener(Function() listener) {
-    _listeners.add(listener);
-  }
-
-  void removeListener(Function() listener) {
-    _listeners.remove(listener);
-  }
 }
-

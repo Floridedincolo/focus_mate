@@ -34,7 +34,7 @@ class GooglePlacesSearchService implements LocationSearchService {
   static const _placeDetailsUrl =
       'https://maps.googleapis.com/maps/api/place/details/json';
 
-  static const _radiusMetres = 1500;
+  static const _defaultRadiusMetres = 1500;
   static const _timeout = Duration(seconds: 10);
 
   // ── Core method ───────────────────────────────────────────────────────
@@ -44,6 +44,7 @@ class GooglePlacesSearchService implements LocationSearchService {
     required double latitude,
     required double longitude,
     required String keyword,
+    int radiusMetres = _defaultRadiusMetres,
   }) async {
     if (_requestCount >= _maxRequests) {
       throw PlacesRateLimitException(
@@ -54,10 +55,12 @@ class GooglePlacesSearchService implements LocationSearchService {
 
     final apiKey = _requireApiKey();
 
+    final type = _keywordToType(keyword);
     final uri = Uri.parse(_baseUrl).replace(queryParameters: {
       'location': '$latitude,$longitude',
-      'radius': '$_radiusMetres',
+      'radius': '$radiusMetres',
       'keyword': keyword,
+      if (type != null) 'type': type,
       'key': apiKey,
     });
 
@@ -116,9 +119,59 @@ class GooglePlacesSearchService implements LocationSearchService {
       );
     }
 
-    final place = results.first as Map<String, dynamic>;
-    final name = place['name'] as String? ?? _capitalize(keyword);
-    final geometry = place['geometry'] as Map<String, dynamic>?;
+    // Filter out non-establishment results (streets, routes, etc.)
+    // and pick the closest one to the requested midpoint.
+    const excludedTypes = {'route', 'street_address', 'geocode', 'locality',
+        'political', 'sublocality', 'neighborhood'};
+
+    Map<String, dynamic>? bestPlace;
+    double bestDist = double.infinity;
+
+    for (final r in results) {
+      final place = r as Map<String, dynamic>;
+      final types = (place['types'] as List<dynamic>?)
+              ?.map((t) => t as String)
+              .toSet() ??
+          {};
+
+      // Skip if it's a street/route/area, not an actual place.
+      if (types.any(excludedTypes.contains) &&
+          !types.contains('establishment')) {
+        if (kDebugMode) {
+          debugPrint('⏭️ Skipping non-place: "${place['name']}" types=$types');
+        }
+        continue;
+      }
+
+      final geometry = place['geometry'] as Map<String, dynamic>?;
+      final loc = geometry?['location'] as Map<String, dynamic>?;
+      final pLat = (loc?['lat'] as num?)?.toDouble();
+      final pLng = (loc?['lng'] as num?)?.toDouble();
+      if (pLat == null || pLng == null) continue;
+
+      // Simple Euclidean distance (fine for short ranges).
+      final dist = (pLat - latitude) * (pLat - latitude) +
+          (pLng - longitude) * (pLng - longitude);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestPlace = place;
+      }
+    }
+
+    // If all results were filtered out, fall back to generic keyword name.
+    if (bestPlace == null) {
+      if (kDebugMode) {
+        debugPrint('⚠️ All ${results.length} results filtered out for "$keyword"');
+      }
+      return MeetingLocation(
+        name: _capitalize(keyword),
+        latitude: latitude,
+        longitude: longitude,
+      );
+    }
+
+    final name = bestPlace['name'] as String? ?? _capitalize(keyword);
+    final geometry = bestPlace['geometry'] as Map<String, dynamic>?;
     final loc = geometry?['location'] as Map<String, dynamic>?;
     final placeLat = (loc?['lat'] as num?)?.toDouble() ?? latitude;
     final placeLng = (loc?['lng'] as num?)?.toDouble() ?? longitude;
@@ -279,4 +332,20 @@ class GooglePlacesSearchService implements LocationSearchService {
 
   static String _capitalize(String s) =>
       s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+
+  /// Maps a keyword to a Google Places [type] to filter out non-place results
+  /// (e.g. streets). Returns `null` if no specific type applies.
+  static String? _keywordToType(String keyword) {
+    const map = {
+      'cafe': 'cafe',
+      'coffee': 'cafe',
+      'restaurant': 'restaurant',
+      'bar': 'bar',
+      'park': 'park',
+      'library': 'library',
+      'gym': 'gym',
+      'coworking': 'establishment',
+    };
+    return map[keyword.trim().toLowerCase()];
+  }
 }

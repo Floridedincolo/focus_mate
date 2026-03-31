@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import '../../domain/entities/reminder.dart';
 
 class ReminderPickerDialog extends StatefulWidget {
-  const ReminderPickerDialog({super.key});
+  final bool isOneTime;
+
+  const ReminderPickerDialog({super.key, this.isOneTime = false});
 
   @override
   State<ReminderPickerDialog> createState() => _ReminderPickerDialogState();
@@ -64,28 +66,30 @@ class _ReminderPickerDialogState extends State<ReminderPickerDialog> {
               ),
             ),
           ),
-          const SizedBox(height: 20),
-          const Text(
-            "Notify on days",
-            style: TextStyle(color: Colors.white, fontSize: 18),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            children: _days.keys.map((day) {
-              return FilterChip(
-                label: Text(
-                  day,
-                  style: const TextStyle(color: Colors.white, fontSize: 15),
-                ),
-                selected: _days[day]!,
-                onSelected: (selected) =>
-                    setState(() => _days[day] = selected),
-                backgroundColor: const Color(0xFF1A1A1A),
-                selectedColor: Colors.blueAccent,
-              );
-            }).toList(),
-          ),
+          if (!widget.isOneTime) ...[
+            const SizedBox(height: 20),
+            const Text(
+              "Notify on days",
+              style: TextStyle(color: Colors.white, fontSize: 18),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              children: _days.keys.map((day) {
+                return FilterChip(
+                  label: Text(
+                    day,
+                    style: const TextStyle(color: Colors.white, fontSize: 15),
+                  ),
+                  selected: _days[day]!,
+                  onSelected: (selected) =>
+                      setState(() => _days[day] = selected),
+                  backgroundColor: const Color(0xFF1A1A1A),
+                  selectedColor: Colors.blueAccent,
+                );
+              }).toList(),
+            ),
+          ],
           const SizedBox(height: 20),
           TextField(
             controller: _messageController,

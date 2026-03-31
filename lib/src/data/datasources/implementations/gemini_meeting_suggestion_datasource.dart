@@ -95,9 +95,13 @@ class GeminiMeetingSuggestionDataSource implements MeetingSuggestionDataSource {
       final tasks = memberSchedules[i];
       final formatted = tasks
           .where((t) => t.startTime != null && t.endTime != null)
-          .map((t) =>
-              '${_fmtTime(t.startTime!)}-${_fmtTime(t.endTime!)} ${t.title}')
-          .join(', ');
+          .map((t) {
+        final timeRange = '${_fmtTime(t.startTime!)}-${_fmtTime(t.endTime!)}';
+        final locStr = (t.locationLatitude != null && t.locationLongitude != null)
+            ? ' @ (${t.locationLatitude!.toStringAsFixed(4)}, ${t.locationLongitude!.toStringAsFixed(4)})'
+            : '';
+        return '$timeRange ${t.title}$locStr';
+      }).join(', ');
       final locInfo = _formatMemberLocation(i, memberLocations);
       buffer.writeln(
         '  Person ${i + 1}: [${formatted.isEmpty ? "no activities" : formatted}]$locInfo',
@@ -116,9 +120,11 @@ class GeminiMeetingSuggestionDataSource implements MeetingSuggestionDataSource {
             l.$1?.hasCoordinates == true || l.$2?.hasCoordinates == true);
     if (hasLocations) {
       buffer.writeln(
-        '2. For each slot, compute a GPS midpoint (targetLatitude, '
-        'targetLongitude) that is conveniently located between the members\' '
-        'known locations. Pick a point roughly equidistant from all members.',
+        '2. For each slot, consider where each person will be COMING FROM — '
+        'their last task with a location before the slot, or their home location. '
+        'Compute a GPS midpoint (targetLatitude, targetLongitude) that is '
+        'roughly equidistant from all departure points. '
+        'The meeting place should be within 1-2 km of that midpoint.',
       );
     } else {
       buffer.writeln(

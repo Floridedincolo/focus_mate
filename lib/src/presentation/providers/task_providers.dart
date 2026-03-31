@@ -4,6 +4,7 @@ import '../../domain/entities/task_completion_status.dart';
 import '../../domain/usecases/task_usecases.dart';
 import '../../domain/usecases/notification_usecases.dart';
 import '../../core/service_locator.dart';
+import 'friend_providers.dart';
 
 /// Provider for GetTasksUseCase
 final getTasksUseCaseProvider = Provider<GetTasksUseCase>(
@@ -30,8 +31,12 @@ final clearCompletionUseCaseProvider = Provider<ClearCompletionUseCase>(
   (ref) => getIt<ClearCompletionUseCase>(),
 );
 
-/// Stream provider for watching tasks
+/// Stream provider for watching tasks.
+/// Watches [currentUserUidProvider] so the stream automatically restarts
+/// when the user signs in/out (prevents stale tasks from a previous account).
 final tasksStreamProvider = StreamProvider<List<Task>>((ref) {
+  // Re-subscribe whenever the auth UID changes.
+  ref.watch(currentUserUidProvider);
   final usecase = ref.watch(getTasksUseCaseProvider);
   return usecase();
 });

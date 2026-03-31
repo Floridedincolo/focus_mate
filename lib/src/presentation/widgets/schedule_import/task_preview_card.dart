@@ -2,14 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../domain/entities/task.dart';
 
-/// Read-only card that previews a [Task] before it is saved to Firestore.
+/// Card that previews a [Task] before it is saved to Firestore.
+/// Optionally shows a location row with an edit button.
 class TaskPreviewCard extends StatelessWidget {
   final Task task;
+  final VoidCallback? onEditLocation;
 
-  const TaskPreviewCard({super.key, required this.task});
+  const TaskPreviewCard({super.key, required this.task, this.onEditLocation});
 
   @override
   Widget build(BuildContext context) {
+    final hasLocation =
+        task.locationName != null && task.locationName!.isNotEmpty;
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: ListTile(
@@ -23,7 +28,50 @@ class TaskPreviewCard extends StatelessWidget {
           task.title,
           style: const TextStyle(fontWeight: FontWeight.w600),
         ),
-        subtitle: Text(_subtitle()),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_subtitle()),
+            if (hasLocation || onEditLocation != null)
+              GestureDetector(
+                onTap: onEditLocation,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.location_on_outlined,
+                        size: 14,
+                        color: hasLocation
+                            ? Theme.of(context).colorScheme.primary
+                            : Colors.white38,
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          hasLocation ? task.locationName! : 'Add location',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: hasLocation
+                                ? Theme.of(context).colorScheme.primary
+                                : Colors.white38,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (onEditLocation != null)
+                        const Icon(
+                          Icons.edit_outlined,
+                          size: 14,
+                          color: Colors.white38,
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -53,4 +101,3 @@ class TaskPreviewCard extends StatelessWidget {
   String _fmt(TimeOfDay t) =>
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 }
-

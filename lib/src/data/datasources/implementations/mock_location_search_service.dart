@@ -28,6 +28,7 @@ class MockLocationSearchService implements LocationSearchService {
     required double latitude,
     required double longitude,
     required String keyword,
+    int radiusMetres = 1500,
   }) async {
     await Future.delayed(const Duration(seconds: 1));
     final key = keyword.trim().toLowerCase();

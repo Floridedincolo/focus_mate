@@ -9,17 +9,16 @@ const _kWeekdayAbbreviations = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 /// Pure function: determines whether [task] occurs on [date].
 /// This extracted logic can be unit tested easily and reused.
 bool occursOnTask(Task task, DateTime date) {
-  final isSameDay =
-      date.year == task.startDate.year &&
-      date.month == task.startDate.month &&
-      date.day == task.startDate.day;
+  final dateOnly = DateTime(date.year, date.month, date.day);
+  final startOnly = DateTime(
+      task.startDate.year, task.startDate.month, task.startDate.day);
 
   if (task.oneTime) {
-    return isSameDay;
+    return dateOnly == startOnly;
   }
 
-  // The date must not be before the task's start date.
-  if (date.isBefore(task.startDate)) {
+  // The date must not be before the task's start date (time-stripped).
+  if (dateOnly.isBefore(startOnly)) {
     return false;
   }
 

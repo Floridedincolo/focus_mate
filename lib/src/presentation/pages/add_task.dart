@@ -86,7 +86,7 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
     if (_startDate == null) return _showError('Please select a date');
     if (!_oneTime) {
       if (_repeatType == null) return _showError('Choose a repeat type');
-      if (_repeatType == RepeatType.custom &&
+      if ((_repeatType == RepeatType.custom || _repeatType == RepeatType.weekly) &&
           !_repeatDays.containsValue(true)) {
         return _showError('Select at least one day');
       }
@@ -456,7 +456,7 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
       context: context,
       backgroundColor: const Color(0xFF0D0D0D),
       isScrollControlled: true,
-      builder: (_) => const ReminderPickerDialog(),
+      builder: (_) => ReminderPickerDialog(isOneTime: _oneTime),
     );
     if (reminder != null) setState(() => _reminders.add(reminder));
   }

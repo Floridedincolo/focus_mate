@@ -23,6 +23,7 @@ abstract class LocationSearchService {
     required double latitude,
     required double longitude,
     required String keyword,
+    int radiusMetres = 1500,
   });
 
   /// Returns autocomplete predictions for [input].

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../domain/entities/task.dart';
@@ -9,9 +10,19 @@ class NotificationRepositoryImpl implements NotificationRepository {
   static const _prefKey = 'notifications_enabled';
 
   /// Day-key to weekday number mapping (DateTime.monday == 1, etc.)
-  static const _dayToWeekday = {
-    'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6, 'Sun': 7,
-  };
+  /// Accepts both short ('Mon') and long ('Monday') formats, case-insensitive.
+  static int? _dayToWeekday(String day) {
+    const map = {
+      'mon': 1, 'monday': 1,
+      'tue': 2, 'tuesday': 2,
+      'wed': 3, 'wednesday': 3,
+      'thu': 4, 'thursday': 4,
+      'fri': 5, 'friday': 5,
+      'sat': 6, 'saturday': 6,
+      'sun': 7, 'sunday': 7,
+    };
+    return map[day.toLowerCase()];
+  }
 
   NotificationRepositoryImpl(this._service);
 
@@ -34,24 +45,49 @@ class NotificationRepositoryImpl implements NotificationRepository {
   Future<void> scheduleAllNotifications(List<Task> tasks) async {
     await _service.cancelAll();
 
+    debugPrint('[NOTIF] scheduleAllNotifications called with ${tasks.length} tasks');
+
     int idCounter = 0;
     for (final task in tasks) {
-      for (final reminder in task.reminders) {
-        for (final entry in reminder.days.entries) {
-          if (!entry.value) continue;
-          final weekday = _dayToWeekday[entry.key];
-          if (weekday == null) continue;
+      debugPrint('[NOTIF] Task "${task.title}" oneTime=${task.oneTime} '
+          'startDate=${task.startDate} reminders=${task.reminders.length}');
 
-          await _service.scheduleWeeklyNotification(
+      for (final reminder in task.reminders) {
+        debugPrint('[NOTIF]   Reminder time=${reminder.time.hour}:${reminder.time.minute} '
+            'days=${reminder.days}');
+
+        final body = reminder.message.trim().isEmpty
+            ? 'Time for: ${task.title}'
+            : reminder.message;
+
+        if (task.oneTime) {
+          debugPrint('[NOTIF]   -> Scheduling ONE-TIME for ${task.startDate} '
+              'at ${reminder.time.hour}:${reminder.time.minute}');
+          // One-time task: schedule a single non-repeating notification
+          await _service.scheduleOneTimeNotification(
             id: idCounter++,
             title: task.title,
-            body: reminder.message.trim().isEmpty
-                ? 'Time for: ${task.title}'
-                : reminder.message,
+            body: body,
+            scheduledDate: task.startDate,
             hour: reminder.time.hour,
             minute: reminder.time.minute,
-            weekday: weekday,
           );
+        } else {
+          // Recurring task: schedule weekly for each active day
+          for (final entry in reminder.days.entries) {
+            if (!entry.value) continue;
+            final weekday = _dayToWeekday(entry.key);
+            if (weekday == null) continue;
+
+            await _service.scheduleWeeklyNotification(
+              id: idCounter++,
+              title: task.title,
+              body: body,
+              hour: reminder.time.hour,
+              minute: reminder.time.minute,
+              weekday: weekday,
+            );
+          }
         }
       }
     }

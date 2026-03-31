@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../domain/entities/meeting_location.dart';
 import '../../domain/repositories/user_location_repository.dart';
@@ -37,6 +39,35 @@ class UserLocationRepositoryImpl implements UserLocationRepository {
     } else {
       await prefs.remove(_workKey);
     }
+
+    // Sync home location to Firestore so friends can read it.
+    _syncHomeToFirestore(home);
+  }
+
+  /// Writes home location to the user's Firestore document (fire-and-forget).
+  void _syncHomeToFirestore(MeetingLocation? home) {
+    final uid = _uid;
+    if (uid == 'anonymous') return;
+
+    final data = home != null && home.hasCoordinates
+        ? {
+            'homeName': home.name,
+            'homeLatitude': home.latitude,
+            'homeLongitude': home.longitude,
+          }
+        : {
+            'homeName': FieldValue.delete(),
+            'homeLatitude': FieldValue.delete(),
+            'homeLongitude': FieldValue.delete(),
+          };
+
+    FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .set(data, SetOptions(merge: true))
+        .catchError((e) {
+      if (kDebugMode) debugPrint('[LOCATION] Failed to sync home to Firestore: $e');
+    });
   }
 
   @override
