@@ -14,6 +14,11 @@ import android.provider.Settings
 import android.text.TextUtils
 import android.widget.Toast
 import android.accessibilityservice.AccessibilityService
+import android.app.usage.UsageStatsManager
+import android.app.usage.UsageEvents
+import android.app.AppOpsManager
+import android.os.Process
+import java.util.Calendar
 
 class MainActivity : FlutterActivity() {
     private val EVENT_CHANNEL = "accessibility_events"
@@ -262,6 +267,152 @@ class MainActivity : FlutterActivity() {
                 }
                 else -> result.notImplemented()
             }
+        }
+
+        // MethodChannel pentru Usage Stats
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.example.focus_mate/usage_stats").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "hasUsagePermission" -> {
+                    try {
+                        val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+                        val mode = appOps.checkOpNoThrow(
+                            AppOpsManager.OPSTR_GET_USAGE_STATS,
+                            Process.myUid(),
+                            packageName
+                        )
+                        result.success(mode == AppOpsManager.MODE_ALLOWED)
+                    } catch (e: Exception) {
+                        result.success(false)
+                    }
+                }
+                "requestUsagePermission" -> {
+                    try {
+                        val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        startActivity(intent)
+                    } catch (_: Exception) { }
+                    result.success(null)
+                }
+                "getUsageStats" -> {
+                    try {
+                        val days = call.argument<Int>("days") ?: 1
+                        val data = getUsageStatsData(days)
+                        result.success(data)
+                    } catch (e: Exception) {
+                        result.error("ERROR", "Failed to get usage stats: ${e.message}", null)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    private fun getUsageStatsData(days: Int = 1): HashMap<String, Any> {
+        val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+
+        val calendar = Calendar.getInstance()
+        val endTime = calendar.timeInMillis
+        calendar.set(Calendar.HOUR_OF_DAY, 0)
+        calendar.set(Calendar.MINUTE, 0)
+        calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
+        // Go back (days - 1) more days for weekly view
+        if (days > 1) {
+            calendar.add(Calendar.DAY_OF_YEAR, -(days - 1))
+        }
+        val startTime = calendar.timeInMillis
+
+        // --- Per-app usage from queryUsageStats ---
+        val usageStatsList = usageStatsManager.queryUsageStats(
+            UsageStatsManager.INTERVAL_DAILY, startTime, endTime
+        )
+
+        val appUsageMap = HashMap<String, Long>() // packageName -> totalTimeMs
+        for (stat in usageStatsList) {
+            val time = stat.totalTimeInForeground
+            if (time > 0) {
+                appUsageMap[stat.packageName] = (appUsageMap[stat.packageName] ?: 0L) + time
+            }
+        }
+
+        // --- Hourly distribution from queryEvents ---
+        // For weekly view, we average hours across days
+        val hourlyMs = LongArray(24) { 0L }
+        val events = usageStatsManager.queryEvents(startTime, endTime)
+        val event = UsageEvents.Event()
+        var lastForegroundTime = 0L
+        var lastForegroundPkg = ""
+
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event)
+            when (event.eventType) {
+                UsageEvents.Event.MOVE_TO_FOREGROUND -> {
+                    lastForegroundTime = event.timeStamp
+                    lastForegroundPkg = event.packageName
+                }
+                UsageEvents.Event.MOVE_TO_BACKGROUND -> {
+                    if (lastForegroundTime > 0 && event.packageName == lastForegroundPkg) {
+                        distributeTimeToHours(hourlyMs, lastForegroundTime, event.timeStamp, startTime)
+                        lastForegroundTime = 0L
+                    }
+                }
+            }
+        }
+        // If an app is still in foreground, count time until now
+        if (lastForegroundTime > 0) {
+            distributeTimeToHours(hourlyMs, lastForegroundTime, endTime, startTime)
+        }
+
+        // For weekly view, average the hourly data
+        val divisor = if (days > 1) days else 1
+        val hourlyMinutes = hourlyMs.map { it / 60000 / divisor }
+
+        // --- Build top apps list (with icons) ---
+        val appManager = AppManager(this)
+        val topApps = appUsageMap.entries
+            .sortedByDescending { it.value }
+            .take(15)
+            .map { entry ->
+                val appName = try {
+                    appManager.getAppName(entry.key) ?: entry.key
+                } catch (_: Exception) { entry.key }
+                val iconBase64 = try {
+                    appManager.getAppIcon(entry.key) ?: ""
+                } catch (_: Exception) { "" }
+                val minutes = entry.value / 60000
+                hashMapOf<String, Any>(
+                    "packageName" to entry.key,
+                    "appName" to appName,
+                    "usageMinutes" to minutes,
+                    "iconBase64" to iconBase64
+                )
+            }
+
+        val totalMinutes = appUsageMap.values.sum() / 60000
+
+        val result = HashMap<String, Any>()
+        result["totalScreenTimeMinutes"] = totalMinutes
+        result["hourlyUsage"] = hourlyMinutes
+        result["topApps"] = topApps
+        return result
+    }
+
+    private fun distributeTimeToHours(hourlyMs: LongArray, start: Long, end: Long, dayStart: Long) {
+        val cal = Calendar.getInstance()
+        var current = start
+        while (current < end) {
+            cal.timeInMillis = current
+            val hour = cal.get(Calendar.HOUR_OF_DAY)
+            // End of this hour
+            cal.set(Calendar.MINUTE, 59)
+            cal.set(Calendar.SECOND, 59)
+            cal.set(Calendar.MILLISECOND, 999)
+            val hourEnd = minOf(cal.timeInMillis + 1, end)
+            val duration = hourEnd - current
+            if (hour in 0..23) {
+                hourlyMs[hour] += duration
+            }
+            current = hourEnd
         }
     }
 

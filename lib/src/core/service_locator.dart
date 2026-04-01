@@ -52,6 +52,8 @@ import '../data/datasources/implementations/firestore_friend_datasource.dart';
 import '../data/datasources/implementations/gemini_meeting_suggestion_datasource.dart';
 import '../data/datasources/notification_service.dart';
 import '../data/datasources/implementations/flutter_local_notification_service.dart';
+import '../data/datasources/usage_stats_datasource.dart';
+import '../data/datasources/implementations/method_channel_usage_stats_datasource.dart';
 
 final getIt = GetIt.instance;
 
@@ -80,6 +82,11 @@ Future<void> setupServiceLocator() async {
   // Accessibility data source
   getIt.registerSingleton<AccessibilityPlatformDataSource>(
     MethodChannelAccessibilityDataSource(),
+  );
+
+  // Usage stats data source
+  getIt.registerSingleton<UsageStatsDataSource>(
+    MethodChannelUsageStatsDataSource(),
   );
 
   // Location search service (Google Places)
