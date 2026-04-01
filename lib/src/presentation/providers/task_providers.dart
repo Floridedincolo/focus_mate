@@ -84,6 +84,12 @@ final clearCompletionProvider =
   return usecase(params.$1, params.$2);
 });
 
+/// Emits every 30 seconds to force time-based re-evaluation
+/// of [currentActiveTaskProvider].
+final _timeTickProvider = StreamProvider<DateTime>((ref) {
+  return Stream.periodic(const Duration(seconds: 30), (_) => DateTime.now());
+});
+
 /// Returns the currently active task based on the current time.
 ///
 /// A task is considered "active" right now if:
@@ -93,6 +99,7 @@ final clearCompletionProvider =
 ///
 /// Returns `null` if no task is currently active.
 final currentActiveTaskProvider = Provider<Task?>((ref) {
+  ref.watch(_timeTickProvider); // forces re-evaluation every ~30s
   final tasksAsync = ref.watch(tasksStreamProvider);
   return tasksAsync.maybeWhen(
     data: (tasks) {

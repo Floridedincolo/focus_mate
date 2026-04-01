@@ -27,6 +27,9 @@ import android.view.animation.AccelerateDecelerateInterpolator
 import android.content.BroadcastReceiver
 import android.content.IntentFilter
 import android.content.SharedPreferences
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class AppBlockService : AccessibilityService() {
 
@@ -34,6 +37,37 @@ class AppBlockService : AccessibilityService() {
     private var windowManager: WindowManager? = null
     private var overlayShown = false
     private var lastActionTime = 0L
+
+    companion object {
+        /** SharedPreferences key prefix for daily prevented-distractions counters.
+         *  Full key example: "prevented_distractions_2026-04-01" */
+        const val PREF_PREVENTED_PREFIX = "prevented_distractions_"
+
+        val dayFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+
+        // Packages that must NEVER be blocked regardless of whitelist/blacklist mode.
+        // Blocking these would lock the user out of their device.
+        private val SYSTEM_EXEMPT_PACKAGES = setOf(
+            "com.example.focus_mate",                    // Our own app
+            "com.google.android.apps.nexuslauncher",     // Pixel launcher
+            "com.sec.android.app.launcher",              // Samsung launcher
+            "com.miui.home",                             // Xiaomi launcher
+            "com.huawei.android.launcher",               // Huawei launcher
+            "com.oppo.launcher",                         // Oppo launcher
+            "com.android.launcher",                      // AOSP launcher
+            "com.android.launcher3",                     // AOSP launcher 3
+            "com.android.settings",                      // System settings
+            "com.android.systemui",                      // System UI
+            "com.android.phone",                         // Phone / dialer
+            "com.android.server.telecom",                // Telecom
+            "com.android.emergency",                     // Emergency info
+            "com.google.android.inputmethod.latin",      // Gboard
+            "com.samsung.android.honeyboard",            // Samsung keyboard
+            "com.swiftkey.languageprovider",             // SwiftKey
+            "com.touchtype.swiftkey",                    // SwiftKey (alt package)
+            "com.android.inputmethod.latin",             // AOSP keyboard
+        )
+    }
 
     private var blockedApps: MutableSet<String> = mutableSetOf()
     private var isWhitelist: Boolean = false
@@ -64,31 +98,6 @@ class AppBlockService : AccessibilityService() {
         } catch (e: Exception) {
             Log.e("AppAccessibilityService", "❌ Error in onServiceConnected: ${e.message}", e)
         }
-    }
-
-    companion object {
-        // Packages that must NEVER be blocked regardless of whitelist/blacklist mode.
-        // Blocking these would lock the user out of their device.
-        private val SYSTEM_EXEMPT_PACKAGES = setOf(
-            "com.example.focus_mate",                    // Our own app
-            "com.google.android.apps.nexuslauncher",     // Pixel launcher
-            "com.sec.android.app.launcher",              // Samsung launcher
-            "com.miui.home",                             // Xiaomi launcher
-            "com.huawei.android.launcher",               // Huawei launcher
-            "com.oppo.launcher",                         // Oppo launcher
-            "com.android.launcher",                      // AOSP launcher
-            "com.android.launcher3",                     // AOSP launcher 3
-            "com.android.settings",                      // System settings
-            "com.android.systemui",                      // System UI
-            "com.android.phone",                         // Phone / dialer
-            "com.android.server.telecom",                // Telecom
-            "com.android.emergency",                     // Emergency info
-            "com.google.android.inputmethod.latin",      // Gboard
-            "com.samsung.android.honeyboard",            // Samsung keyboard
-            "com.swiftkey.languageprovider",             // SwiftKey
-            "com.touchtype.swiftkey",                    // SwiftKey (alt package)
-            "com.android.inputmethod.latin",             // AOSP keyboard
-        )
     }
 
     private fun loadBlockedApps() {
@@ -177,8 +186,11 @@ class AppBlockService : AccessibilityService() {
                 if (now - lastActionTime < 1000) return
                 lastActionTime = now
 
+                // Increment daily prevented-distractions counter
+                incrementPreventedDistractions()
+
                 Log.d("AppAccessibilityService", "🚫 Blocked app detected → HOME + OVERLAY")
-                // Mai întâi afișăm overlay-ul
+                // Show overlay first
                 showOverlay(packageName)
                 // Apoi trimitem user-ul acasă cu delay
                 Handler(Looper.getMainLooper()).postDelayed({
@@ -188,6 +200,19 @@ class AppBlockService : AccessibilityService() {
         } catch (e: Exception) {
             Log.e("AppAccessibilityService", "❌ Error in onAccessibilityEvent: ${e.message}", e)
             // Nu aruncăm excepția mai departe - serviciul trebuie să continue să funcționeze
+        }
+    }
+
+    /** Increment the daily prevented-distractions counter in SharedPreferences. */
+    private fun incrementPreventedDistractions() {
+        try {
+            val prefs = getSharedPreferences("focus_mate_prefs", Context.MODE_PRIVATE)
+            val todayKey = PREF_PREVENTED_PREFIX + dayFormat.format(Date())
+            val current = prefs.getInt(todayKey, 0)
+            prefs.edit().putInt(todayKey, current + 1).apply()
+            Log.d("AppAccessibilityService", "🛡️ Prevented distractions today: ${current + 1}")
+        } catch (e: Exception) {
+            Log.e("AppAccessibilityService", "❌ Error incrementing prevented count: ${e.message}")
         }
     }
 

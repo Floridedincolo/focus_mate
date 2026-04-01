@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/service_locator.dart';
+import '../../domain/usecases/accessibility_usecases.dart';
+import '../providers/block_template_providers.dart';
+import '../providers/task_providers.dart';
 import 'home.dart';
 import 'focus_page.dart';
-import 'stats_page.dart';
+import 'stats/stats_page.dart';
 import 'profile.dart';
 
 class MainPage extends ConsumerStatefulWidget {
@@ -15,6 +19,9 @@ class MainPage extends ConsumerStatefulWidget {
 
 class _MainPageState extends ConsumerState<MainPage> {
   int _selectedIndex = 0;
+  // Sentinel so the very first evaluation (even when currentKey is null)
+  // still triggers ClearBlockingUseCase to wipe stale SharedPreferences.
+  String? _lastAppliedFingerprint = '__uninitialized__';
 
   final bottomBarColor = const Color(0xFF1A1A1A);
   final accentColor = Colors.blueAccent;
@@ -25,8 +32,50 @@ class _MainPageState extends ConsumerState<MainPage> {
     });
   }
 
+  /// Watches the currently active task and applies/clears the blocking template
+  /// globally, regardless of which tab is selected.
+  void _watchAndApplyActiveTask() {
+    final activeTask = ref.watch(currentActiveTaskProvider);
+    final templateId = activeTask?.blockTemplateId;
+    final templates = ref.watch(blockTemplatesProvider).valueOrNull;
+
+    String? fingerprint;
+    if (templateId != null && templates != null) {
+      final t = templates.where((t) => t.id == templateId).firstOrNull;
+      if (t != null) {
+        // Include activeTask.id so two tasks sharing the same template
+        // still trigger a re-apply with the correct task name.
+        fingerprint =
+            '${activeTask?.id}_${t.id}_${t.isWhitelist}_${t.packages.join(",")}';
+      }
+    }
+
+    final currentKey = fingerprint ?? templateId;
+    if (currentKey == _lastAppliedFingerprint) return;
+    _lastAppliedFingerprint = currentKey;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (templateId != null && templates != null) {
+        final template =
+            templates.where((t) => t.id == templateId).firstOrNull;
+        if (template != null) {
+          await getIt<ApplyBlockingTemplateUseCase>()(
+            packages: template.packages,
+            isWhitelist: template.isWhitelist,
+            taskName: activeTask?.title,
+          );
+        }
+      } else if (templateId == null) {
+        await getIt<ClearBlockingUseCase>()();
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Global task monitoring — runs on every rebuild regardless of tab
+    _watchAndApplyActiveTask();
+
     final pages = [
       const Home(),
       const FocusPage(),

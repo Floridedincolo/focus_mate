@@ -45,5 +45,8 @@ class MethodChannelUsageStatsDataSource implements UsageStatsDataSource {
         'totalScreenTimeMinutes': 0,
         'hourlyUsage': List<int>.filled(24, 0),
         'topApps': <Map<String, dynamic>>[],
+        // TODO(kotlin): Wire these from AppBlockService tracking
+        'focusTimeMinutes': 0,
+        'preventedDistractions': 0,
       };
 }

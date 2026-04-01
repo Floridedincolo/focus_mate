@@ -18,7 +18,10 @@ import android.app.usage.UsageStatsManager
 import android.app.usage.UsageEvents
 import android.app.AppOpsManager
 import android.os.Process
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : FlutterActivity() {
     private val EVENT_CHANNEL = "accessibility_events"
@@ -390,10 +393,35 @@ class MainActivity : FlutterActivity() {
 
         val totalMinutes = appUsageMap.values.sum() / 60000
 
+        // ── Read focus time and prevented distractions from SharedPreferences ──
+        val focusPrefs = getSharedPreferences("focus_mate_prefs", Context.MODE_PRIVATE)
+        val dayFmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        var totalFocusMinutes = 0L
+        var totalPrevented = 0
+
+        val cal2 = Calendar.getInstance()
+        for (d in 0 until days) {
+            val dateKey = dayFmt.format(cal2.time)
+            totalFocusMinutes += focusPrefs.getLong("focus_minutes_$dateKey", 0L)
+            totalPrevented += focusPrefs.getInt(
+                AppBlockService.PREF_PREVENTED_PREFIX + dateKey, 0
+            )
+            cal2.add(Calendar.DAY_OF_YEAR, -1)
+        }
+
+        // If a focus session is currently active, add elapsed time
+        val sessionStart = focusPrefs.getLong("focus_session_start", 0L)
+        if (sessionStart > 0) {
+            val liveMin = (System.currentTimeMillis() - sessionStart) / 60000
+            totalFocusMinutes += liveMin
+        }
+
         val result = HashMap<String, Any>()
         result["totalScreenTimeMinutes"] = totalMinutes
         result["hourlyUsage"] = hourlyMinutes
         result["topApps"] = topApps
+        result["focusTimeMinutes"] = totalFocusMinutes
+        result["preventedDistractions"] = totalPrevented
         return result
     }
 
@@ -430,19 +458,50 @@ class MainActivity : FlutterActivity() {
 
     private fun saveBlockedApps(apps: List<String>, isWhitelist: Boolean = false) {
         val prefs: SharedPreferences = getSharedPreferences("focus_mate_prefs", Context.MODE_PRIVATE)
+
+        // ── Focus session tracking (single editor to avoid race conditions) ──
+        val hadBlocking = (prefs.getStringSet("blocked_apps", emptySet())?.isNotEmpty() == true)
+        val hasBlocking = apps.isNotEmpty()
+
         val editor = prefs.edit()
+
+        // Always save the blocked apps list first
         editor.putStringSet("blocked_apps", apps.toSet())
         editor.putBoolean("is_whitelist", isWhitelist)
+
+        // Track focus session transitions
+        try {
+            if (!hadBlocking && hasBlocking) {
+                editor.putLong("focus_session_start", System.currentTimeMillis())
+                Log.d("MainActivity", "🟢 Focus session STARTED")
+            } else if (hadBlocking && !hasBlocking) {
+                val sessionStart = prefs.getLong("focus_session_start", 0L)
+                if (sessionStart > 0) {
+                    val elapsedMs = System.currentTimeMillis() - sessionStart
+                    val elapsedMin = elapsedMs / 60000
+                    val dayFmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                    val todayKey = dayFmt.format(Date())
+                    val focusKey = "focus_minutes_$todayKey"
+                    val prevMin = prefs.getLong(focusKey, 0L)
+                    editor.putLong(focusKey, prevMin + elapsedMin)
+                    editor.remove("focus_session_start")
+                    Log.d("MainActivity", "🔴 Focus session ENDED — +${elapsedMin}min (total today: ${prevMin + elapsedMin}min)")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Focus tracking error (non-fatal): ${e.message}")
+        }
+
         editor.apply()
 
-        // Notifică serviciul de accessibility despre schimbare (broadcast EXPLICIT pentru Android 12+)
+        // Notify the accessibility service via explicit broadcast (Android 12+)
         val intent = Intent("com.example.focus_mate.UPDATE_BLOCKED_APPS")
-        intent.setPackage(packageName) //  Face broadcast-ul EXPLICIT
+        intent.setPackage(packageName)
         intent.putStringArrayListExtra("apps", ArrayList(apps))
         sendBroadcast(intent)
         Log.d("MainActivity", "📤 Sent UPDATE_BLOCKED_APPS broadcast with ${apps.size} apps")
 
-        // Dacă Flutter e conectat la EventChannel, trimitem direct update-ul pentru a fi instant
+        // If Flutter is connected to EventChannel, send an instant update
         eventSink?.let { sink ->
             val updatePayload = HashMap<String, Any?>()
             updatePayload["event"] = "blockedAppsUpdated"
