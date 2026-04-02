@@ -12,7 +12,7 @@ import 'src/presentation/pages/main_page.dart';
 import 'src/presentation/pages/focus_page.dart';
 import 'src/presentation/pages/home.dart';
 import 'src/presentation/pages/add_task.dart';
-import 'src/presentation/pages/stats_page.dart';
+import 'src/presentation/pages/stats/stats_page.dart';
 import 'src/presentation/pages/profile.dart';
 import 'src/presentation/pages/login_page.dart';
 import 'src/presentation/pages/schedule_import/schedule_import_page.dart';

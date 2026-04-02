@@ -6,7 +6,6 @@ import '../../domain/entities/app_block_template.dart';
 import '../../domain/repositories/block_template_repository.dart';
 import '../../domain/usecases/accessibility_usecases.dart';
 import '../providers/block_template_providers.dart';
-import '../providers/task_providers.dart';
 import 'create_template_screen.dart';
 
 class FocusPage extends ConsumerStatefulWidget {
@@ -20,9 +19,6 @@ class _FocusPageState extends ConsumerState<FocusPage>
     with WidgetsBindingObserver {
   bool _isAccessibilityEnabled = false;
   bool _hasOverlayPermission = false;
-
-  // Track the last applied template to avoid redundant calls
-  String? _lastAppliedTemplateId;
 
   @override
   void initState() {
@@ -94,23 +90,8 @@ class _FocusPageState extends ConsumerState<FocusPage>
   Widget build(BuildContext context) {
     final templatesAsync = ref.watch(blockTemplatesProvider);
 
-    // Reactive blocking: watch active task and apply its template
-    _watchAndApplyActiveTask();
-
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'focus_page_fab',
-        backgroundColor: Colors.blueAccent,
-        onPressed: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const CreateTemplateScreen()),
-          );
-          ref.invalidate(blockTemplatesProvider);
-        },
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
       body: SafeArea(
         child: SingleChildScrollView(
           child: Padding(
@@ -130,6 +111,38 @@ class _FocusPageState extends ConsumerState<FocusPage>
                 Text(
                   "Create blocking profiles for your tasks.",
                   style: TextStyle(color: Colors.grey[500], fontSize: 14),
+                ),
+                const SizedBox(height: 20),
+
+                // Create New Template Button
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const CreateTemplateScreen()),
+                      );
+                      ref.invalidate(blockTemplatesProvider);
+                    },
+                    icon: const Icon(Icons.add, color: Colors.white),
+                    label: const Text(
+                      'Create New Template',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.blueAccent,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 20),
 
@@ -164,45 +177,6 @@ class _FocusPageState extends ConsumerState<FocusPage>
         ),
       ),
     );
-  }
-
-  void _watchAndApplyActiveTask() {
-    final activeTask = ref.watch(currentActiveTaskProvider);
-    final templateId = activeTask?.blockTemplateId;
-
-    // Also watch templates so edits (whitelist<->blacklist, app changes)
-    // trigger a re-apply even when the templateId hasn't changed.
-    final templates = ref.watch(blockTemplatesProvider).valueOrNull;
-
-    // Build a fingerprint that changes when either the active template ID
-    // or the template contents change.
-    String? fingerprint;
-    if (templateId != null && templates != null) {
-      final t = templates.where((t) => t.id == templateId).firstOrNull;
-      if (t != null) {
-        fingerprint = '${t.id}_${t.isWhitelist}_${t.packages.join(',')}';
-      }
-    }
-
-    final currentKey = fingerprint ?? templateId;
-    if (currentKey == _lastAppliedTemplateId) return;
-    _lastAppliedTemplateId = currentKey;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (templateId != null && templates != null) {
-        final template =
-            templates.where((t) => t.id == templateId).firstOrNull;
-        if (template != null) {
-          await getIt<ApplyBlockingTemplateUseCase>()(
-            packages: template.packages,
-            isWhitelist: template.isWhitelist,
-            taskName: activeTask?.title,
-          );
-        }
-      } else if (templateId == null) {
-        await getIt<ClearBlockingUseCase>()();
-      }
-    });
   }
 
   Widget _buildEmptyState() {

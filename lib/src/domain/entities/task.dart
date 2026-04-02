@@ -18,6 +18,7 @@ class Task {
   final double? locationLatitude;
   final double? locationLongitude;
   final String? blockTemplateId;
+  final bool isOfflineFocus;
 
   Task({
     required this.id,
@@ -35,6 +36,7 @@ class Task {
     this.locationLatitude,
     this.locationLongitude,
     this.blockTemplateId,
+    this.isOfflineFocus = false,
   });
 
   Task copyWith({
@@ -56,6 +58,7 @@ class Task {
     bool clearLocationLongitude = false,
     String? blockTemplateId,
     bool clearBlockTemplateId = false,
+    bool? isOfflineFocus,
   }) {
     return Task(
       id: id ?? this.id,
@@ -73,6 +76,7 @@ class Task {
       locationLatitude: clearLocationLatitude ? null : (locationLatitude ?? this.locationLatitude),
       locationLongitude: clearLocationLongitude ? null : (locationLongitude ?? this.locationLongitude),
       blockTemplateId: clearBlockTemplateId ? null : (blockTemplateId ?? this.blockTemplateId),
+      isOfflineFocus: isOfflineFocus ?? this.isOfflineFocus,
     );
   }
 
@@ -95,7 +99,8 @@ class Task {
         other.locationName == locationName &&
         other.locationLatitude == locationLatitude &&
         other.locationLongitude == locationLongitude &&
-        other.blockTemplateId == blockTemplateId;
+        other.blockTemplateId == blockTemplateId &&
+        other.isOfflineFocus == isOfflineFocus;
   }
 
   @override
@@ -115,6 +120,7 @@ class Task {
         locationLatitude,
         locationLongitude,
         blockTemplateId,
+        isOfflineFocus,
       );
 
   static bool _mapsEqual(Map<String, bool> a, Map<String, bool> b) {
