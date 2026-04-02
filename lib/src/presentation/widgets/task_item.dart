@@ -31,184 +31,200 @@ class TaskItem extends StatelessWidget {
     } else if (isMissed) {
       accentColor = Colors.redAccent;
     } else if (isFutureLocked) {
-      accentColor = Colors.grey;
+      accentColor = Colors.white24;
     } else {
       accentColor = Colors.blueAccent;
     }
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(16),
-        border: Border(
-          left: BorderSide(color: accentColor, width: 3),
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 250),
+      opacity: isCompleted ? 0.5 : 1.0,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+        decoration: BoxDecoration(
+          color: const Color(0xFF141414),
+          borderRadius: BorderRadius.circular(14),
         ),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onLongPress: onEdit,
-          child: Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // ── Completion circle ──
-                GestureDetector(
-                  onTap: (isMissed || onMarkCompleted == null) ? null : onMarkCompleted,
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 250),
-                    transitionBuilder: (child, anim) =>
-                        ScaleTransition(scale: anim, child: child),
-                    child: Icon(
-                      isCompleted
-                          ? Icons.check_circle_rounded
-                          : isMissed
-                              ? Icons.cancel_rounded
-                              : isFutureLocked
-                                  ? Icons.lock_outline
-                                  : Icons.radio_button_unchecked_rounded,
-                      key: ValueKey(statusForSelectedDay),
-                      color: accentColor,
-                      size: 26,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onLongPress: onEdit,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // ── Completion circle ──
+                  GestureDetector(
+                    onTap: (isMissed || onMarkCompleted == null)
+                        ? null
+                        : onMarkCompleted,
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 250),
+                      transitionBuilder: (child, anim) =>
+                          ScaleTransition(scale: anim, child: child),
+                      child: Icon(
+                        isCompleted
+                            ? Icons.check_circle_rounded
+                            : isMissed
+                                ? Icons.cancel_rounded
+                                : isFutureLocked
+                                    ? Icons.lock_outline
+                                    : Icons.circle_outlined,
+                        key: ValueKey(statusForSelectedDay),
+                        color: accentColor,
+                        size: 22,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
+                  const SizedBox(width: 14),
 
-                // ── Content ──
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Title
-                      Text(
-                        task.title,
-                        style: TextStyle(
-                          color: isCompleted
-                              ? Colors.white54
-                              : isMissed
-                                  ? Colors.redAccent.withValues(alpha: 0.7)
-                                  : isFutureLocked
-                                      ? Colors.white38
-                                      : Colors.white,
-                          decoration: isCompleted
-                              ? TextDecoration.lineThrough
-                              : null,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
+                  // ── Content ──
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Title
+                        Text(
+                          task.title,
+                          style: TextStyle(
+                            color: isCompleted
+                                ? Colors.white30
+                                : isMissed
+                                    ? Colors.redAccent.withValues(alpha: 0.7)
+                                    : isFutureLocked
+                                        ? Colors.white38
+                                        : Colors.white,
+                            decoration:
+                                isCompleted ? TextDecoration.lineThrough : null,
+                            decorationColor: Colors.white30,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 15,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
 
-                      const SizedBox(height: 4),
+                        const SizedBox(height: 6),
 
-                      // Time + Location row
-                      Row(
-                        children: [
-                          // Time
-                          if (task.startTime != null)
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.access_time_rounded,
-                                    size: 13, color: Colors.white38),
-                                const SizedBox(width: 3),
-                                Text(
-                                  "${task.startTime!.format(context)}"
-                                  "${task.endTime != null ? " – ${task.endTime!.format(context)}" : ""}",
-                                  style: const TextStyle(
-                                      color: Colors.white38, fontSize: 12),
-                                ),
-                              ],
-                            ),
-
-                          // Separator
-                          if (task.startTime != null &&
-                              task.locationName != null &&
-                              task.locationName!.isNotEmpty)
-                            const Padding(
-                              padding:
-                                  EdgeInsets.symmetric(horizontal: 6),
-                              child: Text('•',
-                                  style: TextStyle(
-                                      color: Colors.white24,
-                                      fontSize: 12)),
-                            ),
-
-                          // Location
-                          if (task.locationName != null &&
-                              task.locationName!.isNotEmpty)
-                            Flexible(
-                              child: Row(
+                        // Time + Location row
+                        Row(
+                          children: [
+                            // Time
+                            if (task.startTime != null)
+                              Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Icon(Icons.location_on_rounded,
-                                      size: 13,
-                                      color: Colors.blueAccent),
-                                  const SizedBox(width: 2),
-                                  Flexible(
-                                    child: Text(
-                                      task.locationName!,
-                                      style: const TextStyle(
-                                          color: Colors.white38,
-                                          fontSize: 12),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                                  Icon(Icons.access_time_rounded,
+                                      size: 12,
+                                      color: isCompleted
+                                          ? Colors.white12
+                                          : Colors.white30),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    "${task.startTime!.format(context)}"
+                                    "${task.endTime != null ? " – ${task.endTime!.format(context)}" : ""}",
+                                    style: TextStyle(
+                                      color: isCompleted
+                                          ? Colors.white12
+                                          : Colors.white30,
+                                      fontSize: 12,
                                     ),
                                   ),
                                 ],
                               ),
-                            ),
-                        ],
-                      ),
 
-                      // Streak
-                      if (task.streak > 0)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                  Icons.local_fire_department_rounded,
-                                  color: Colors.orangeAccent,
-                                  size: 14),
-                              const SizedBox(width: 3),
-                              Text(
-                                "${task.streak} day${task.streak > 1 ? 's' : ''} streak",
-                                style: const TextStyle(
-                                  color: Colors.orangeAccent,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
+                            // Separator
+                            if (task.startTime != null &&
+                                task.locationName != null &&
+                                task.locationName!.isNotEmpty)
+                              Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 8),
+                                child: Text('·',
+                                    style: TextStyle(
+                                        color: isCompleted
+                                            ? Colors.white12
+                                            : Colors.white.withValues(alpha: 0.2),
+                                        fontSize: 12)),
+                              ),
+
+                            // Location
+                            if (task.locationName != null &&
+                                task.locationName!.isNotEmpty)
+                              Flexible(
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.location_on_outlined,
+                                        size: 12,
+                                        color: isCompleted
+                                            ? Colors.white12
+                                            : Colors.white30),
+                                    const SizedBox(width: 3),
+                                    Flexible(
+                                      child: Text(
+                                        task.locationName!,
+                                        style: TextStyle(
+                                          color: isCompleted
+                                              ? Colors.white12
+                                              : Colors.white30,
+                                          fontSize: 12,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
-                          ),
+                          ],
                         ),
-                    ],
-                  ),
-                ),
 
-                // ── Edit button ──
-                if (onEdit != null)
-                  IconButton(
-                    onPressed: onEdit,
-                    icon: const Icon(Icons.edit_outlined,
-                        size: 18, color: Colors.white24),
-                    splashRadius: 20,
-                    tooltip: 'Edit task',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 32,
-                      minHeight: 32,
+                        // Streak
+                        if (task.streak > 0)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                    Icons.local_fire_department_rounded,
+                                    color: Colors.orangeAccent,
+                                    size: 13),
+                                const SizedBox(width: 3),
+                                Text(
+                                  "${task.streak} day${task.streak > 1 ? 's' : ''} streak",
+                                  style: const TextStyle(
+                                    color: Colors.white38,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
                     ),
                   ),
-              ],
+
+                  // ── More button ──
+                  if (onEdit != null)
+                    IconButton(
+                      onPressed: onEdit,
+                      icon: Icon(Icons.more_horiz,
+                          size: 18, color: Colors.white.withValues(alpha: 0.2)),
+                      splashRadius: 20,
+                      tooltip: 'Edit task',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 32,
+                        minHeight: 32,
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),

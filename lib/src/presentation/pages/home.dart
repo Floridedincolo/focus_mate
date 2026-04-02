@@ -30,7 +30,6 @@ class _HomeState extends ConsumerState<Home> {
   late DateTime todayDate;
   late DateTime firstDate;
   late DateTime lastDate;
-  late String currentDateText;
   final ScrollController _scrollController = ScrollController();
   late List<CalendarIconData> calendarIcons;
 
@@ -54,7 +53,6 @@ class _HomeState extends ConsumerState<Home> {
     super.initState();
     todayDate = DateTime.now();
     selectedDate = todayDate;
-    currentDateText = "Today";
     int totalDays = 203;
     firstDate = todayDate.subtract(Duration(days: totalDays ~/ 2));
     lastDate = todayDate.add(Duration(days: totalDays ~/ 2));
@@ -77,12 +75,29 @@ class _HomeState extends ConsumerState<Home> {
     super.dispose();
   }
 
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  bool get _isToday => _isSameDay(selectedDate, todayDate);
+
+  String get _headerTitle {
+    if (_isToday) return 'Today';
+    if (_isSameDay(selectedDate, todayDate.add(const Duration(days: 1)))) {
+      return 'Tomorrow';
+    }
+    if (_isSameDay(selectedDate, todayDate.subtract(const Duration(days: 1)))) {
+      return 'Yesterday';
+    }
+    return weekdays[selectedDate.weekday - 1];
+  }
+
+  String get _headerSubtitle {
+    return '${months[selectedDate.month - 1]} ${selectedDate.day}, ${selectedDate.year}';
+  }
+
   void _centerOnSelected({bool animate = false}) {
     int index = calendarIcons.indexWhere(
-      (e) =>
-          e.dateTime.year == selectedDate.year &&
-          e.dateTime.month == selectedDate.month &&
-          e.dateTime.day == selectedDate.day,
+      (e) => _isSameDay(e.dateTime, selectedDate),
     );
 
     if (index == -1) return;
@@ -109,16 +124,6 @@ class _HomeState extends ConsumerState<Home> {
     }
   }
 
-  String getDaySuffix(int day) {
-    if (day >= 11 && day <= 13) return 'th';
-    switch (day % 10) {
-      case 1: return 'st';
-      case 2: return 'nd';
-      case 3: return 'rd';
-      default: return 'th';
-    }
-  }
-
   Future<List<Map<String, dynamic>>> _fetchStatuses(List<Task> tasks) async {
     final repo = getIt<TaskRepository>();
     final futures = tasks.map((t) async {
@@ -137,319 +142,375 @@ class _HomeState extends ConsumerState<Home> {
 
   @override
   Widget build(BuildContext context) {
-    String suffix = getDaySuffix(selectedDate.day);
     final tasksAsyncValue = ref.watch(tasksStreamProvider);
 
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0D0D0D),
-        title: Column(
+      body: SafeArea(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text.rich(
-              TextSpan(
+            // ── Header ──
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  TextSpan(
-                    text: '${weekdays[selectedDate.weekday - 1]}, ${selectedDate.day}',
-                  ),
-                  WidgetSpan(
-                    child: Transform.translate(
-                      offset: const Offset(1, -7),
-                      child: Text(
-                        suffix,
-                        textScaler: const TextScaler.linear(0.7),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                  // Title + subtitle
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _headerTitle,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 28,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _headerSubtitle,
+                          style: const TextStyle(
+                            color: Colors.white38,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  TextSpan(
-                    text: ' of ${months[selectedDate.month - 1]} ${selectedDate.year}',
+                  // Action icons
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const FriendsPage()),
+                    ),
+                    child: const _FriendsBadgeIcon(),
+                  ),
+                  const SizedBox(width: 16),
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const ScheduleImportPage()),
+                    ),
+                    child: const Icon(Icons.calendar_month_outlined,
+                        color: Colors.white38, size: 22),
+                  ),
+                  const SizedBox(width: 16),
+                  GestureDetector(
+                    onTap: () => Navigator.pushNamed(context, '/profile'),
+                    child: const _ProfileAvatar(),
                   ),
                 ],
               ),
-              style: const TextStyle(
-                color: Colors.white, fontSize: 22.5, fontWeight: FontWeight.bold,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 7.5),
-            Text(
-              "Your plan for $currentDateText",
-              style: const TextStyle(
-                color: Colors.white70, fontSize: 20, fontWeight: FontWeight.bold,
+
+            // ── Calendar ──
+            SizedBox(
+              height: 100,
+              child: SingleChildScrollView(
+                controller: _scrollController,
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: calendarIcons.map((e) {
+                    bool isSelected = _isSameDay(e.dateTime, selectedDate);
+                    bool isDayToday = _isSameDay(e.dateTime, todayDate);
+                    return SizedBox(
+                      width: MediaQuery.of(context).size.width / 7,
+                      child: CalendarIconWidget(
+                        calendarIconData: e,
+                        isSelected: isSelected,
+                        isToday: isDayToday,
+                        onTap: () {
+                          setState(() {
+                            selectedDate = e.dateTime;
+                            ref.read(transitWarningsProvider.notifier).reset();
+                          });
+                          WidgetsBinding.instance.addPostFrameCallback(
+                            (_) => _centerOnSelected(animate: true),
+                          );
+                        },
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // ── Content ──
+            Expanded(
+              child: tasksAsyncValue.when(
+                loading: () => const Center(
+                  child: CircularProgressIndicator(color: Colors.white24),
+                ),
+                error: (err, stack) => Center(
+                  child: Text('Error: $err',
+                      style: const TextStyle(color: Colors.white38)),
+                ),
+                data: (allTasks) {
+                  final tasksForDay = allTasks
+                      .where((task) =>
+                          task.occursOn(selectedDate) && task.archived == false)
+                      .toList();
+
+                  if (tasksForDay.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.event_available_outlined,
+                              size: 48, color: Colors.white.withValues(alpha: 0.08)),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'No tasks for this day',
+                            style: TextStyle(color: Colors.white30, fontSize: 14),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  if (_statusesFuture == null ||
+                      _lastSelectedDate != selectedDate ||
+                      !_taskListsEqual(_lastTasksForDay, tasksForDay)) {
+                    _lastTasksForDay = tasksForDay;
+                    _lastSelectedDate = selectedDate;
+                    _statusesFuture = _fetchStatuses(tasksForDay);
+                  }
+
+                  return FutureBuilder<List<Map<String, dynamic>>>(
+                    future: _statusesFuture,
+                    builder: (context, statusSnap) {
+                      if (!statusSnap.hasData) {
+                        return const Center(
+                          child: CircularProgressIndicator(color: Colors.white24),
+                        );
+                      }
+
+                      final list = statusSnap.data!;
+
+                      final completedCount = list.where((e) {
+                        final task = e['task'] as Task;
+                        final key = '${task.id}_${selectedDate.toIso8601String()}';
+                        final localStatus = _localCompletions[key];
+                        final finalStatus = localStatus ?? e['status'];
+                        return finalStatus == TaskCompletionStatus.completed;
+                      }).length;
+                      final totalCount = list.length;
+                      final remainingCount = totalCount - completedCount;
+
+                      list.sort((a, b) {
+                        final taskA = a['task'] as Task;
+                        final taskB = b['task'] as Task;
+                        final keyA = '${taskA.id}_${selectedDate.toIso8601String()}';
+                        final keyB = '${taskB.id}_${selectedDate.toIso8601String()}';
+                        final localA = _localCompletions[keyA];
+                        final localB = _localCompletions[keyB];
+                        final statusA = localA ?? a['status'];
+                        final statusB = localB ?? b['status'];
+                        final aDone = statusA == TaskCompletionStatus.completed ? 1 : 0;
+                        final bDone = statusB == TaskCompletionStatus.completed ? 1 : 0;
+                        if (aDone != bDone) return aDone - bDone;
+                        final at = taskA.startTime;
+                        final bt = taskB.startTime;
+                        if (at == null && bt == null) return 0;
+                        if (at == null) return 1;
+                        if (bt == null) return -1;
+                        return (at.hour * 60 + at.minute)
+                            .compareTo(bt.hour * 60 + bt.minute);
+                      });
+
+                      // Trigger transit warning computation via provider
+                      final sortedTasks = list.map((e) => e['task'] as Task).toList();
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) {
+                          ref.read(transitWarningsProvider.notifier).compute(sortedTasks);
+                        }
+                      });
+
+                      return Column(
+                        children: [
+                          // ── Stats card ──
+                          _buildStatsCard(totalCount, completedCount, remainingCount),
+
+                          const SizedBox(height: 12),
+
+                          // ── Task list ──
+                          Expanded(
+                            child: ListView.builder(
+                              padding: const EdgeInsets.only(top: 4, bottom: 80),
+                              itemCount: list.length,
+                              itemBuilder: (context, index) {
+                                final entry = list[index];
+                                final Task task = entry['task'] as Task;
+                                final firestoreStatus =
+                                    entry['status'] as TaskCompletionStatus? ??
+                                        TaskCompletionStatus.upcoming;
+
+                                final key = '${task.id}_${selectedDate.toIso8601String()}';
+                                final localStatus = _localCompletions[key];
+                                final status = localStatus ?? firestoreStatus;
+
+                                final localStreak = _localStreaks[task.id];
+                                final displayTask = localStreak != null
+                                    ? task.copyWith(streak: localStreak)
+                                    : task;
+
+                                final warning = ref.watch(transitWarningsProvider)[index];
+                                final isFutureDate = DateTime(selectedDate.year,
+                                        selectedDate.month, selectedDate.day)
+                                    .isAfter(DateTime(todayDate.year,
+                                        todayDate.month, todayDate.day));
+
+                                return Column(
+                                  children: [
+                                    if (warning != null)
+                                      _buildTransitWarningWidget(
+                                        transitMin: warning.transitMin,
+                                        availableMin: warning.availableMin,
+                                      ),
+                                    TaskItem(
+                                      task: displayTask,
+                                      statusForSelectedDay: status,
+                                      onEdit: () {
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                AddTaskMenu(existingTask: task),
+                                          ),
+                                        );
+                                      },
+                                      onMarkCompleted: isFutureDate
+                                          ? null
+                                          : () async {
+                                              final isCompleted = status ==
+                                                  TaskCompletionStatus.completed;
+                                              final newStatus = isCompleted
+                                                  ? TaskCompletionStatus.upcoming
+                                                  : TaskCompletionStatus.completed;
+
+                                              setState(() {
+                                                _localCompletions[key] = newStatus;
+                                              });
+
+                                              try {
+                                                int updatedStreak;
+                                                if (isCompleted) {
+                                                  updatedStreak = await ref.read(
+                                                    clearCompletionProvider(
+                                                            (task, selectedDate))
+                                                        .future,
+                                                  );
+                                                } else {
+                                                  updatedStreak = await ref.read(
+                                                    markTaskStatusProvider((task,
+                                                            selectedDate, newStatus))
+                                                        .future,
+                                                  );
+                                                }
+                                                setState(() {
+                                                  _localCompletions[key] = newStatus;
+                                                  _localStreaks[task.id] =
+                                                      updatedStreak;
+                                                  _statusesFuture = null;
+                                                });
+                                              } catch (e) {
+                                                setState(() {
+                                                  _localCompletions[key] =
+                                                      firestoreStatus;
+                                                });
+                                              }
+                                            },
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
               ),
             ),
           ],
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Center(
-              child: Tooltip(
-                message: 'Friends',
-                child: GestureDetector(
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const FriendsPage()),
-                  ),
-                  child: const _FriendsBadgeIcon(),
-                ),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Center(
-              child: Tooltip(
-                message: 'Import Schedule',
-                child: GestureDetector(
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const ScheduleImportPage()),
-                  ),
-                  child: const Icon(Icons.calendar_month_outlined,
-                      color: Colors.white70, size: 24),
-                ),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: GestureDetector(
-              onTap: () => Navigator.pushNamed(context, '/profile'),
-              child: const _ProfileAvatar(),
-            ),
-          ),
-        ],
       ),
-      body: Column(
-        children: [
-          SizedBox(
-            height: 100,
-            child: SingleChildScrollView(
-              controller: _scrollController,
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: calendarIcons.map((e) {
-                  bool isSelected =
-                      e.dateTime.year == selectedDate.year &&
-                      e.dateTime.month == selectedDate.month &&
-                      e.dateTime.day == selectedDate.day;
-                  return SizedBox(
-                    width: MediaQuery.of(context).size.width / 7,
-                    child: CalendarIconWidget(
-                      calendarIconData: e,
-                      isSelected: isSelected,
-                      onTap: () {
-                        setState(() {
-                          selectedDate = e.dateTime;
-                          ref.read(transitWarningsProvider.notifier).reset();
-                          currentDateText =
-                              (todayDate.day == selectedDate.day &&
-                                      todayDate.month == selectedDate.month &&
-                                      todayDate.year == selectedDate.year)
-                                  ? "Today"
-                                  : "This Day";
-                        });
-                        WidgetsBinding.instance.addPostFrameCallback(
-                          (_) => _centerOnSelected(animate: true),
-                        );
-                      },
-                    ),
-                  );
-                }).toList(),
+    );
+  }
+
+  Widget _buildStatsCard(int total, int completed, int remaining) {
+    final progress = total > 0 ? completed / total : 0.0;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(0, 14, 0, 0),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          children: [
+            // Stat values row
+            Row(
+              children: [
+                Expanded(
+                  child: _statColumn('$total', 'Total', Colors.white),
+                ),
+                Container(width: 1, height: 28, color: Colors.white10),
+                Expanded(
+                  child: _statColumn('$completed', 'Done', Colors.greenAccent),
+                ),
+                Container(width: 1, height: 28, color: Colors.white10),
+                Expanded(
+                  child: _statColumn('$remaining', 'Left', Colors.white),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            // Progress bar
+            ClipRRect(
+              borderRadius: const BorderRadius.only(
+                bottomLeft: Radius.circular(16),
+                bottomRight: Radius.circular(16),
+              ),
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 3,
+                backgroundColor: Colors.white.withValues(alpha: 0.04),
+                valueColor: const AlwaysStoppedAnimation<Color>(Colors.blueAccent),
               ),
             ),
-          ),
-          const SizedBox(height: 14),
-          Expanded(
-            child: tasksAsyncValue.when(
-              loading: () => const Center(
-                child: CircularProgressIndicator(color: Colors.white),
-              ),
-              error: (err, stack) => Center(
-                child: Text('Error: $err',
-                    style: const TextStyle(color: Colors.white)),
-              ),
-              data: (allTasks) {
-                final tasksForDay = allTasks
-                    .where((task) =>
-                        task.occursOn(selectedDate) && task.archived == false)
-                    .toList();
-
-                if (tasksForDay.isEmpty) {
-                  return const Center(
-                    child: Text(
-                      "No tasks scheduled for this day.",
-                      style: TextStyle(color: Colors.white70, fontSize: 18),
-                    ),
-                  );
-                }
-
-                if (_statusesFuture == null ||
-                    _lastSelectedDate != selectedDate ||
-                    !_taskListsEqual(_lastTasksForDay, tasksForDay)) {
-                  _lastTasksForDay = tasksForDay;
-                  _lastSelectedDate = selectedDate;
-                  _statusesFuture = _fetchStatuses(tasksForDay);
-                }
-
-                return FutureBuilder<List<Map<String, dynamic>>>(
-                  future: _statusesFuture,
-                  builder: (context, statusSnap) {
-                    if (!statusSnap.hasData) {
-                      return const Center(
-                        child: CircularProgressIndicator(color: Colors.white),
-                      );
-                    }
-
-                    final list = statusSnap.data!;
-
-                    final completedCount = list.where((e) {
-                      final task = e['task'] as Task;
-                      final key = '${task.id}_${selectedDate.toIso8601String()}';
-                      final localStatus = _localCompletions[key];
-                      final finalStatus = localStatus ?? e['status'];
-                      return finalStatus == TaskCompletionStatus.completed;
-                    }).length;
-                    final totalCount = list.length;
-                    final remainingCount = totalCount - completedCount;
-
-                    list.sort((a, b) {
-                      final taskA = a['task'] as Task;
-                      final taskB = b['task'] as Task;
-                      final keyA = '${taskA.id}_${selectedDate.toIso8601String()}';
-                      final keyB = '${taskB.id}_${selectedDate.toIso8601String()}';
-                      final localA = _localCompletions[keyA];
-                      final localB = _localCompletions[keyB];
-                      final statusA = localA ?? a['status'];
-                      final statusB = localB ?? b['status'];
-                      final aDone = statusA == TaskCompletionStatus.completed ? 1 : 0;
-                      final bDone = statusB == TaskCompletionStatus.completed ? 1 : 0;
-                      if (aDone != bDone) return aDone - bDone;
-                      final at = taskA.startTime;
-                      final bt = taskB.startTime;
-                      if (at == null && bt == null) return 0;
-                      if (at == null) return 1;
-                      if (bt == null) return -1;
-                      return (at.hour * 60 + at.minute)
-                          .compareTo(bt.hour * 60 + bt.minute);
-                    });
-
-                    // Trigger transit warning computation via provider
-                    final sortedTasks = list.map((e) => e['task'] as Task).toList();
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) {
-                        ref.read(transitWarningsProvider.notifier).compute(sortedTasks);
-                      }
-                    });
-
-                    return Column(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16.0, vertical: 10,
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(child: _slimStatPill("Total", "$totalCount", Colors.blueAccent)),
-                              const SizedBox(width: 10),
-                              Expanded(child: _slimStatPill("Completed", "$completedCount", Colors.green)),
-                              const SizedBox(width: 10),
-                              Expanded(child: _slimStatPill("Remaining", "$remainingCount", Colors.orange)),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: ListView.builder(
-                            itemCount: list.length,
-                            itemBuilder: (context, index) {
-                              final entry = list[index];
-                              final Task task = entry['task'] as Task;
-                              final firestoreStatus =
-                                  entry['status'] as TaskCompletionStatus? ?? TaskCompletionStatus.upcoming;
-
-                              final key = '${task.id}_${selectedDate.toIso8601String()}';
-                              final localStatus = _localCompletions[key];
-                              final status = localStatus ?? firestoreStatus;
-
-                              final localStreak = _localStreaks[task.id];
-                              final displayTask = localStreak != null
-                                  ? task.copyWith(streak: localStreak)
-                                  : task;
-
-                              final warning = ref.watch(transitWarningsProvider)[index];
-                              final isFutureDate = DateTime(selectedDate.year, selectedDate.month, selectedDate.day)
-                                  .isAfter(DateTime(todayDate.year, todayDate.month, todayDate.day));
-
-                              return Column(
-                                children: [
-                                  // Transit warning BEFORE this task
-                                  if (warning != null)
-                                    _buildTransitWarningWidget(
-                                      transitMin: warning.transitMin,
-                                      availableMin: warning.availableMin,
-                                    ),
-                                  TaskItem(
-                                    task: displayTask,
-                                    statusForSelectedDay: status,
-                                    onEdit: () {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (_) => AddTaskMenu(existingTask: task),
-                                        ),
-                                      );
-                                    },
-                                    onMarkCompleted: isFutureDate ? null : () async {
-                                      final isCompleted = status == TaskCompletionStatus.completed;
-                                      final newStatus = isCompleted
-                                          ? TaskCompletionStatus.upcoming
-                                          : TaskCompletionStatus.completed;
-
-                                      setState(() {
-                                        _localCompletions[key] = newStatus;
-                                      });
-
-                                      try {
-                                        int updatedStreak;
-                                        if (isCompleted) {
-                                          updatedStreak = await ref.read(
-                                            clearCompletionProvider((task, selectedDate)).future,
-                                          );
-                                        } else {
-                                          updatedStreak = await ref.read(
-                                            markTaskStatusProvider((task, selectedDate, newStatus)).future,
-                                          );
-                                        }
-                                        setState(() {
-                                          _localCompletions[key] = newStatus;
-                                          _localStreaks[task.id] = updatedStreak;
-                                          _statusesFuture = null;
-                                        });
-                                      } catch (e) {
-                                        setState(() {
-                                          _localCompletions[key] = firestoreStatus;
-                                        });
-                                      }
-                                    },
-                                  ),
-                                ],
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _statColumn(String value, String label, Color valueColor) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            color: valueColor,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white38,
+            fontSize: 11,
+          ),
+        ),
+      ],
     );
   }
 
@@ -458,42 +519,24 @@ class _HomeState extends ConsumerState<Home> {
     required int availableMin,
   }) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.orange.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+        color: Colors.orange.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.withValues(alpha: 0.2)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
+          const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 16),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               "Travel takes ~$transitMin min, but you only have $availableMin min between tasks",
-              style: const TextStyle(color: Colors.orange, fontSize: 12, fontWeight: FontWeight.w500),
+              style: const TextStyle(
+                  color: Colors.orange, fontSize: 12, fontWeight: FontWeight.w500),
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _slimStatPill(String title, String value, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.grey[850],
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(title, style: const TextStyle(color: Colors.white70, fontSize: 13)),
-          const SizedBox(height: 2),
-          Text(value, style: TextStyle(
-            color: color, fontSize: 16, fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -521,14 +564,14 @@ class _FriendsBadgeIcon extends ConsumerWidget {
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        const Icon(Icons.people_outline, color: Colors.white70, size: 24),
+        const Icon(Icons.people_outline, color: Colors.white38, size: 22),
         if (count > 0)
           Positioned(
             right: -4,
             top: -4,
             child: Container(
-              width: 16,
-              height: 16,
+              width: 14,
+              height: 14,
               decoration: const BoxDecoration(
                 color: Colors.redAccent,
                 shape: BoxShape.circle,
@@ -538,7 +581,7 @@ class _FriendsBadgeIcon extends ConsumerWidget {
                 count > 9 ? '9+' : '$count',
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 9,
+                  fontSize: 8,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -560,8 +603,8 @@ class _ProfileAvatar extends StatelessWidget {
     final name = user?.displayName ?? '';
 
     return CircleAvatar(
-      radius: 22,
-      backgroundColor: Colors.blueAccent.withValues(alpha: 0.2),
+      radius: 16,
+      backgroundColor: Colors.blueAccent.withValues(alpha: 0.15),
       backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
       onBackgroundImageError: photoUrl != null ? (_, __) {} : null,
       child: photoUrl == null
@@ -569,8 +612,8 @@ class _ProfileAvatar extends StatelessWidget {
               name.isNotEmpty ? name[0].toUpperCase() : '?',
               style: const TextStyle(
                 color: Colors.blueAccent,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
               ),
             )
           : null,
