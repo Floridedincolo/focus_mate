@@ -3,13 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/usage_stats_providers.dart';
 import 'stats_constants.dart';
 
-/// Period toggle: Today / This Week / This Month (Feature 5).
+/// Main period toggle: Day / Week / Trend.
 class StatsToggle extends ConsumerWidget {
   const StatsToggle({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final days = ref.watch(usageStatsDaysProvider);
+    final isTrend = ref.watch(isTrendModeProvider);
+
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
@@ -18,33 +20,56 @@ class StatsToggle extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          _ToggleItem(label: 'Today', days: 1, currentDays: days),
-          _ToggleItem(label: 'This Week', days: 7, currentDays: days),
-          _ToggleItem(label: 'This Month', days: 30, currentDays: days),
+          _ToggleItem(
+            label: 'Day',
+            isSelected: !isTrend && days == 1,
+            onTap: () {
+              ref.read(isTrendModeProvider.notifier).state = false;
+              ref.read(usageStatsDaysProvider.notifier).state = 1;
+              ref.read(dateOffsetProvider.notifier).state = 0;
+            },
+          ),
+          _ToggleItem(
+            label: 'Week',
+            isSelected: !isTrend && days == 7,
+            onTap: () {
+              ref.read(isTrendModeProvider.notifier).state = false;
+              ref.read(usageStatsDaysProvider.notifier).state = 7;
+              ref.read(dateOffsetProvider.notifier).state = 0;
+            },
+          ),
+          _ToggleItem(
+            label: 'Trend',
+            isSelected: isTrend,
+            onTap: () {
+              ref.read(isTrendModeProvider.notifier).state = true;
+              final trendDays = ref.read(trendPeriodProvider);
+              ref.read(usageStatsDaysProvider.notifier).state = trendDays;
+              ref.read(dateOffsetProvider.notifier).state = 0;
+            },
+          ),
         ],
       ),
     );
   }
 }
 
-class _ToggleItem extends ConsumerWidget {
+class _ToggleItem extends StatelessWidget {
   final String label;
-  final int days;
-  final int currentDays;
+  final bool isSelected;
+  final VoidCallback onTap;
 
   const _ToggleItem({
     required this.label,
-    required this.days,
-    required this.currentDays,
+    required this.isSelected,
+    required this.onTap,
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final isSelected = currentDays == days;
+  Widget build(BuildContext context) {
     return Expanded(
       child: GestureDetector(
-        onTap: () =>
-            ref.read(usageStatsDaysProvider.notifier).state = days,
+        onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(vertical: 10),

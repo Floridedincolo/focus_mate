@@ -45,6 +45,7 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
 
   // ── Block template state ─────────────────────────────────────────────
   String? _blockTemplateId;
+  bool _isOfflineFocus = false;
 
   // ── Location state (filled by LocationAutocompleteField) ─────────────
   String? _locationName;
@@ -74,6 +75,7 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
       _locationLatitude = t.locationLatitude;
       _locationLongitude = t.locationLongitude;
       _blockTemplateId = t.blockTemplateId;
+      _isOfflineFocus = t.isOfflineFocus;
     }
   }
 
@@ -118,6 +120,7 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
       locationLatitude: _locationLatitude,
       locationLongitude: _locationLongitude,
       blockTemplateId: _blockTemplateId,
+      isOfflineFocus: _isOfflineFocus,
     );
 
     // ── Smart Transit Warning ─────────────────────────────────────────
@@ -599,6 +602,8 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
               _sectionLabel('FOCUS PROFILE'),
               const SizedBox(height: 8),
               _buildFocusProfileSelector(),
+              const SizedBox(height: 12),
+              _buildOfflineFocusToggle(),
               const SizedBox(height: 20),
 
               _sectionLabel('REMINDERS'),
@@ -706,7 +711,20 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
 
     return templatesAsync.when(
       data: (templates) {
+        // Reset to null if the saved template ID no longer exists
+        if (_blockTemplateId != null &&
+            !templates.any((t) => t.id == _blockTemplateId)) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) setState(() => _blockTemplateId = null);
+          });
+        }
+
         // Build dropdown items: None + all templates
+        final safeValue = (_blockTemplateId != null &&
+                templates.any((t) => t.id == _blockTemplateId))
+            ? _blockTemplateId
+            : null;
+
         final items = <DropdownMenuItem<String?>> [
           const DropdownMenuItem<String?>(
             value: null,
@@ -746,7 +764,7 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String?>(
-              value: _blockTemplateId,
+              value: safeValue,
               items: items,
               isExpanded: true,
               dropdownColor: const Color(0xFF2A2A2A),
@@ -771,6 +789,60 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
       ),
       error: (_, __) => const Text('Could not load profiles',
           style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+    );
+  }
+
+  Widget _buildOfflineFocusToggle() {
+    return GestureDetector(
+      onTap: () => setState(() => _isOfflineFocus = !_isOfflineFocus),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: _card,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: _isOfflineFocus
+                ? Colors.orangeAccent.withValues(alpha: 0.4)
+                : Colors.white.withValues(alpha: 0.08),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              _isOfflineFocus ? Icons.phonelink_off : Icons.phonelink,
+              color: _isOfflineFocus ? Colors.orangeAccent : Colors.white38,
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Offline Focus',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  Text(
+                    _isOfflineFocus
+                        ? 'Any screen time counts as distraction'
+                        : 'Screen time judged by app category',
+                    style: TextStyle(color: Colors.grey[500], fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            Switch(
+              value: _isOfflineFocus,
+              onChanged: (v) => setState(() => _isOfflineFocus = v),
+              activeColor: Colors.orangeAccent,
+            ),
+          ],
+        ),
+      ),
     );
   }
 

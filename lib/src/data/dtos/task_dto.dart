@@ -17,6 +17,7 @@ class TaskDTO {
   final double? locationLatitude;
   final double? locationLongitude;
   final String? blockTemplateId;
+  final bool isOfflineFocus;
 
   TaskDTO({
     required this.id,
@@ -34,6 +35,7 @@ class TaskDTO {
     this.locationLatitude,
     this.locationLongitude,
     this.blockTemplateId,
+    this.isOfflineFocus = false,
   });
 
   /// Create from Firestore document
@@ -64,6 +66,7 @@ class TaskDTO {
       locationLatitude: (data['locationLatitude'] as num?)?.toDouble(),
       locationLongitude: (data['locationLongitude'] as num?)?.toDouble(),
       blockTemplateId: data['blockTemplateId'] as String?,
+      isOfflineFocus: data['isOfflineFocus'] as bool? ?? false,
     );
   }
 
@@ -84,6 +87,7 @@ class TaskDTO {
       if (locationLatitude != null) 'locationLatitude': locationLatitude,
       if (locationLongitude != null) 'locationLongitude': locationLongitude,
       if (blockTemplateId != null) 'blockTemplateId': blockTemplateId,
+      'isOfflineFocus': isOfflineFocus,
     };
   }
 
@@ -103,6 +107,7 @@ class TaskDTO {
     double? locationLatitude,
     double? locationLongitude,
     String? blockTemplateId,
+    bool? isOfflineFocus,
   }) {
     return TaskDTO(
       id: id ?? this.id,
@@ -120,6 +125,7 @@ class TaskDTO {
       locationLatitude: locationLatitude ?? this.locationLatitude,
       locationLongitude: locationLongitude ?? this.locationLongitude,
       blockTemplateId: blockTemplateId ?? this.blockTemplateId,
+      isOfflineFocus: isOfflineFocus ?? this.isOfflineFocus,
     );
   }
 }

@@ -5,6 +5,7 @@ import '../../core/service_locator.dart';
 import '../../domain/usecases/accessibility_usecases.dart';
 import '../providers/block_template_providers.dart';
 import '../providers/task_providers.dart';
+import '../providers/usage_stats_providers.dart';
 import 'home.dart';
 import 'focus_page.dart';
 import 'stats/stats_page.dart';
@@ -30,6 +31,13 @@ class _MainPageState extends ConsumerState<MainPage> {
     setState(() {
       _selectedIndex = index;
     });
+    // Refresh stats data whenever the user navigates to the Stats tab
+    if (index == 2) {
+      ref.invalidate(usageStatsProvider);
+      ref.invalidate(enrichedUsageStatsProvider);
+      ref.invalidate(taskStatsProvider);
+      ref.invalidate(heatmapDataProvider);
+    }
   }
 
   /// Watches the currently active task and applies/clears the blocking template

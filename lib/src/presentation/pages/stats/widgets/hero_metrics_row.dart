@@ -4,48 +4,65 @@ import 'stats_constants.dart';
 
 /// Feature 1 + Feature 5: Three hero metric cards (screen time, focus time,
 /// distractions prevented) with optional trend arrows.
+///
+/// When [selectedHour] is provided, all three cards update to show
+/// per-hour values instead of totals.
+/// When [selectedScreenTimeOverride] is provided (daily chart selection),
+/// only screen time updates to that value.
 class HeroMetricsRow extends StatelessWidget {
   final EnrichedUsageStats stats;
   final int days;
+  final int? selectedHour;
+  final int? selectedScreenTimeOverride;
 
   const HeroMetricsRow({
     super.key,
     required this.stats,
     required this.days,
+    this.selectedHour,
+    this.selectedScreenTimeOverride,
   });
-
-  String get _periodLabel {
-    switch (days) {
-      case 1:
-        return 'today';
-      case 7:
-        return 'this week';
-      default:
-        return 'this month';
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
+    final hasHourSelection = selectedHour != null;
+    final h = selectedHour ?? 0;
+    final hasDaySelection = selectedScreenTimeOverride != null;
+
+    String screenTimeValue;
+    if (hasHourSelection) {
+      screenTimeValue = formatMinutes(stats.hourlyUsage[h]);
+    } else if (hasDaySelection) {
+      screenTimeValue = formatMinutes(selectedScreenTimeOverride!);
+    } else {
+      screenTimeValue = formatMinutes(stats.totalScreenTimeMinutes);
+    }
+
+    final focusValue = hasHourSelection && h < stats.hourlyFocusMinutes.length
+        ? formatMinutes(stats.hourlyFocusMinutes[h])
+        : formatMinutes(stats.focusTimeMinutes);
+
+    final blockedValue = hasHourSelection && h < stats.hourlyBlockedDistractions.length
+        ? '${stats.hourlyBlockedDistractions[h]}'
+        : '${stats.preventedDistractions}';
+
     return Row(
       children: [
         Expanded(
           child: _MetricCard(
-            value: formatMinutes(stats.totalScreenTimeMinutes),
+            value: screenTimeValue,
             label: 'Screen Time',
-            subtitle: _periodLabel,
             icon: Icons.phone_android,
             iconColor: kStatsAccent,
-            trendPercentage: stats.trendPercentage,
-            trendInverted: true, // For screen time, going down is good
+            trendPercentage: (hasHourSelection || hasDaySelection) ? null : stats.trendPercentage,
+            trendInverted: true,
           ),
         ),
         const SizedBox(width: 10),
         Expanded(
           child: _MetricCard(
-            value: formatMinutes(stats.focusTimeMinutes),
+            value: focusValue,
             label: 'Focus Time',
-            subtitle: _periodLabel,
             icon: Icons.shield_outlined,
             iconColor: kStatsGreen,
           ),
@@ -53,11 +70,10 @@ class HeroMetricsRow extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(
           child: _MetricCard(
-            value: '${stats.preventedDistractions}',
+            value: blockedValue,
             label: 'Blocked',
-            subtitle: 'distractions',
             icon: Icons.block,
-            iconColor: kStatsRed,
+            iconColor: kStatsPurple,
           ),
         ),
       ],
@@ -68,7 +84,6 @@ class HeroMetricsRow extends StatelessWidget {
 class _MetricCard extends StatelessWidget {
   final String value;
   final String label;
-  final String subtitle;
   final IconData icon;
   final Color iconColor;
   final double? trendPercentage;
@@ -77,7 +92,6 @@ class _MetricCard extends StatelessWidget {
   const _MetricCard({
     required this.value,
     required this.label,
-    required this.subtitle,
     required this.icon,
     required this.iconColor,
     this.trendPercentage,
@@ -121,13 +135,6 @@ class _MetricCard extends StatelessWidget {
               fontWeight: FontWeight.w500,
             ),
           ),
-          Text(
-            subtitle,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.35),
-              fontSize: 11,
-            ),
-          ),
         ],
       ),
     );
@@ -135,7 +142,6 @@ class _MetricCard extends StatelessWidget {
 
   Widget _buildTrendBadge() {
     final pct = trendPercentage!;
-    // For screen time: negative trend (less time) = good = green
     final isGood = trendInverted ? pct < 0 : pct > 0;
     final color = isGood ? kStatsGreen : kStatsRed;
     final arrow = pct < 0 ? Icons.trending_down : Icons.trending_up;

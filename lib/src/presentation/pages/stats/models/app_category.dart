@@ -54,7 +54,47 @@ const Map<String, AppCategory> kAppCategoryMap = {
   'com.example.focus_mate': AppCategory.productive,
 };
 
-/// Returns the category for a given package name, defaulting to neutral.
-AppCategory categorizeApp(String packageName) {
-  return kAppCategoryMap[packageName] ?? AppCategory.neutral;
+/// Keywords used to infer category from app name or package name
+/// when the package is not in the hardcoded map.
+const _distractingKeywords = [
+  'game', 'games', 'gaming', 'puzzle', 'arcade', 'casino', 'solitaire',
+  'social', 'tiktok', 'instagram', 'facebook', 'snapchat', 'twitter',
+  'reddit', 'pinterest', 'tumblr', 'dating', 'tinder', 'bumble',
+  'stream', 'netflix', 'hulu', 'twitch', 'manga', 'anime', 'comic',
+  'meme', 'funny', 'entertainment', 'video player',
+];
+
+const _productiveKeywords = [
+  'mail', 'email', 'calendar', 'office', 'docs', 'document', 'sheet',
+  'slide', 'note', 'notes', 'task', 'todo', 'to-do', 'planner',
+  'reminder', 'project', 'drive', 'cloud', 'file manager',
+  'calculator', 'clock', 'alarm', 'timer', 'translate', 'dictionary',
+  'learn', 'study', 'course', 'education', 'school', 'university',
+  'code', 'editor', 'ide', 'terminal', 'pdf', 'scanner', 'reader',
+  'bank', 'finance', 'budget', 'wallet', 'health', 'fitness',
+  'workout', 'meditation',
+];
+
+/// Returns the category for a given package, using:
+/// 1. Hardcoded map lookup (fastest, most accurate)
+/// 2. Keyword matching on app name + package name (fallback heuristic)
+/// 3. Default to [AppCategory.neutral] if nothing matches
+AppCategory categorizeApp(String packageName, {String? appName}) {
+  // 1. Direct lookup
+  final mapped = kAppCategoryMap[packageName];
+  if (mapped != null) return mapped;
+
+  // 2. Keyword heuristic on lowercased app name + package name
+  final haystack =
+      '${appName?.toLowerCase() ?? ''} ${packageName.toLowerCase()}';
+
+  for (final kw in _distractingKeywords) {
+    if (haystack.contains(kw)) return AppCategory.distracting;
+  }
+  for (final kw in _productiveKeywords) {
+    if (haystack.contains(kw)) return AppCategory.productive;
+  }
+
+  // 3. Default
+  return AppCategory.neutral;
 }

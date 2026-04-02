@@ -299,7 +299,8 @@ class MainActivity : FlutterActivity() {
                 "getUsageStats" -> {
                     try {
                         val days = call.argument<Int>("days") ?: 1
-                        val data = getUsageStatsData(days)
+                        val dayOffset = call.argument<Int>("dayOffset") ?: 0
+                        val data = getUsageStatsData(days, dayOffset)
                         result.success(data)
                     } catch (e: Exception) {
                         result.error("ERROR", "Failed to get usage stats: ${e.message}", null)
@@ -310,37 +311,49 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun getUsageStatsData(days: Int = 1): HashMap<String, Any> {
+    private fun getUsageStatsData(days: Int = 1, dayOffset: Int = 0): HashMap<String, Any> {
         val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
 
         val calendar = Calendar.getInstance()
-        val endTime = calendar.timeInMillis
+        // Apply day offset (0 = today, -1 = yesterday, etc.)
+        if (dayOffset != 0) {
+            calendar.add(Calendar.DAY_OF_YEAR, dayOffset)
+        }
+
+        // End time: for today use now, for past days use midnight of next day
+        val endTime: Long
+        if (dayOffset < 0) {
+            val endCal = Calendar.getInstance()
+            endCal.add(Calendar.DAY_OF_YEAR, dayOffset + 1)
+            endCal.set(Calendar.HOUR_OF_DAY, 0)
+            endCal.set(Calendar.MINUTE, 0)
+            endCal.set(Calendar.SECOND, 0)
+            endCal.set(Calendar.MILLISECOND, 0)
+            endTime = endCal.timeInMillis
+        } else {
+            endTime = calendar.timeInMillis
+        }
+
+        // Start time: midnight of the target day (go back days-1 more for weekly)
         calendar.set(Calendar.HOUR_OF_DAY, 0)
         calendar.set(Calendar.MINUTE, 0)
         calendar.set(Calendar.SECOND, 0)
         calendar.set(Calendar.MILLISECOND, 0)
-        // Go back (days - 1) more days for weekly view
         if (days > 1) {
             calendar.add(Calendar.DAY_OF_YEAR, -(days - 1))
         }
         val startTime = calendar.timeInMillis
 
-        // --- Per-app usage from queryUsageStats ---
-        val usageStatsList = usageStatsManager.queryUsageStats(
-            UsageStatsManager.INTERVAL_DAILY, startTime, endTime
-        )
-
-        val appUsageMap = HashMap<String, Long>() // packageName -> totalTimeMs
-        for (stat in usageStatsList) {
-            val time = stat.totalTimeInForeground
-            if (time > 0) {
-                appUsageMap[stat.packageName] = (appUsageMap[stat.packageName] ?: 0L) + time
-            }
-        }
-
-        // --- Hourly distribution from queryEvents ---
-        // For weekly view, we average hours across days
+        // --- Per-app usage AND hourly distribution from queryEvents ---
+        // Using queryEvents instead of queryUsageStats avoids the bug where
+        // INTERVAL_DAILY buckets leak data from adjacent days (e.g., at 1 AM
+        // you'd see yesterday's full 13h of screen time).
         val hourlyMs = LongArray(24) { 0L }
+        val appUsageMap = HashMap<String, Long>() // packageName -> totalTimeMs
+        val hourlyAppMs = HashMap<String, LongArray>() // packageName -> ms per hour (24)
+        // Per-day tracking for weekly/monthly stacked bar charts
+        val dailyMs = LongArray(days) { 0L }
+        val dailyAppMs = HashMap<String, LongArray>() // packageName -> ms per day
         val events = usageStatsManager.queryEvents(startTime, endTime)
         val event = UsageEvents.Event()
         var lastForegroundTime = 0L
@@ -355,7 +368,15 @@ class MainActivity : FlutterActivity() {
                 }
                 UsageEvents.Event.MOVE_TO_BACKGROUND -> {
                     if (lastForegroundTime > 0 && event.packageName == lastForegroundPkg) {
+                        val duration = event.timeStamp - lastForegroundTime
                         distributeTimeToHours(hourlyMs, lastForegroundTime, event.timeStamp, startTime)
+                        val appHours = hourlyAppMs.getOrPut(lastForegroundPkg) { LongArray(24) { 0L } }
+                        distributeTimeToHours(appHours, lastForegroundTime, event.timeStamp, startTime)
+                        // Daily distribution
+                        distributeTimeToDays(dailyMs, lastForegroundTime, event.timeStamp, startTime, days)
+                        val appDays = dailyAppMs.getOrPut(lastForegroundPkg) { LongArray(days) { 0L } }
+                        distributeTimeToDays(appDays, lastForegroundTime, event.timeStamp, startTime, days)
+                        appUsageMap[lastForegroundPkg] = (appUsageMap[lastForegroundPkg] ?: 0L) + duration
                         lastForegroundTime = 0L
                     }
                 }
@@ -363,7 +384,14 @@ class MainActivity : FlutterActivity() {
         }
         // If an app is still in foreground, count time until now
         if (lastForegroundTime > 0) {
+            val duration = endTime - lastForegroundTime
             distributeTimeToHours(hourlyMs, lastForegroundTime, endTime, startTime)
+            val appHours = hourlyAppMs.getOrPut(lastForegroundPkg) { LongArray(24) { 0L } }
+            distributeTimeToHours(appHours, lastForegroundTime, endTime, startTime)
+            distributeTimeToDays(dailyMs, lastForegroundTime, endTime, startTime, days)
+            val appDays = dailyAppMs.getOrPut(lastForegroundPkg) { LongArray(days) { 0L } }
+            distributeTimeToDays(appDays, lastForegroundTime, endTime, startTime, days)
+            appUsageMap[lastForegroundPkg] = (appUsageMap[lastForegroundPkg] ?: 0L) + duration
         }
 
         // For weekly view, average the hourly data
@@ -416,9 +444,31 @@ class MainActivity : FlutterActivity() {
             totalFocusMinutes += liveMin
         }
 
+        // Build per-app per-hour minutes map for stacked bar chart
+        val hourlyAppUsage = HashMap<String, List<Long>>()
+        for ((pkg, hours) in hourlyAppMs) {
+            hourlyAppUsage[pkg] = hours.map { it / 60000 / divisor }
+        }
+
+        // Build per-day minutes and per-app per-day minutes for weekly/monthly charts
+        val dailyMinutes = dailyMs.map { it / 60000 }
+        val dailyAppUsage = HashMap<String, List<Long>>()
+        for ((pkg, dayArr) in dailyAppMs) {
+            dailyAppUsage[pkg] = dayArr.map { it / 60000 }
+        }
+
+        // Compute weekday index (0=Mon) for the start date so Flutter knows labels
+        val startCal = Calendar.getInstance()
+        startCal.timeInMillis = startTime
+        val startWeekday = (startCal.get(Calendar.DAY_OF_WEEK) + 5) % 7 // Mon=0..Sun=6
+
         val result = HashMap<String, Any>()
         result["totalScreenTimeMinutes"] = totalMinutes
         result["hourlyUsage"] = hourlyMinutes
+        result["hourlyAppUsage"] = hourlyAppUsage
+        result["dailyUsage"] = dailyMinutes
+        result["dailyAppUsage"] = dailyAppUsage
+        result["startWeekday"] = startWeekday
         result["topApps"] = topApps
         result["focusTimeMinutes"] = totalFocusMinutes
         result["preventedDistractions"] = totalPrevented
@@ -441,6 +491,19 @@ class MainActivity : FlutterActivity() {
                 hourlyMs[hour] += duration
             }
             current = hourEnd
+        }
+    }
+
+    private fun distributeTimeToDays(dailyMs: LongArray, start: Long, end: Long, periodStart: Long, days: Int) {
+        val msPerDay = 24L * 60 * 60 * 1000
+        var current = start
+        while (current < end) {
+            val dayIdx = ((current - periodStart) / msPerDay).toInt().coerceIn(0, days - 1)
+            val dayEnd = periodStart + (dayIdx + 1) * msPerDay
+            val segmentEnd = minOf(dayEnd, end)
+            val duration = segmentEnd - current
+            dailyMs[dayIdx] += duration
+            current = segmentEnd
         }
     }
 

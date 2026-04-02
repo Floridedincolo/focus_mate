@@ -54,12 +54,12 @@ class AppCategoryBar extends StatelessWidget {
                   if (dPct > 0)
                     Expanded(
                       flex: (dPct * 1000).round(),
-                      child: Container(color: kStatsRed),
+                      child: Container(color: kStatsPurple),
                     ),
                   if (nPct > 0)
                     Expanded(
                       flex: (nPct * 1000).round(),
-                      child: Container(color: Colors.white24),
+                      child: Container(color: kStatsBlue),
                     ),
                 ],
               ),
@@ -77,14 +77,14 @@ class AppCategoryBar extends StatelessWidget {
               ),
               const Spacer(),
               _CategoryLabel(
-                color: kStatsRed,
+                color: kStatsPurple,
                 label: 'Distracting',
                 minutes: distractingMinutes,
                 pct: dPct,
               ),
               const Spacer(),
               _CategoryLabel(
-                color: Colors.white24,
+                color: kStatsBlue,
                 label: 'Neutral',
                 minutes: neutralMinutes,
                 pct: nPct,

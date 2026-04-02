@@ -28,12 +28,22 @@ final hasUsagePermissionProvider = FutureProvider<bool>((ref) async {
 /// Selected number of days: 1 = Today, 7 = This Week, 30 = This Month
 final usageStatsDaysProvider = StateProvider<int>((ref) => 1);
 
+/// Day offset for date navigation (0 = today, -1 = yesterday, etc.)
+final dateOffsetProvider = StateProvider<int>((ref) => 0);
+
+/// Whether we're in Trend mode (vs Day/Week).
+final isTrendModeProvider = StateProvider<bool>((ref) => false);
+
+/// Sub-period inside Trend view: 30 = 1M, 90 = 3M, 365 = Max.
+final trendPeriodProvider = StateProvider<int>((ref) => 30);
+
 final usageStatsProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
   final hasPermission = await ref.watch(hasUsagePermissionProvider.future);
   if (!hasPermission) return null;
   final ds = ref.watch(usageStatsDsProvider);
   final days = ref.watch(usageStatsDaysProvider);
-  return ds.getUsageStats(days: days);
+  final dayOffset = ref.watch(dateOffsetProvider);
+  return ds.getUsageStats(days: days, dayOffset: dayOffset);
 });
 
 // ── Rich Task Stats ──
@@ -263,37 +273,105 @@ final enrichedUsageStatsProvider =
     hourly.add(0);
   }
 
-  // Build hour annotations (Feature 2)
-  // Determine which hours have a task scheduled
-  final taskHours = <int>{};
+  // Parse per-app per-hour usage from Kotlin
+  final rawHourlyApp = rawData['hourlyAppUsage'] as Map<dynamic, dynamic>? ?? {};
+  final hourlyAppUsage = <String, List<int>>{};
+  for (final entry in rawHourlyApp.entries) {
+    final pkg = entry.key as String;
+    final hours = (entry.value as List<dynamic>).map((e) => (e as num).toInt()).toList();
+    while (hours.length < 24) {
+      hours.add(0);
+    }
+    hourlyAppUsage[pkg] = hours;
+  }
+
+  // Parse top apps early so annotations can use app names for categorization
+  final rawApps = (rawData['topApps'] as List<dynamic>? ?? [])
+      .map((e) => Map<String, dynamic>.from(e as Map))
+      .toList();
+
+  // Build hour annotations with 2-mode stacked bar logic:
+  // 1. Offline focus task hours: all screen time = distracting (red)
+  // 2. All other hours (with or without task): split by app category
+
+  // Map each hour to the task(s) covering it
+  final hourTaskInfo = List.generate(24, (_) => <Task>[]);
   for (final task in activeTasks) {
     if (task.startTime != null && task.endTime != null) {
       final startHour = task.startTime!.hour;
       final endHour = task.endTime!.hour;
-      // Include all hours the task spans
       for (int h = startHour; h <= endHour && h < 24; h++) {
-        taskHours.add(h);
+        hourTaskInfo[h].add(task);
       }
     }
   }
 
   final hourAnnotations = List.generate(24, (h) {
-    final hasTask = taskHours.contains(h);
+    final tasks = hourTaskInfo[h];
+    final hasTask = tasks.isNotEmpty;
     final minutes = hourly[h];
-    // Thresholds: >30min = high, <10min = low, else normal
     final level = minutes > 30
         ? ScreenTimeLevel.high
         : minutes < 10
             ? ScreenTimeLevel.low
             : ScreenTimeLevel.normal;
-    return HourAnnotation(hour: h, hasTask: hasTask, screenTimeLevel: level);
+
+    // Check if any task in this hour is offline focus
+    final isOffline = hasTask && tasks.any((t) => t.isOfflineFocus);
+
+    if (isOffline) {
+      // Offline focus: ALL screen time is distraction
+      return HourAnnotation(
+        hour: h,
+        hasTask: true,
+        screenTimeLevel: level,
+        mode: HourMode.offline,
+        productiveMinutes: 0,
+        distractingMinutes: minutes,
+        neutralMinutes: 0,
+      );
+    }
+
+    // All other hours: split by app category using per-app per-hour data
+    int prodMin = 0;
+    int distMin = 0;
+    int neutMin = 0;
+
+    for (final entry in hourlyAppUsage.entries) {
+      final pkg = entry.key;
+      final appMinThisHour = entry.value[h];
+      if (appMinThisHour <= 0) continue;
+
+      final appNameMatch = rawApps.where(
+        (a) => a['packageName'] == pkg,
+      );
+      final appName = appNameMatch.isNotEmpty
+          ? appNameMatch.first['appName'] as String?
+          : null;
+
+      final cat = categorizeApp(pkg, appName: appName);
+      switch (cat) {
+        case AppCategory.productive:
+          prodMin += appMinThisHour;
+        case AppCategory.distracting:
+          distMin += appMinThisHour;
+        case AppCategory.neutral:
+          neutMin += appMinThisHour;
+      }
+    }
+
+    return HourAnnotation(
+      hour: h,
+      hasTask: hasTask,
+      screenTimeLevel: level,
+      mode: HourMode.digital,
+      productiveMinutes: prodMin,
+      distractingMinutes: distMin,
+      neutralMinutes: neutMin,
+    );
   });
 
-  // Parse and categorize top apps (Feature 3)
-  final rawApps = (rawData['topApps'] as List<dynamic>? ?? [])
-      .map((e) => Map<String, dynamic>.from(e as Map))
-      .toList();
-
+  // Categorize top apps (Feature 3)
   final topApps = rawApps.map((app) {
     final pkg = app['packageName'] as String? ?? '';
     return AppUsageEntry(
@@ -301,7 +379,7 @@ final enrichedUsageStatsProvider =
       appName: app['appName'] as String? ?? pkg,
       usageMinutes: (app['usageMinutes'] as num?)?.toInt() ?? 0,
       iconBase64: app['iconBase64'] as String? ?? '',
-      category: categorizeApp(pkg),
+      category: categorizeApp(pkg, appName: app['appName'] as String?),
     );
   }).toList();
 
@@ -320,13 +398,100 @@ final enrichedUsageStatsProvider =
     }
   }
 
+  // Compute per-hour focus time from tasks with blocking templates
+  final hourlyFocus = List<int>.filled(24, 0);
+  for (final task in activeTasks) {
+    if (task.blockTemplateId == null) continue;
+    if (task.startTime == null || task.endTime == null) continue;
+    final sH = task.startTime!.hour;
+    final sM = task.startTime!.minute;
+    final eH = task.endTime!.hour;
+    final eM = task.endTime!.minute;
+    for (int h = sH; h <= eH && h < 24; h++) {
+      // How many minutes of this hour overlap with the task
+      final overlapStart = (h == sH) ? sM : 0;
+      final overlapEnd = (h == eH) ? eM : 60;
+      final minutes = (overlapEnd - overlapStart).clamp(0, 60);
+      hourlyFocus[h] += minutes;
+    }
+  }
+  // Cap each hour at 60
+  for (int h = 0; h < 24; h++) {
+    if (hourlyFocus[h] > 60) hourlyFocus[h] = 60;
+  }
+
+  // Distribute blocked distractions across hours with blocking tasks
+  final hourlyBlocked = List<int>.filled(24, 0);
+  final totalFocusHourMinutes = hourlyFocus.fold(0, (a, b) => a + b);
+  if (totalFocusHourMinutes > 0 && prevented > 0) {
+    for (int h = 0; h < 24; h++) {
+      if (hourlyFocus[h] > 0) {
+        hourlyBlocked[h] =
+            (prevented * hourlyFocus[h] / totalFocusHourMinutes).round();
+      }
+    }
+  }
+
+  // Parse per-day data for weekly/monthly charts
+  final rawDaily = rawData['dailyUsage'] as List<dynamic>? ?? [];
+  final dailyUsage = rawDaily.map((e) => (e as num).toInt()).toList();
+
+  final rawDailyApp = rawData['dailyAppUsage'] as Map<dynamic, dynamic>? ?? {};
+  final dailyAppUsage = <String, List<int>>{};
+  for (final entry in rawDailyApp.entries) {
+    final pkg = entry.key as String;
+    final days = (entry.value as List<dynamic>).map((e) => (e as num).toInt()).toList();
+    dailyAppUsage[pkg] = days;
+  }
+
+  final startWeekday = (rawData['startWeekday'] as num?)?.toInt() ?? 0;
+
+  // Compute per-day category breakdown for stacked daily bars
+  final dailyCategoryBreakdown = List.generate(dailyUsage.length, (d) {
+    int dayProd = 0, dayDist = 0, dayNeut = 0;
+    for (final entry in dailyAppUsage.entries) {
+      final pkg = entry.key;
+      if (d >= entry.value.length) continue;
+      final appMinThisDay = entry.value[d];
+      if (appMinThisDay <= 0) continue;
+
+      final appNameMatch = rawApps.where((a) => a['packageName'] == pkg);
+      final appName = appNameMatch.isNotEmpty
+          ? appNameMatch.first['appName'] as String?
+          : null;
+
+      final cat = categorizeApp(pkg, appName: appName);
+      switch (cat) {
+        case AppCategory.productive:
+          dayProd += appMinThisDay;
+        case AppCategory.distracting:
+          dayDist += appMinThisDay;
+        case AppCategory.neutral:
+          dayNeut += appMinThisDay;
+      }
+    }
+    return DayCategoryBreakdown(
+      totalMinutes: dailyUsage[d],
+      productiveMinutes: dayProd,
+      distractingMinutes: dayDist,
+      neutralMinutes: dayNeut,
+    );
+  });
+
   return EnrichedUsageStats(
     totalScreenTimeMinutes: totalMinutes,
     focusTimeMinutes: focusMinutes,
     idleTimeMinutes: idleMinutes,
     preventedDistractions: prevented,
     hourlyUsage: hourly,
+    hourlyAppUsage: hourlyAppUsage,
     hourAnnotations: hourAnnotations,
+    hourlyFocusMinutes: hourlyFocus,
+    hourlyBlockedDistractions: hourlyBlocked,
+    dailyUsage: dailyUsage,
+    dailyAppUsage: dailyAppUsage,
+    startWeekday: startWeekday,
+    dailyCategoryBreakdown: dailyCategoryBreakdown,
     topApps: topApps,
     productiveMinutes: productiveMin,
     distractingMinutes: distractingMin,

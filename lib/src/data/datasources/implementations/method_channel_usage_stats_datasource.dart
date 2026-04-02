@@ -28,10 +28,10 @@ class MethodChannelUsageStatsDataSource implements UsageStatsDataSource {
   }
 
   @override
-  Future<Map<String, dynamic>> getUsageStats({int days = 1}) async {
+  Future<Map<String, dynamic>> getUsageStats({int days = 1, int dayOffset = 0}) async {
     try {
       final result = await _channel
-          .invokeMethod<Map>('getUsageStats', {'days': days})
+          .invokeMethod<Map>('getUsageStats', {'days': days, 'dayOffset': dayOffset})
           .timeout(const Duration(seconds: 10), onTimeout: () => null);
       if (result == null) return _emptyStats();
       return Map<String, dynamic>.from(result);
@@ -44,6 +44,10 @@ class MethodChannelUsageStatsDataSource implements UsageStatsDataSource {
   Map<String, dynamic> _emptyStats() => {
         'totalScreenTimeMinutes': 0,
         'hourlyUsage': List<int>.filled(24, 0),
+        'hourlyAppUsage': <String, List<int>>{},
+        'dailyUsage': <int>[],
+        'dailyAppUsage': <String, List<int>>{},
+        'startWeekday': 0,
         'topApps': <Map<String, dynamic>>[],
         // TODO(kotlin): Wire these from AppBlockService tracking
         'focusTimeMinutes': 0,

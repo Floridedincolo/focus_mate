@@ -25,6 +25,7 @@ class TaskMapper {
       locationLatitude: dto.locationLatitude,
       locationLongitude: dto.locationLongitude,
       blockTemplateId: dto.blockTemplateId,
+      isOfflineFocus: dto.isOfflineFocus,
     );
   }
 
@@ -45,6 +46,7 @@ class TaskMapper {
       locationLatitude: task.locationLatitude,
       locationLongitude: task.locationLongitude,
       blockTemplateId: task.blockTemplateId,
+      isOfflineFocus: task.isOfflineFocus,
     );
   }
 

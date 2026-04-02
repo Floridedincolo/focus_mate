@@ -96,17 +96,17 @@ class TopAppsCard extends StatelessWidget {
       case AppCategory.productive:
         return kStatsGreen;
       case AppCategory.distracting:
-        return kStatsRed;
+        return kStatsPurple;
       case AppCategory.neutral:
-        return kStatsAccent;
+        return kStatsBlue;
     }
   }
 
   Widget _buildCategoryBadge(AppCategory category) {
     final (label, color) = switch (category) {
       AppCategory.productive => ('Productive', kStatsGreen),
-      AppCategory.distracting => ('Distracting', kStatsRed),
-      AppCategory.neutral => ('Neutral', Colors.white38),
+      AppCategory.distracting => ('Distracting', kStatsPurple),
+      AppCategory.neutral => ('Neutral', kStatsBlue),
     };
     return Container(
       margin: const EdgeInsets.only(left: 6),
