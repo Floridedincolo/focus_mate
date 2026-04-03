@@ -8,12 +8,6 @@ import 'schedule_loading_page.dart';
 import 'class_selection_page.dart';
 import 'timetable_adjustment_page.dart';
 
-/// Step 1 — Entry point for the Schedule Import wizard.
-///
-/// The user picks an image from the gallery or camera.
-/// This widget also acts as the wizard's navigation controller:
-/// it listens to [scheduleImportProvider] and pushes the correct
-/// next page when [ScheduleImportStep] changes.
 class ScheduleImportPage extends ConsumerStatefulWidget {
   const ScheduleImportPage({super.key});
 
@@ -28,7 +22,6 @@ class _ScheduleImportPageState extends ConsumerState<ScheduleImportPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Navigation controller — listens to step changes and drives routing
     ref.listen<ScheduleImportState>(scheduleImportProvider, (prev, next) {
       if (!mounted) return;
       switch (next.step) {
@@ -37,17 +30,14 @@ class _ScheduleImportPageState extends ConsumerState<ScheduleImportPage> {
             MaterialPageRoute(builder: (_) => const ScheduleLoadingPage()),
           );
         case ScheduleImportStep.classSelection:
-          // Replace loading page with subject selection page
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (_) => const ClassSelectionPage()),
           );
         case ScheduleImportStep.timetableAdjust:
-          // Replace loading page with adjustment page
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (_) => const TimetableAdjustmentPage()),
           );
         case ScheduleImportStep.error:
-          // Pop back to this page (loading page is on top) and show error
           Navigator.of(context).popUntil((r) => r.isFirst || r.settings.name == '/');
           _showError(next.errorMessage ?? 'Something went wrong.');
           ref.read(scheduleImportProvider.notifier).reset();
@@ -57,38 +47,46 @@ class _ScheduleImportPageState extends ConsumerState<ScheduleImportPage> {
     });
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Import Schedule')),
+      backgroundColor: const Color(0xFF0D0D0D),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF0D0D0D),
+        foregroundColor: Colors.white,
+        elevation: 0,
+        title: const Text('Import Schedule',
+            style: TextStyle(fontWeight: FontWeight.w600)),
+      ),
       body: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
               'Upload a photo of your weekly timetable.',
-              style: TextStyle(fontSize: 16),
+              style: TextStyle(fontSize: 15, color: Colors.white54),
             ),
             const SizedBox(height: 24),
 
-            // Preview the picked image
+            // Preview
             if (_pickedImageBytes != null) ...[
               ClipRRect(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(14),
                 child: Image.memory(
                   _pickedImageBytes!,
                   height: 220,
                   fit: BoxFit.cover,
                 ),
               ),
-              const SizedBox(height: 16),
             ] else
               Container(
                 height: 220,
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(12),
+                  color: const Color(0xFF1A1A1A),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
                 ),
-                child: const Center(
-                  child: Icon(Icons.image_outlined, size: 64),
+                child: Center(
+                  child: Icon(Icons.image_outlined,
+                      size: 56, color: Colors.white.withValues(alpha: 0.1)),
                 ),
               ),
 
@@ -98,18 +96,18 @@ class _ScheduleImportPageState extends ConsumerState<ScheduleImportPage> {
             Row(
               children: [
                 Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.photo_library_outlined),
-                    label: const Text('Gallery'),
-                    onPressed: () => _pickImage(ImageSource.gallery),
+                  child: _pickButton(
+                    icon: Icons.photo_library_outlined,
+                    label: 'Gallery',
+                    onTap: () => _pickImage(ImageSource.gallery),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.camera_alt_outlined),
-                    label: const Text('Camera'),
-                    onPressed: () => _pickImage(ImageSource.camera),
+                  child: _pickButton(
+                    icon: Icons.camera_alt_outlined,
+                    label: 'Camera',
+                    onTap: () => _pickImage(ImageSource.camera),
                   ),
                 ),
               ],
@@ -118,11 +116,72 @@ class _ScheduleImportPageState extends ConsumerState<ScheduleImportPage> {
             const Spacer(),
 
             // Analyse button
-            FilledButton.icon(
-              icon: const Icon(Icons.auto_awesome),
-              label: const Text('Analyse with AI'),
+            _primaryButton(
+              icon: Icons.auto_awesome,
+              label: 'Analyse with AI',
               onPressed: _pickedImageBytes == null ? null : _analyse,
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _pickButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 18, color: Colors.white54),
+            const SizedBox(width: 8),
+            Text(label,
+                style: const TextStyle(color: Colors.white70, fontSize: 14)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _primaryButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onPressed,
+  }) {
+    final enabled = onPressed != null;
+    return GestureDetector(
+      onTap: onPressed,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color: enabled
+              ? Colors.blueAccent
+              : Colors.blueAccent.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 18, color: enabled ? Colors.white : Colors.white38),
+            const SizedBox(width: 8),
+            Text(label,
+                style: TextStyle(
+                  color: enabled ? Colors.white : Colors.white38,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                )),
           ],
         ),
       ),
@@ -158,9 +217,8 @@ class _ScheduleImportPageState extends ConsumerState<ScheduleImportPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: Theme.of(context).colorScheme.error,
+        backgroundColor: Colors.redAccent,
       ),
     );
   }
 }
-

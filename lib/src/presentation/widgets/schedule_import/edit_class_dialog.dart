@@ -1,19 +1,13 @@
 import 'package:flutter/material.dart';
 import '../../../domain/entities/extracted_class.dart';
 
-/// Days the app recognises (must match the abbreviations used in [ExtractedClass.day]).
 const _kDayOptions = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-/// Dialog that lets the user manually correct an AI-extracted class occurrence.
-///
-/// Returns the updated [ExtractedClass] via [Navigator.pop], or `null` if
-/// the user cancels.
 class EditClassDialog extends StatefulWidget {
   final ExtractedClass extractedClass;
 
   const EditClassDialog({super.key, required this.extractedClass});
 
-  /// Convenience launcher — shows the dialog and returns the result.
   static Future<ExtractedClass?> show(
     BuildContext context,
     ExtractedClass extractedClass,
@@ -53,32 +47,51 @@ class _EditClassDialogState extends State<EditClassDialog> {
     super.dispose();
   }
 
+  InputDecoration _inputDecoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(color: Colors.white38, fontSize: 13),
+      filled: true,
+      fillColor: const Color(0xFF1E1E1E),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Colors.blueAccent),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Edit Class'),
+      backgroundColor: const Color(0xFF141414),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Text('Edit Class',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Subject name
             TextField(
               controller: _subjectCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Subject',
-                border: OutlineInputBorder(),
-              ),
+              style: const TextStyle(color: Colors.white),
+              decoration: _inputDecoration('Subject'),
               textCapitalization: TextCapitalization.words,
             ),
             const SizedBox(height: 12),
 
-            // Day dropdown
             DropdownButtonFormField<String>(
               value: _kDayOptions.contains(_day) ? _day : _kDayOptions.first,
-              decoration: const InputDecoration(
-                labelText: 'Day',
-                border: OutlineInputBorder(),
-              ),
+              dropdownColor: const Color(0xFF1E1E1E),
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+              decoration: _inputDecoration('Day'),
               items: _kDayOptions
                   .map((d) => DropdownMenuItem(value: d, child: Text(d)))
                   .toList(),
@@ -88,7 +101,6 @@ class _EditClassDialogState extends State<EditClassDialog> {
             ),
             const SizedBox(height: 12),
 
-            // Start / End time row
             Row(
               children: [
                 Expanded(
@@ -110,13 +122,10 @@ class _EditClassDialogState extends State<EditClassDialog> {
             ),
             const SizedBox(height: 12),
 
-            // Room
             TextField(
               controller: _roomCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Room (optional)',
-                border: OutlineInputBorder(),
-              ),
+              style: const TextStyle(color: Colors.white),
+              decoration: _inputDecoration('Room (optional)'),
             ),
           ],
         ),
@@ -124,11 +133,23 @@ class _EditClassDialogState extends State<EditClassDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child:
+              const Text('Cancel', style: TextStyle(color: Colors.white38)),
         ),
-        FilledButton(
-          onPressed: _save,
-          child: const Text('Save'),
+        GestureDetector(
+          onTap: _save,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.blueAccent,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Text('Save',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14)),
+          ),
         ),
       ],
     );
@@ -164,7 +185,6 @@ class _EditClassDialogState extends State<EditClassDialog> {
   }
 }
 
-/// Small helper widget that displays a time value and is tappable.
 class _TimeTile extends StatelessWidget {
   final String label;
   final TimeOfDay time;
@@ -180,17 +200,26 @@ class _TimeTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final text =
         '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
-    return InkWell(
+    return GestureDetector(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: InputDecorator(
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
         ),
-        child: Text(text),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label,
+                style: const TextStyle(color: Colors.white38, fontSize: 11)),
+            const SizedBox(height: 4),
+            Text(text,
+                style: const TextStyle(color: Colors.white, fontSize: 15)),
+          ],
+        ),
       ),
     );
   }
 }
-

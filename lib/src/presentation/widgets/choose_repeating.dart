@@ -42,83 +42,36 @@ class _ChooseRepeatingState extends State<ChooseRepeating> {
   Widget build(BuildContext context) {
     return Column(
       children: [
+        // ── Repeat type buttons (consistent styling) ──
         Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            color: const Color(0xFF1A1A1A),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              GestureDetector(
+          decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.all(4),
+          child: Row(children: [
+            _toggleButton(label: 'Daily', selected: _repeatType == RepeatType.daily,
                 onTap: () {
                   setState(() {
                     _repeatType = RepeatType.daily;
                     days = {for (final d in days.keys) d: false};
                   });
                   widget.onRepeatChanged(_repeatType, days);
-                },
-                child: Container(
-                  margin: const EdgeInsets.symmetric(vertical: 10),
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: _repeatType == RepeatType.daily
-                        ? Colors.blueAccent
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Text(
-                    'Daily',
-                    style: TextStyle(color: Colors.white, fontSize: 20.0),
-                  ),
-                ),
-              ),
-              GestureDetector(
+                }),
+            _toggleButton(label: 'Weekly', selected: _repeatType == RepeatType.weekly,
                 onTap: () {
                   setState(() {
                     _repeatType = RepeatType.weekly;
                     days = {for (final d in days.keys) d: false};
                   });
                   widget.onRepeatChanged(_repeatType, days);
-                },
-                child: Container(
-                  margin: const EdgeInsets.symmetric(vertical: 10),
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: _repeatType == RepeatType.weekly
-                        ? Colors.blueAccent
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Text(
-                    'Weekly',
-                    style: TextStyle(color: Colors.white, fontSize: 20.0),
-                  ),
-                ),
-              ),
-              GestureDetector(
+                }),
+            _toggleButton(label: 'Custom', selected: _repeatType == RepeatType.custom,
                 onTap: () {
                   setState(() => _repeatType = RepeatType.custom);
                   widget.onRepeatChanged(_repeatType, days);
-                },
-                child: Container(
-                  margin: const EdgeInsets.symmetric(vertical: 10),
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: _repeatType == RepeatType.custom
-                        ? Colors.blueAccent
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Text(
-                    'Custom',
-                    style: TextStyle(color: Colors.white, fontSize: 20.0),
-                  ),
-                ),
-              ),
-            ],
-          ),
+                }),
+          ]),
         ),
+
+        // ── Day selector (for Weekly / Custom) ──
         if (_repeatType == RepeatType.custom || _repeatType == RepeatType.weekly) ...[
           const SizedBox(height: 10),
           Wrap(
@@ -147,6 +100,28 @@ class _ChooseRepeatingState extends State<ChooseRepeating> {
           ),
         ],
       ],
+    );
+  }
+
+  Widget _toggleButton({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: selected ? Colors.blueAccent : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(label, textAlign: TextAlign.center, style: TextStyle(color: Colors.white,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w400, fontSize: 15)),
+        ),
+      ),
     );
   }
 }

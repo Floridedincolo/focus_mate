@@ -7,9 +7,6 @@ import '../../widgets/location_autocomplete_field.dart';
 import '../../widgets/schedule_import/task_preview_card.dart';
 import 'schedule_import_success_page.dart';
 
-/// Step 4 — Preview of all tasks that will be created.
-/// Each task shows its auto-filled location (from saved work location)
-/// which the user can tap to edit via a bottom sheet with autocomplete.
 class SchedulePreviewPage extends ConsumerWidget {
   const SchedulePreviewPage({super.key});
 
@@ -28,23 +25,45 @@ class SchedulePreviewPage extends ConsumerWidget {
       }
       if (next.step == ScheduleImportStep.error && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(next.errorMessage ?? 'Error saving tasks')),
+          SnackBar(
+            content: Text(next.errorMessage ?? 'Error saving tasks'),
+            backgroundColor: Colors.redAccent,
+          ),
         );
       }
     });
 
     return Scaffold(
+      backgroundColor: const Color(0xFF0D0D0D),
       appBar: AppBar(
-        title: const Text('Preview'),
+        backgroundColor: const Color(0xFF0D0D0D),
+        foregroundColor: Colors.white,
+        elevation: 0,
+        title: const Text('Preview',
+            style: TextStyle(fontWeight: FontWeight.w600)),
         leading: isSaving
             ? null
-            : BackButton(onPressed: () {
-                notifier.goBack();
-                Navigator.of(context).pop();
-              }),
+            : BackButton(
+                color: Colors.white,
+                onPressed: () {
+                  notifier.goBack();
+                  Navigator.of(context).pop();
+                },
+              ),
       ),
       body: tasks.isEmpty
-          ? const Center(child: Text('No tasks to create.'))
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.event_busy_outlined,
+                      size: 48, color: Colors.white.withValues(alpha: 0.08)),
+                  const SizedBox(height: 12),
+                  const Text('No tasks to create.',
+                      style: TextStyle(color: Colors.white30, fontSize: 14)),
+                ],
+              ),
+            )
           : ListView.builder(
               padding: const EdgeInsets.symmetric(vertical: 8),
               itemCount: tasks.length,
@@ -56,20 +75,44 @@ class SchedulePreviewPage extends ConsumerWidget {
             ),
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: FilledButton.icon(
-            icon: isSaving
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
+          padding: const EdgeInsets.all(20),
+          child: GestureDetector(
+            onTap: isSaving ? null : () => notifier.saveAllTasks(),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              decoration: BoxDecoration(
+                color: isSaving
+                    ? Colors.blueAccent.withValues(alpha: 0.5)
+                    : Colors.blueAccent,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (isSaving)
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  else
+                    const Icon(Icons.save_outlined, size: 18, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Text(
+                    isSaving ? 'Saving...' : 'Save ${tasks.length} Tasks',
+                    style: const TextStyle(
                       color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
                     ),
-                  )
-                : const Icon(Icons.save_outlined),
-            label: Text(isSaving ? 'Saving…' : 'Save ${tasks.length} Tasks'),
-            onPressed: isSaving ? null : () => notifier.saveAllTasks(),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -83,16 +126,16 @@ class SchedulePreviewPage extends ConsumerWidget {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: const Color(0xFF141414),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(
-          left: 16,
-          right: 16,
-          top: 16,
-          bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+          left: 20,
+          right: 20,
+          top: 20,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,

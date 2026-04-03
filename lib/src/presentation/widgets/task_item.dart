@@ -36,16 +36,13 @@ class TaskItem extends StatelessWidget {
       accentColor = Colors.blueAccent;
     }
 
-    return AnimatedOpacity(
-      duration: const Duration(milliseconds: 250),
-      opacity: isCompleted ? 0.5 : 1.0,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
-        decoration: BoxDecoration(
-          color: const Color(0xFF141414),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Material(
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFF141414),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Material(
           color: Colors.transparent,
           child: InkWell(
             borderRadius: BorderRadius.circular(14),
@@ -90,15 +87,15 @@ class TaskItem extends StatelessWidget {
                           task.title,
                           style: TextStyle(
                             color: isCompleted
-                                ? Colors.white30
+                                ? Colors.white
                                 : isMissed
-                                    ? Colors.redAccent.withValues(alpha: 0.7)
+                                    ? Colors.redAccent
                                     : isFutureLocked
                                         ? Colors.white38
                                         : Colors.white,
                             decoration:
                                 isCompleted ? TextDecoration.lineThrough : null,
-                            decorationColor: Colors.white30,
+                            decorationColor: Colors.white54,
                             fontWeight: FontWeight.w500,
                             fontSize: 15,
                           ),
@@ -119,7 +116,7 @@ class TaskItem extends StatelessWidget {
                                   Icon(Icons.access_time_rounded,
                                       size: 12,
                                       color: isCompleted
-                                          ? Colors.white12
+                                          ? Colors.white54
                                           : Colors.white30),
                                   const SizedBox(width: 4),
                                   Text(
@@ -127,7 +124,7 @@ class TaskItem extends StatelessWidget {
                                     "${task.endTime != null ? " – ${task.endTime!.format(context)}" : ""}",
                                     style: TextStyle(
                                       color: isCompleted
-                                          ? Colors.white12
+                                          ? Colors.white54
                                           : Colors.white30,
                                       fontSize: 12,
                                     ),
@@ -145,7 +142,7 @@ class TaskItem extends StatelessWidget {
                                 child: Text('·',
                                     style: TextStyle(
                                         color: isCompleted
-                                            ? Colors.white12
+                                            ? Colors.white54
                                             : Colors.white.withValues(alpha: 0.2),
                                         fontSize: 12)),
                               ),
@@ -160,7 +157,7 @@ class TaskItem extends StatelessWidget {
                                     Icon(Icons.location_on_outlined,
                                         size: 12,
                                         color: isCompleted
-                                            ? Colors.white12
+                                            ? Colors.white54
                                             : Colors.white30),
                                     const SizedBox(width: 3),
                                     Flexible(
@@ -168,7 +165,7 @@ class TaskItem extends StatelessWidget {
                                         task.locationName!,
                                         style: TextStyle(
                                           color: isCompleted
-                                              ? Colors.white12
+                                              ? Colors.white54
                                               : Colors.white30,
                                           fontSize: 12,
                                         ),
@@ -228,7 +225,6 @@ class TaskItem extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 }
