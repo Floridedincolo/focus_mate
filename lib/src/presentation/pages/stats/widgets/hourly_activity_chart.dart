@@ -193,7 +193,7 @@ class HourlyActivityChart extends StatelessWidget {
           toY: totalMinutes,
           width: 8,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
-          color: redColor,
+          color: purpleColor,
         );
       } else {
         final prod = ann.productiveMinutes.toDouble();

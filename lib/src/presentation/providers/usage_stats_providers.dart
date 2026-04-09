@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // <-- Import nou pentru citirea blocărilor pe ore
+
 import '../../core/service_locator.dart';
 import '../../data/datasources/usage_stats_datasource.dart';
 import '../../domain/entities/task.dart';
@@ -17,7 +19,7 @@ import 'task_providers.dart';
 // ── Core datasource providers ──
 
 final usageStatsDsProvider = Provider<UsageStatsDataSource>(
-  (ref) => getIt<UsageStatsDataSource>(),
+      (ref) => getIt<UsageStatsDataSource>(),
 );
 
 final hasUsagePermissionProvider = FutureProvider<bool>((ref) async {
@@ -156,7 +158,7 @@ final taskStatsProvider = FutureProvider<TaskStatsData>((ref) async {
 
       final agg = taskAgg.putIfAbsent(
         task.id,
-        () => _TaskAgg(task: task, status: status),
+            () => _TaskAgg(task: task, status: status),
       );
       if (status == TaskCompletionStatus.completed) agg.completedCount++;
       agg.totalCount++;
@@ -249,9 +251,16 @@ class _TaskAgg {
 // ── Enriched Usage Stats (Features 1, 2, 3, 5) ──
 
 final enrichedUsageStatsProvider =
-    FutureProvider<EnrichedUsageStats?>((ref) async {
+FutureProvider<EnrichedUsageStats?>((ref) async {
   final rawData = await ref.watch(usageStatsProvider.future);
   if (rawData == null) return null;
+
+  // Inițializăm accesul la baza de date locală pentru a citi block-urile pe ore
+  final prefs = await SharedPreferences.getInstance();
+  final dayOffset = ref.watch(dateOffsetProvider);
+  final targetDate = DateTime.now().add(Duration(days: dayOffset));
+  // Formatăm data exact cum o face Kotlin (yyyy-MM-dd)
+  final dateStr = '${targetDate.year}-${targetDate.month.toString().padLeft(2, '0')}-${targetDate.day.toString().padLeft(2, '0')}';
 
   final taskStatsAsync = ref.watch(tasksStreamProvider);
   final activeTasks = (taskStatsAsync.valueOrNull ?? [])
@@ -290,11 +299,7 @@ final enrichedUsageStatsProvider =
       .map((e) => Map<String, dynamic>.from(e as Map))
       .toList();
 
-  // Build hour annotations with 2-mode stacked bar logic:
-  // 1. Offline focus task hours: all screen time = distracting (red)
-  // 2. All other hours (with or without task): split by app category
-
-  // Map each hour to the task(s) covering it
+  // Build hour annotations
   final hourTaskInfo = List.generate(24, (_) => <Task>[]);
   for (final task in activeTasks) {
     if (task.startTime != null && task.endTime != null) {
@@ -313,14 +318,12 @@ final enrichedUsageStatsProvider =
     final level = minutes > 30
         ? ScreenTimeLevel.high
         : minutes < 10
-            ? ScreenTimeLevel.low
-            : ScreenTimeLevel.normal;
+        ? ScreenTimeLevel.low
+        : ScreenTimeLevel.normal;
 
-    // Check if any task in this hour is offline focus
     final isOffline = hasTask && tasks.any((t) => t.isOfflineFocus);
 
     if (isOffline) {
-      // Offline focus: ALL screen time is distraction
       return HourAnnotation(
         hour: h,
         hasTask: true,
@@ -332,7 +335,6 @@ final enrichedUsageStatsProvider =
       );
     }
 
-    // All other hours: split by app category using per-app per-hour data
     int prodMin = 0;
     int distMin = 0;
     int neutMin = 0;
@@ -343,7 +345,7 @@ final enrichedUsageStatsProvider =
       if (appMinThisHour <= 0) continue;
 
       final appNameMatch = rawApps.where(
-        (a) => a['packageName'] == pkg,
+            (a) => a['packageName'] == pkg,
       );
       final appName = appNameMatch.isNotEmpty
           ? appNameMatch.first['appName'] as String?
@@ -371,7 +373,7 @@ final enrichedUsageStatsProvider =
     );
   });
 
-  // Categorize top apps (Feature 3)
+  // Categorize top apps
   final topApps = rawApps.map((app) {
     final pkg = app['packageName'] as String? ?? '';
     return AppUsageEntry(
@@ -383,7 +385,6 @@ final enrichedUsageStatsProvider =
     );
   }).toList();
 
-  // Aggregate category minutes (Feature 3)
   int productiveMin = 0;
   int distractingMin = 0;
   int neutralMin = 0;
@@ -398,6 +399,13 @@ final enrichedUsageStatsProvider =
     }
   }
 
+  // Add offline task hours to distracting minutes (consistency with Hourly Chart)
+  for (final ann in hourAnnotations) {
+    if (ann.mode == HourMode.offline) {
+      distractingMin += ann.distractingMinutes;
+    }
+  }
+
   // Compute per-hour focus time from tasks with blocking templates
   final hourlyFocus = List<int>.filled(24, 0);
   for (final task in activeTasks) {
@@ -408,28 +416,23 @@ final enrichedUsageStatsProvider =
     final eH = task.endTime!.hour;
     final eM = task.endTime!.minute;
     for (int h = sH; h <= eH && h < 24; h++) {
-      // How many minutes of this hour overlap with the task
       final overlapStart = (h == sH) ? sM : 0;
       final overlapEnd = (h == eH) ? eM : 60;
       final minutes = (overlapEnd - overlapStart).clamp(0, 60);
       hourlyFocus[h] += minutes;
     }
   }
-  // Cap each hour at 60
   for (int h = 0; h < 24; h++) {
     if (hourlyFocus[h] > 60) hourlyFocus[h] = 60;
   }
 
-  // Distribute blocked distractions across hours with blocking tasks
+  // Citim din telefon numărul EXACT de distrageri prevenite pentru fiecare oră în parte
   final hourlyBlocked = List<int>.filled(24, 0);
-  final totalFocusHourMinutes = hourlyFocus.fold(0, (a, b) => a + b);
-  if (totalFocusHourMinutes > 0 && prevented > 0) {
-    for (int h = 0; h < 24; h++) {
-      if (hourlyFocus[h] > 0) {
-        hourlyBlocked[h] =
-            (prevented * hourlyFocus[h] / totalFocusHourMinutes).round();
-      }
-    }
+  for (int h = 0; h < 24; h++) {
+    final hourStr = h.toString().padLeft(2, '0');
+    // Generăm cheia (ex: prevented_distractions_2026-04-07_14)
+    final key = 'prevented_distractions_${dateStr}_$hourStr';
+    hourlyBlocked[h] = prefs.getInt(key) ?? 0;
   }
 
   // Parse per-day data for weekly/monthly charts
@@ -487,7 +490,7 @@ final enrichedUsageStatsProvider =
     hourlyAppUsage: hourlyAppUsage,
     hourAnnotations: hourAnnotations,
     hourlyFocusMinutes: hourlyFocus,
-    hourlyBlockedDistractions: hourlyBlocked,
+    hourlyBlockedDistractions: hourlyBlocked, // Acum trimite lista cu valorile reale pe ore!
     dailyUsage: dailyUsage,
     dailyAppUsage: dailyAppUsage,
     startWeekday: startWeekday,
@@ -496,7 +499,6 @@ final enrichedUsageStatsProvider =
     productiveMinutes: productiveMin,
     distractingMinutes: distractingMin,
     neutralMinutes: neutralMin,
-    // TODO(kotlin): Compute trend when previous-period data is available
     trendPercentage: null,
   );
 });
@@ -504,7 +506,7 @@ final enrichedUsageStatsProvider =
 // ── Heatmap Data (Feature 4) — always 30 days ──
 
 final heatmapDataProvider =
-    FutureProvider<List<DailyCompletion>>((ref) async {
+FutureProvider<List<DailyCompletion>>((ref) async {
   final tasksAsync = ref.watch(tasksStreamProvider);
   final tasks = tasksAsync.valueOrNull;
   if (tasks == null) return [];

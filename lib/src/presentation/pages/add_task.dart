@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/service_locator.dart';
+import '../../data/datasources/location_history_service.dart';
 import '../../data/datasources/transit_route_service.dart';
 import '../../data/datasources/implementations/google_transit_route_service.dart';
 import '../../domain/entities/task.dart';
@@ -93,7 +94,13 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
     if (_startDate == null) return _showError('Please select a date');
     if (!_oneTime) {
       if (_repeatType == null) return _showError('Choose a repeat type');
-      if ((_repeatType == RepeatType.custom || _repeatType == RepeatType.weekly) &&
+      if (_repeatType == RepeatType.weekly && _startDate != null) {
+        // Auto-set the day based on start date
+        const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+        final dayName = dayNames[_startDate!.weekday - 1];
+        _repeatDays = {for (final d in dayNames) d: d == dayName};
+      }
+      if (_repeatType == RepeatType.custom &&
           !_repeatDays.containsValue(true)) {
         return _showError('Select at least one day');
       }
@@ -135,6 +142,17 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
   Future<void> _saveTask(Task task) async {
     setState(() => _saving = true);
     try {
+      // Save location to history for future suggestions
+      if (task.locationName != null &&
+          task.locationLatitude != null &&
+          task.locationLongitude != null) {
+        LocationHistoryService().saveLocation(MeetingLocation(
+          name: task.locationName!,
+          latitude: task.locationLatitude,
+          longitude: task.locationLongitude,
+        ));
+      }
+
       await ref.read(saveTaskProvider(task).future);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -593,9 +611,24 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
               _sectionLabel('TIME'),
               const SizedBox(height: 8),
               Row(children: [
-                Expanded(child: TimePicker(label: 'Start', initialTime: _startTime, onTimeSelected: (t) => _startTime = t)),
+                Expanded(child: TimePicker(label: 'Start', initialTime: _startTime, onTimeSelected: (t) {
+                  setState(() {
+                    _startTime = t;
+                    // If end time is before or equal to start time, clear it
+                    if (_endTime != null && (t.hour * 60 + t.minute) >= (_endTime!.hour * 60 + _endTime!.minute)) {
+                      _endTime = null;
+                    }
+                  });
+                })),
                 const SizedBox(width: 12),
-                Expanded(child: TimePicker(label: 'End', initialTime: _endTime, onTimeSelected: (t) => _endTime = t)),
+                Expanded(child: TimePicker(
+                  label: 'End',
+                  initialTime: _endTime,
+                  minimumTime: _startTime != null
+                      ? TimeOfDay(hour: _startTime!.hour, minute: _startTime!.minute + 1)
+                      : null,
+                  onTimeSelected: (t) => setState(() => _endTime = t),
+                )),
               ]),
               const SizedBox(height: 20),
 

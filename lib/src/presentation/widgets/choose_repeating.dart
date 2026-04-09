@@ -71,8 +71,8 @@ class _ChooseRepeatingState extends State<ChooseRepeating> {
           ]),
         ),
 
-        // ── Day selector (for Weekly / Custom) ──
-        if (_repeatType == RepeatType.custom || _repeatType == RepeatType.weekly) ...[
+        // ── Day selector (for Custom only) ──
+        if (_repeatType == RepeatType.custom) ...[
           const SizedBox(height: 10),
           Wrap(
             spacing: 10.0,

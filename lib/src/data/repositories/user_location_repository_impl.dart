@@ -103,7 +103,23 @@ class UserLocationRepositoryImpl implements UserLocationRepository {
       if (!snapshot.exists) return false;
 
       final data = snapshot.data()!;
-      return data['locationSetupComplete'] == true;
+
+      // Check flag first
+      if (data['locationSetupComplete'] == true) return true;
+
+      // Fallback: if locations already exist in DB, mark setup as complete
+      final hasHome = data['homeLocation'] != null &&
+          (data['homeLocation'] as Map<String, dynamic>)['latitude'] != null;
+      final hasWork = data['workLocation'] != null &&
+          (data['workLocation'] as Map<String, dynamic>)['latitude'] != null;
+
+      if (hasHome && hasWork) {
+        // Auto-fix: set the flag so we don't check again
+        await docRef.update({'locationSetupComplete': true});
+        return true;
+      }
+
+      return false;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('❌ Error checking setup status: $e');

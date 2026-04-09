@@ -22,7 +22,6 @@ import 'src/presentation/pages/friends/plan_meeting_page.dart';
 import 'src/presentation/pages/full_schedule_page.dart';
 import 'src/domain/repositories/user_location_repository.dart';
 import 'src/domain/repositories/notification_repository.dart';
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -53,7 +52,6 @@ void main() async {
 
     await setupServiceLocator();
     await getIt<NotificationRepository>().initialize();
-
     if (kDebugMode) {
       debugPrint('Service Locator initialized');
     }

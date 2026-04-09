@@ -5,12 +5,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/service_locator.dart';
 import '../../domain/entities/task.dart';
 import '../../domain/entities/task_completion_status.dart';
+import '../../domain/entities/app_block_template.dart';
 import '../../domain/repositories/task_repository.dart';
 import '../../domain/usecases/compute_task_status.dart';
 import '../../domain/extensions/task_filter.dart';
 import '../providers/task_providers.dart';
 import '../providers/transit_warning_providers.dart';
 import '../providers/friend_providers.dart';
+import '../providers/block_template_providers.dart';
 import '../models/calendar_icon_data.dart';
 import '../widgets/calendar_icon_widget.dart';
 import '../widgets/task_item.dart';
@@ -64,9 +66,23 @@ class _HomeState extends ConsumerState<Home> {
       currentDate = currentDate.add(const Duration(days: 1));
     }
 
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _centerOnSelected(),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _centerOnSelected();
+
+      // ─── SINCRONIZARE DE SIGURANȚĂ LA PORNIRE (Pentru device-uri noi) ───
+      // Așteptăm 2 secunde ca datele din Firebase să se fi descărcat complet
+      // și apoi forțăm o scriere a orarului nativ pentru Kotlin.
+      Future.delayed(const Duration(seconds: 2), () {
+        if (!mounted) return;
+        final tasks = ref.read(tasksStreamProvider).valueOrNull;
+        final templates = ref.read(blockTemplatesProvider).valueOrNull;
+
+        if (tasks != null && templates != null && tasks.isNotEmpty) {
+          syncFocusScheduleToNative(tasks, templates);
+          debugPrint('🔄 Sincronizare de siguranță executată: Orar forțat pe device.');
+        }
+      });
+    });
   }
 
   @override
@@ -97,7 +113,7 @@ class _HomeState extends ConsumerState<Home> {
 
   void _centerOnSelected({bool animate = false}) {
     int index = calendarIcons.indexWhere(
-      (e) => _isSameDay(e.dateTime, selectedDate),
+          (e) => _isSameDay(e.dateTime, selectedDate),
     );
 
     if (index == -1) return;
@@ -105,8 +121,8 @@ class _HomeState extends ConsumerState<Home> {
     double cardWidth = MediaQuery.of(context).size.width / 7;
     double target =
         (index * cardWidth) -
-        (MediaQuery.of(context).size.width / 2) +
-        (cardWidth / 2);
+            (MediaQuery.of(context).size.width / 2) +
+            (cardWidth / 2);
 
     double clamped = target.clamp(
       _scrollController.position.minScrollExtent,
@@ -143,6 +159,25 @@ class _HomeState extends ConsumerState<Home> {
   @override
   Widget build(BuildContext context) {
     final tasksAsyncValue = ref.watch(tasksStreamProvider);
+    final activeTask = ref.watch(currentActiveTaskProvider);
+
+    // ─── SINCRONIZARE ORAR KOTLIN LA MODIFICĂRI ───
+
+    // 1. Re-generăm orarul nativ dacă se modifică TASK-URILE
+    ref.listen<AsyncValue<List<Task>>>(tasksStreamProvider, (previous, next) {
+      if (next.hasValue) {
+        final templates = ref.read(blockTemplatesProvider).valueOrNull ?? [];
+        syncFocusScheduleToNative(next.value!, templates);
+      }
+    });
+
+    // 2. Re-generăm orarul nativ dacă se modifică APLICAȚIILE DIN PROFILURI
+    ref.listen<AsyncValue<List<AppBlockTemplate>>>(blockTemplatesProvider, (previous, next) {
+      if (next.hasValue) {
+        final tasks = ref.read(tasksStreamProvider).valueOrNull ?? [];
+        syncFocusScheduleToNative(tasks, next.value!);
+      }
+    });
 
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
@@ -226,7 +261,7 @@ class _HomeState extends ConsumerState<Home> {
                             ref.read(transitWarningsProvider.notifier).reset();
                           });
                           WidgetsBinding.instance.addPostFrameCallback(
-                            (_) => _centerOnSelected(animate: true),
+                                (_) => _centerOnSelected(animate: true),
                           );
                         },
                       ),
@@ -251,7 +286,7 @@ class _HomeState extends ConsumerState<Home> {
                 data: (allTasks) {
                   final tasksForDay = allTasks
                       .where((task) =>
-                          task.occursOn(selectedDate) && task.archived == false)
+                  task.occursOn(selectedDate) && task.archived == false)
                       .toList();
 
                   if (tasksForDay.isEmpty) {
@@ -359,9 +394,13 @@ class _HomeState extends ConsumerState<Home> {
 
                                 final warning = ref.watch(transitWarningsProvider)[index];
                                 final isFutureDate = DateTime(selectedDate.year,
-                                        selectedDate.month, selectedDate.day)
+                                    selectedDate.month, selectedDate.day)
                                     .isAfter(DateTime(todayDate.year,
-                                        todayDate.month, todayDate.day));
+                                    todayDate.month, todayDate.day));
+
+                                // Verificăm dacă suntem în ziua de azi și dacă e task-ul curent
+                                final isTodaySelected = _isSameDay(selectedDate, todayDate);
+                                final isTaskActiveNow = isTodaySelected && (activeTask?.id == task.id);
 
                                 return Column(
                                   children: [
@@ -369,10 +408,12 @@ class _HomeState extends ConsumerState<Home> {
                                       _buildTransitWarningWidget(
                                         transitMin: warning.transitMin,
                                         availableMin: warning.availableMin,
+                                        mode: warning.mode,
                                       ),
                                     TaskItem(
                                       task: displayTask,
                                       statusForSelectedDay: status,
+                                      isCurrentlyActive: isTaskActiveNow,
                                       onEdit: () {
                                         Navigator.of(context).push(
                                           MaterialPageRoute(
@@ -384,44 +425,44 @@ class _HomeState extends ConsumerState<Home> {
                                       onMarkCompleted: isFutureDate
                                           ? null
                                           : () async {
-                                              final isCompleted = status ==
-                                                  TaskCompletionStatus.completed;
-                                              final newStatus = isCompleted
-                                                  ? TaskCompletionStatus.upcoming
-                                                  : TaskCompletionStatus.completed;
+                                        final isCompleted = status ==
+                                            TaskCompletionStatus.completed;
+                                        final newStatus = isCompleted
+                                            ? TaskCompletionStatus.upcoming
+                                            : TaskCompletionStatus.completed;
 
-                                              setState(() {
-                                                _localCompletions[key] = newStatus;
-                                              });
+                                        setState(() {
+                                          _localCompletions[key] = newStatus;
+                                        });
 
-                                              try {
-                                                int updatedStreak;
-                                                if (isCompleted) {
-                                                  updatedStreak = await ref.read(
-                                                    clearCompletionProvider(
-                                                            (task, selectedDate))
-                                                        .future,
-                                                  );
-                                                } else {
-                                                  updatedStreak = await ref.read(
-                                                    markTaskStatusProvider((task,
-                                                            selectedDate, newStatus))
-                                                        .future,
-                                                  );
-                                                }
-                                                setState(() {
-                                                  _localCompletions[key] = newStatus;
-                                                  _localStreaks[task.id] =
-                                                      updatedStreak;
-                                                  _statusesFuture = null;
-                                                });
-                                              } catch (e) {
-                                                setState(() {
-                                                  _localCompletions[key] =
-                                                      firestoreStatus;
-                                                });
-                                              }
-                                            },
+                                        try {
+                                          int updatedStreak;
+                                          if (isCompleted) {
+                                            updatedStreak = await ref.read(
+                                              clearCompletionProvider(
+                                                  (task, selectedDate))
+                                                  .future,
+                                            );
+                                          } else {
+                                            updatedStreak = await ref.read(
+                                              markTaskStatusProvider((task,
+                                              selectedDate, newStatus))
+                                                  .future,
+                                            );
+                                          }
+                                          setState(() {
+                                            _localCompletions[key] = newStatus;
+                                            _localStreaks[task.id] =
+                                                updatedStreak;
+                                            _statusesFuture = null;
+                                          });
+                                        } catch (e) {
+                                          setState(() {
+                                            _localCompletions[key] =
+                                                firestoreStatus;
+                                          });
+                                        }
+                                      },
                                     ),
                                   ],
                                 );
@@ -517,24 +558,115 @@ class _HomeState extends ConsumerState<Home> {
   Widget _buildTransitWarningWidget({
     required int transitMin,
     required int availableMin,
+    required String mode,
   }) {
+    // Determina icon și label pentru modul de transport
+    final (transportIcon, transportLabel) = switch (mode) {
+      'WALK' => (Icons.directions_walk, 'Walking'),
+      'TRANSIT' => (Icons.directions_bus, 'Public transit'),
+      _ => (Icons.directions_car, 'Driving'),
+    };
+
+    final timeDiff = transitMin - availableMin;
+    final isTimeCritical = timeDiff > 15;
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.orange.withValues(alpha: 0.1),
+        color: isTimeCritical
+            ? Colors.red.withValues(alpha: 0.12)
+            : Colors.orange.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.orange.withValues(alpha: 0.2)),
+        border: Border.all(
+          color: isTimeCritical
+              ? Colors.red.withValues(alpha: 0.3)
+              : Colors.orange.withValues(alpha: 0.3),
+          width: 1.5,
+        ),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 16),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              "Travel takes ~$transitMin min, but you only have $availableMin min between tasks",
-              style: const TextStyle(
-                  color: Colors.orange, fontSize: 12, fontWeight: FontWeight.w500),
+          Row(
+            children: [
+              Icon(
+                Icons.warning_amber_rounded,
+                color: isTimeCritical ? Colors.red : Colors.orange,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Not enough time to travel',
+                  style: TextStyle(
+                    color: isTimeCritical ? Colors.red : Colors.orange,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Icon(transportIcon, color: Colors.white70, size: 16),
+                    const SizedBox(width: 6),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          transportLabel,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        Text(
+                          '~$transitMin min',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const Text(
+                      'Available',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    Text(
+                      '$availableMin min',
+                      style: TextStyle(
+                        color: isTimeCritical ? Colors.red : Colors.orange,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ],
@@ -609,13 +741,13 @@ class _ProfileAvatar extends StatelessWidget {
       onBackgroundImageError: photoUrl != null ? (_, __) {} : null,
       child: photoUrl == null
           ? Text(
-              name.isNotEmpty ? name[0].toUpperCase() : '?',
-              style: const TextStyle(
-                color: Colors.blueAccent,
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-              ),
-            )
+        name.isNotEmpty ? name[0].toUpperCase() : '?',
+        style: const TextStyle(
+          color: Colors.blueAccent,
+          fontWeight: FontWeight.w600,
+          fontSize: 14,
+        ),
+      )
           : null,
     );
   }

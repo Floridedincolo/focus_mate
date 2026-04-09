@@ -423,6 +423,7 @@ class MainActivity : FlutterActivity() {
 
         // ── Read focus time and prevented distractions from SharedPreferences ──
         val focusPrefs = getSharedPreferences("focus_mate_prefs", Context.MODE_PRIVATE)
+        val flutterPrefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
         val dayFmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         var totalFocusMinutes = 0L
         var totalPrevented = 0
@@ -431,8 +432,8 @@ class MainActivity : FlutterActivity() {
         for (d in 0 until days) {
             val dateKey = dayFmt.format(cal2.time)
             totalFocusMinutes += focusPrefs.getLong("focus_minutes_$dateKey", 0L)
-            totalPrevented += focusPrefs.getInt(
-                AppBlockService.PREF_PREVENTED_PREFIX + dateKey, 0
+            totalPrevented += flutterPrefs.getInt(
+                "flutter." + AppBlockService.PREF_PREVENTED_PREFIX + dateKey, 0
             )
             cal2.add(Calendar.DAY_OF_YEAR, -1)
         }
@@ -557,12 +558,6 @@ class MainActivity : FlutterActivity() {
 
         editor.apply()
 
-        // Notify the accessibility service via explicit broadcast (Android 12+)
-        val intent = Intent("com.example.focus_mate.UPDATE_BLOCKED_APPS")
-        intent.setPackage(packageName)
-        intent.putStringArrayListExtra("apps", ArrayList(apps))
-        sendBroadcast(intent)
-        Log.d("MainActivity", "📤 Sent UPDATE_BLOCKED_APPS broadcast with ${apps.size} apps")
 
         // If Flutter is connected to EventChannel, send an instant update
         eventSink?.let { sink ->
