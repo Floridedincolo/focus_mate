@@ -1,5 +1,7 @@
 package com.example.focus_mate
 
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -17,6 +19,9 @@ import android.accessibilityservice.AccessibilityService
 import android.app.usage.UsageStatsManager
 import android.app.usage.UsageEvents
 import android.app.AppOpsManager
+import android.media.AudioAttributes
+import android.media.Ringtone
+import android.media.RingtoneManager
 import android.os.Process
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -28,6 +33,43 @@ class MainActivity : FlutterActivity() {
     private val METHOD_CHANNEL = "com.example.focus_mate/blocking"
     private var eventSink: EventChannel.EventSink? = null
     private var myReceiver: BroadcastReceiver? = null
+    private var alarmRingtone: Ringtone? = null
+    private var alarmSchedulerChannel: MethodChannel? = null
+    private var pendingAlarmData: HashMap<String, Any?>? = null
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleAlarmIntent(intent)
+    }
+
+    private fun handleAlarmIntent(intent: Intent) {
+        if (intent.action != "com.example.focus_mate.ALARM_FIRED") return
+
+        val id = intent.getIntExtra(AlarmReceiver.EXTRA_ALARM_ID, -1)
+        if (id == -1) return
+
+        val data = HashMap<String, Any?>().apply {
+            put("type", "alarm")
+            put("id", id)
+            put("title", intent.getStringExtra(AlarmReceiver.EXTRA_ALARM_TITLE) ?: "Alarm")
+            put("body", intent.getStringExtra(AlarmReceiver.EXTRA_ALARM_BODY) ?: "")
+            put("isWeekly", intent.getBooleanExtra(AlarmReceiver.EXTRA_IS_WEEKLY, false))
+            put("weekday", intent.getIntExtra(AlarmReceiver.EXTRA_WEEKDAY, -1))
+            put("hour", intent.getIntExtra(AlarmReceiver.EXTRA_HOUR, -1))
+            put("minute", intent.getIntExtra(AlarmReceiver.EXTRA_MINUTE, -1))
+        }
+
+        Log.d("MainActivity", "Alarm intent received: id=$id")
+
+        val channel = alarmSchedulerChannel
+        if (channel != null) {
+            channel.invokeMethod("alarmFired", data)
+        } else {
+            // Engine not ready yet (cold start) — save for later
+            pendingAlarmData = data
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: io.flutter.embedding.engine.FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -272,6 +314,107 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+        // MethodChannel for alarm ringtone playback
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.example.focus_mate/alarm").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "playAlarm" -> {
+                    try {
+                        stopAlarmRingtone()
+                        val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                        val ringtone = RingtoneManager.getRingtone(this, uri)
+                        if (ringtone != null) {
+                            ringtone.audioAttributes = AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_ALARM)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                .build()
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                                ringtone.isLooping = true
+                            }
+                            ringtone.play()
+                            alarmRingtone = ringtone
+                        }
+                        result.success(true)
+                    } catch (e: Exception) {
+                        Log.e("MainActivity", "Failed to play alarm: ${e.message}")
+                        result.success(false)
+                    }
+                }
+                "stopAlarm" -> {
+                    stopAlarmRingtone()
+                    // Also stop the foreground service (which plays its own ringtone)
+                    try {
+                        stopService(Intent(this@MainActivity, AlarmForegroundService::class.java))
+                    } catch (_: Exception) {}
+                    // Clear the foreground service notification
+                    try {
+                        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                        nm.cancel(AlarmForegroundService.NOTIFICATION_ID)
+                    } catch (_: Exception) {}
+                    result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // MethodChannel for native alarm scheduling via AlarmManager
+        alarmSchedulerChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.example.focus_mate/alarm_scheduler")
+        alarmSchedulerChannel!!.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "scheduleNativeAlarm" -> {
+                    try {
+                        val id = call.argument<Int>("id")!!
+                        val title = call.argument<String>("title")!!
+                        val body = call.argument<String>("body")!!
+                        val epochMs = call.argument<Long>("epochMs")
+                            ?: call.argument<Int>("epochMs")?.toLong()
+                            ?: call.argument<Number>("epochMs")!!.toLong()
+                        val isWeekly = call.argument<Boolean>("isWeekly") ?: false
+                        val weekday = call.argument<Int>("weekday") ?: -1
+                        val hour = call.argument<Int>("hour") ?: -1
+                        val minute = call.argument<Int>("minute") ?: -1
+
+                        scheduleNativeAlarm(id, title, body, epochMs, isWeekly, weekday, hour, minute)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        Log.e("MainActivity", "Failed to schedule native alarm: ${e.message}")
+                        result.error("ERROR", "Failed to schedule alarm: ${e.message}", null)
+                    }
+                }
+                "cancelNativeAlarm" -> {
+                    try {
+                        val id = call.argument<Int>("id")!!
+                        cancelNativeAlarm(id)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("ERROR", "Failed to cancel alarm: ${e.message}", null)
+                    }
+                }
+                "cancelAllNativeAlarms" -> {
+                    try {
+                        val ids = call.argument<List<Int>>("ids") ?: emptyList()
+                        for (id in ids) {
+                            cancelNativeAlarm(id)
+                        }
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("ERROR", "Failed to cancel alarms: ${e.message}", null)
+                    }
+                }
+                "ready" -> {
+                    // Flutter signals it's ready to receive alarm events
+                    pendingAlarmData?.let { data ->
+                        alarmSchedulerChannel?.invokeMethod("alarmFired", data)
+                        pendingAlarmData = null
+                    }
+                    // Also check current intent for cold-start alarm
+                    handleAlarmIntent(intent)
+                    result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
         // MethodChannel pentru Usage Stats
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.example.focus_mate/usage_stats").setMethodCallHandler { call, result ->
             when (call.method) {
@@ -363,20 +506,38 @@ class MainActivity : FlutterActivity() {
             events.getNextEvent(event)
             when (event.eventType) {
                 UsageEvents.Event.MOVE_TO_FOREGROUND -> {
+                    // If a previous app was in foreground without a BACKGROUND event,
+                    // close its session now (app switch without explicit background)
+                    if (lastForegroundTime > 0 && lastForegroundPkg != event.packageName) {
+                        val clampedStart = maxOf(lastForegroundTime, startTime)
+                        val duration = event.timeStamp - clampedStart
+                        if (duration > 0) {
+                            distributeTimeToHours(hourlyMs, clampedStart, event.timeStamp, startTime)
+                            val appHours = hourlyAppMs.getOrPut(lastForegroundPkg) { LongArray(24) { 0L } }
+                            distributeTimeToHours(appHours, clampedStart, event.timeStamp, startTime)
+                            distributeTimeToDays(dailyMs, clampedStart, event.timeStamp, startTime, days)
+                            val appDays = dailyAppMs.getOrPut(lastForegroundPkg) { LongArray(days) { 0L } }
+                            distributeTimeToDays(appDays, clampedStart, event.timeStamp, startTime, days)
+                            appUsageMap[lastForegroundPkg] = (appUsageMap[lastForegroundPkg] ?: 0L) + duration
+                        }
+                    }
                     lastForegroundTime = event.timeStamp
                     lastForegroundPkg = event.packageName
                 }
                 UsageEvents.Event.MOVE_TO_BACKGROUND -> {
                     if (lastForegroundTime > 0 && event.packageName == lastForegroundPkg) {
-                        val duration = event.timeStamp - lastForegroundTime
-                        distributeTimeToHours(hourlyMs, lastForegroundTime, event.timeStamp, startTime)
-                        val appHours = hourlyAppMs.getOrPut(lastForegroundPkg) { LongArray(24) { 0L } }
-                        distributeTimeToHours(appHours, lastForegroundTime, event.timeStamp, startTime)
-                        // Daily distribution
-                        distributeTimeToDays(dailyMs, lastForegroundTime, event.timeStamp, startTime, days)
-                        val appDays = dailyAppMs.getOrPut(lastForegroundPkg) { LongArray(days) { 0L } }
-                        distributeTimeToDays(appDays, lastForegroundTime, event.timeStamp, startTime, days)
-                        appUsageMap[lastForegroundPkg] = (appUsageMap[lastForegroundPkg] ?: 0L) + duration
+                        val clampedStart = maxOf(lastForegroundTime, startTime)
+                        val duration = event.timeStamp - clampedStart
+                        if (duration > 0) {
+                            distributeTimeToHours(hourlyMs, clampedStart, event.timeStamp, startTime)
+                            val appHours = hourlyAppMs.getOrPut(lastForegroundPkg) { LongArray(24) { 0L } }
+                            distributeTimeToHours(appHours, clampedStart, event.timeStamp, startTime)
+                            // Daily distribution
+                            distributeTimeToDays(dailyMs, clampedStart, event.timeStamp, startTime, days)
+                            val appDays = dailyAppMs.getOrPut(lastForegroundPkg) { LongArray(days) { 0L } }
+                            distributeTimeToDays(appDays, clampedStart, event.timeStamp, startTime, days)
+                            appUsageMap[lastForegroundPkg] = (appUsageMap[lastForegroundPkg] ?: 0L) + duration
+                        }
                         lastForegroundTime = 0L
                     }
                 }
@@ -384,14 +545,17 @@ class MainActivity : FlutterActivity() {
         }
         // If an app is still in foreground, count time until now
         if (lastForegroundTime > 0) {
-            val duration = endTime - lastForegroundTime
-            distributeTimeToHours(hourlyMs, lastForegroundTime, endTime, startTime)
-            val appHours = hourlyAppMs.getOrPut(lastForegroundPkg) { LongArray(24) { 0L } }
-            distributeTimeToHours(appHours, lastForegroundTime, endTime, startTime)
-            distributeTimeToDays(dailyMs, lastForegroundTime, endTime, startTime, days)
-            val appDays = dailyAppMs.getOrPut(lastForegroundPkg) { LongArray(days) { 0L } }
-            distributeTimeToDays(appDays, lastForegroundTime, endTime, startTime, days)
-            appUsageMap[lastForegroundPkg] = (appUsageMap[lastForegroundPkg] ?: 0L) + duration
+            val clampedStart = maxOf(lastForegroundTime, startTime)
+            val duration = endTime - clampedStart
+            if (duration > 0) {
+                distributeTimeToHours(hourlyMs, clampedStart, endTime, startTime)
+                val appHours = hourlyAppMs.getOrPut(lastForegroundPkg) { LongArray(24) { 0L } }
+                distributeTimeToHours(appHours, clampedStart, endTime, startTime)
+                distributeTimeToDays(dailyMs, clampedStart, endTime, startTime, days)
+                val appDays = dailyAppMs.getOrPut(lastForegroundPkg) { LongArray(days) { 0L } }
+                distributeTimeToDays(appDays, clampedStart, endTime, startTime, days)
+                appUsageMap[lastForegroundPkg] = (appUsageMap[lastForegroundPkg] ?: 0L) + duration
+            }
         }
 
         // For weekly view, average the hourly data
@@ -429,6 +593,7 @@ class MainActivity : FlutterActivity() {
         var totalPrevented = 0
 
         val cal2 = Calendar.getInstance()
+        cal2.add(Calendar.DAY_OF_YEAR, dayOffset)
         for (d in 0 until days) {
             val dateKey = dayFmt.format(cal2.time)
             totalFocusMinutes += focusPrefs.getLong("focus_minutes_$dateKey", 0L)
@@ -438,9 +603,9 @@ class MainActivity : FlutterActivity() {
             cal2.add(Calendar.DAY_OF_YEAR, -1)
         }
 
-        // If a focus session is currently active, add elapsed time
+        // If a focus session is currently active, add elapsed time (only for today)
         val sessionStart = focusPrefs.getLong("focus_session_start", 0L)
-        if (sessionStart > 0) {
+        if (sessionStart > 0 && dayOffset == 0) {
             val liveMin = (System.currentTimeMillis() - sessionStart) / 60000
             totalFocusMinutes += liveMin
         }
@@ -478,7 +643,7 @@ class MainActivity : FlutterActivity() {
 
     private fun distributeTimeToHours(hourlyMs: LongArray, start: Long, end: Long, dayStart: Long) {
         val cal = Calendar.getInstance()
-        var current = start
+        var current = maxOf(start, dayStart)
         while (current < end) {
             cal.timeInMillis = current
             val hour = cal.get(Calendar.HOUR_OF_DAY)
@@ -497,7 +662,7 @@ class MainActivity : FlutterActivity() {
 
     private fun distributeTimeToDays(dailyMs: LongArray, start: Long, end: Long, periodStart: Long, days: Int) {
         val msPerDay = 24L * 60 * 60 * 1000
-        var current = start
+        var current = maxOf(start, periodStart)
         while (current < end) {
             val dayIdx = ((current - periodStart) / msPerDay).toInt().coerceIn(0, days - 1)
             val dayEnd = periodStart + (dayIdx + 1) * msPerDay
@@ -601,6 +766,55 @@ class MainActivity : FlutterActivity() {
         )
         val serviceId = "${packageName}/${serviceClass.name}"
         return enabledServices?.contains(serviceId) == true
+    }
+
+    private fun scheduleNativeAlarm(
+        id: Int, title: String, body: String, epochMs: Long,
+        isWeekly: Boolean, weekday: Int, hour: Int, minute: Int
+    ) {
+        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+        val intent = Intent(this, AlarmReceiver::class.java).apply {
+            putExtra(AlarmReceiver.EXTRA_ALARM_ID, id)
+            putExtra(AlarmReceiver.EXTRA_ALARM_TITLE, title)
+            putExtra(AlarmReceiver.EXTRA_ALARM_BODY, body)
+            putExtra(AlarmReceiver.EXTRA_IS_WEEKLY, isWeekly)
+            putExtra(AlarmReceiver.EXTRA_WEEKDAY, weekday)
+            putExtra(AlarmReceiver.EXTRA_HOUR, hour)
+            putExtra(AlarmReceiver.EXTRA_MINUTE, minute)
+        }
+
+        val pendingIntent = PendingIntent.getBroadcast(
+            this, id, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Use setAlarmClock for reliable, exact alarm that shows alarm icon in status bar
+        val alarmInfo = AlarmManager.AlarmClockInfo(epochMs, pendingIntent)
+        alarmManager.setAlarmClock(alarmInfo, pendingIntent)
+
+        Log.d("MainActivity", "Native alarm scheduled: id=$id at $epochMs (weekly=$isWeekly)")
+    }
+
+    private fun cancelNativeAlarm(id: Int) {
+        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = Intent(this, AlarmReceiver::class.java)
+        val pendingIntent = PendingIntent.getBroadcast(
+            this, id, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        alarmManager.cancel(pendingIntent)
+        // Also cancel fallback notification
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        nm.cancel(id)
+        Log.d("MainActivity", "Native alarm cancelled: id=$id")
+    }
+
+    private fun stopAlarmRingtone() {
+        alarmRingtone?.let {
+            if (it.isPlaying) it.stop()
+            alarmRingtone = null
+        }
     }
 
     //  Deschide setările de Accessibility

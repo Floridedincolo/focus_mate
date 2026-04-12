@@ -16,6 +16,7 @@ import android.os.Looper
 import android.view.Gravity
 import android.graphics.drawable.Drawable
 import android.graphics.Color
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
@@ -46,15 +47,93 @@ class AppBlockService : AccessibilityService() {
         const val PREF_PREVENTED_PREFIX = "prevented_distractions_"
         val dayFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
 
-        private val SYSTEM_EXEMPT_PACKAGES = setOf(
-            "com.example.focus_mate", "com.google.android.apps.nexuslauncher",
-            "com.sec.android.app.launcher", "com.miui.home", "com.huawei.android.launcher",
-            "com.oppo.launcher", "com.android.launcher", "com.android.launcher3",
-            "com.android.settings", "com.android.systemui", "com.android.phone",
-            "com.android.server.telecom", "com.android.emergency",
-            "com.google.android.inputmethod.latin", "com.samsung.android.honeyboard",
-            "com.swiftkey.languageprovider", "com.touchtype.swiftkey", "com.android.inputmethod.latin"
-        )
+        // Safety net: propriul app nu se blochează niciodată pe sine.
+        private val ALWAYS_EXEMPT = setOf("com.example.focus_mate")
+    }
+
+    // Cache pentru a nu interoga PackageManager la fiecare tick.
+    private var cachedHomePackages: Set<String> = emptySet()
+    private var cachedHomePackagesAt: Long = 0L
+    private val exemptDecisionCache = HashMap<String, Boolean>()
+
+    private fun getHomePackages(): Set<String> {
+        val now = System.currentTimeMillis()
+        // Reîmprospătăm la fiecare 30s în caz că userul schimbă launcherul.
+        if (now - cachedHomePackagesAt < 30_000L && cachedHomePackages.isNotEmpty()) {
+            return cachedHomePackages
+        }
+        val result = mutableSetOf<String>()
+        try {
+            val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+            val resolvers = packageManager.queryIntentActivities(homeIntent, 0)
+            for (ri in resolvers) {
+                ri.activityInfo?.packageName?.let { result.add(it) }
+            }
+        } catch (e: Exception) {
+            Log.e("AppAccessibilityService", "❌ Eroare la enumerarea launcherelor: ${e.message}")
+        }
+        cachedHomePackages = result
+        cachedHomePackagesAt = now
+        return result
+    }
+
+    private fun getCurrentImePackage(): String? {
+        return try {
+            val imeId = Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
+            // imeId are forma "package/.ServiceName"
+            imeId?.substringBefore('/')?.takeIf { it.isNotBlank() }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun isSystemExempt(packageName: String): Boolean {
+        if (packageName in ALWAYS_EXEMPT) return true
+
+        exemptDecisionCache[packageName]?.let { return it }
+
+        // 1) Launcherul implicit / orice home app instalat.
+        if (packageName in getHomePackages()) {
+            exemptDecisionCache[packageName] = true
+            return true
+        }
+
+        // 2) Tastatura activă.
+        if (packageName == getCurrentImePackage()) {
+            exemptDecisionCache[packageName] = true
+            return true
+        }
+
+        // 3) Pachete fără icon de lansare = componente de sistem invizibile userului
+        //    (Android System, SystemUI, servicii Google Play, overlay-uri OEM etc.).
+        val hasLauncherIcon = try {
+            packageManager.getLaunchIntentForPackage(packageName) != null
+        } catch (e: Exception) {
+            false
+        }
+        if (!hasLauncherIcon) {
+            exemptDecisionCache[packageName] = true
+            return true
+        }
+
+        // 4) App preinstalat de OEM care NU a fost updatat prin Play Store
+        //    → componentă OS (Honor Home, Honor Search, Settings, Gallery OEM etc.).
+        //    YouTube, Chrome, Gmail etc. sunt FLAG_SYSTEM + FLAG_UPDATED_SYSTEM_APP
+        //    pe majoritatea telefoanelor → NU sunt exempte → rămân blocabile.
+        try {
+            val ai = packageManager.getApplicationInfo(packageName, 0)
+            val isSystem = (ai.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+            val isUpdatedSystem = (ai.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+            if (isSystem && !isUpdatedSystem) {
+                exemptDecisionCache[packageName] = true
+                return true
+            }
+        } catch (e: Exception) {
+            // Dacă nu putem determina, preferăm să NU exceptăm (fail-closed pe blocare).
+        }
+
+        exemptDecisionCache[packageName] = false
+        return false
     }
 
     private var scheduledBlocks: JSONArray = JSONArray()
@@ -114,7 +193,7 @@ class AppBlockService : AccessibilityService() {
     }
 
     private fun checkBlockingLogic(packageName: String) {
-        if (SYSTEM_EXEMPT_PACKAGES.contains(packageName)) return
+        if (isSystemExempt(packageName)) return
 
         checkAndLoadSchedule()
 
