@@ -6,12 +6,6 @@ import '../../../domain/entities/extracted_class.dart';
 import '../../widgets/schedule_import/subject_group_card.dart';
 import 'schedule_preview_page.dart';
 
-/// Step 3A — Path A (Weekly Timetable).
-///
-/// Shows one [SubjectGroupCard] per unique subject, grouping all
-/// occurrences (e.g. Mon + Wed + Fri) of the same class together.
-/// The user toggles which subjects need weekly study and sets hours.
-/// Tapping "Preview Tasks" triggers [GenerateWeeklyTasksUseCase].
 class TimetableAdjustmentPage extends ConsumerWidget {
   const TimetableAdjustmentPage({super.key});
 
@@ -21,14 +15,12 @@ class TimetableAdjustmentPage extends ConsumerWidget {
     final notifier = ref.read(scheduleImportProvider.notifier);
     final classes = state.adjustedClasses;
 
-    // Group classes by subject so the user sees one card per subject
     final Map<String, List<ExtractedClass>> grouped = {};
     for (final c in classes) {
       grouped.putIfAbsent(c.subject, () => []).add(c);
     }
     final subjects = grouped.keys.toList()..sort();
 
-    // Navigate to preview once tasks are generated
     ref.listen<ScheduleImportState>(scheduleImportProvider, (_, next) {
       if (next.step == ScheduleImportStep.preview && context.mounted) {
         Navigator.of(context).push(
@@ -37,29 +29,39 @@ class TimetableAdjustmentPage extends ConsumerWidget {
       }
       if (next.step == ScheduleImportStep.error && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(next.errorMessage ?? 'Error generating tasks')),
+          SnackBar(
+            content: Text(next.errorMessage ?? 'Error generating tasks'),
+            backgroundColor: Colors.redAccent,
+          ),
         );
       }
     });
 
     return Scaffold(
+      backgroundColor: const Color(0xFF0D0D0D),
       appBar: AppBar(
-        title: const Text('Your Classes'),
-        leading: BackButton(onPressed: () {
-          notifier.goBack();
-          Navigator.of(context).pop();
-        }),
+        backgroundColor: const Color(0xFF0D0D0D),
+        foregroundColor: Colors.white,
+        elevation: 0,
+        title: const Text('Your Classes',
+            style: TextStyle(fontWeight: FontWeight.w600)),
+        leading: BackButton(
+          color: Colors.white,
+          onPressed: () {
+            notifier.goBack();
+            Navigator.of(context).pop();
+          },
+        ),
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 8, 20, 12),
             child: Text(
               'Toggle which subjects need weekly study time, set '
               'how many hours per week, and mark subjects that have '
-              'a final exam. We will find free slots in your schedule '
-              'automatically.',
-              style: Theme.of(context).textTheme.bodyMedium,
+              'a final exam.',
+              style: TextStyle(color: Colors.white38, fontSize: 13),
             ),
           ),
           Expanded(
@@ -94,11 +96,29 @@ class TimetableAdjustmentPage extends ConsumerWidget {
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: FilledButton.icon(
-            icon: const Icon(Icons.preview_outlined),
-            label: const Text('Preview Tasks'),
-            onPressed: () => notifier.generatePreview(),
+          padding: const EdgeInsets.all(20),
+          child: GestureDetector(
+            onTap: () => notifier.generatePreview(),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              decoration: BoxDecoration(
+                color: Colors.blueAccent,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.preview_outlined, size: 18, color: Colors.white),
+                  SizedBox(width: 8),
+                  Text('Preview Tasks',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      )),
+                ],
+              ),
+            ),
           ),
         ),
       ),

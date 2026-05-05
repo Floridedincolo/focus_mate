@@ -112,7 +112,9 @@ class GeminiMeetingSuggestionDataSource implements MeetingSuggestionDataSource {
     buffer.writeln('Instructions:');
     buffer.writeln(
       '1. Find $maxProposals optimal time slots of '
-      '$meetingDurationMinutes minutes where ALL members are free.',
+          '$meetingDurationMinutes minutes where ALL members are free. '
+          'CRITICAL: ONLY suggest time slots between 09:00 and 22:00. '
+          'Do not suggest meetings during the night or early morning hours.',
     );
 
     final hasLocations = memberLocations != null &&
@@ -141,7 +143,13 @@ class GeminiMeetingSuggestionDataSource implements MeetingSuggestionDataSource {
       '4. DO NOT invent specific place names — only return the keyword.',
     );
     buffer.writeln(
-      '5. Respond EXCLUSIVELY in JSON matching this schema:',
+      '5. RANK and PRIORITIZE the proposals from best to worst based on two criteria: '
+          'First, maximize the "slack" time (free buffer time) members have before and after the meeting. '
+          'Second, prefer times closer to mid-day (around 14:00). '
+          'Place your absolute best recommendation first in the JSON array.',
+    );
+    buffer.writeln(
+      '6. Respond EXCLUSIVELY in JSON matching this schema:',
     );
     buffer.writeln();
     buffer.writeln('''{

@@ -7,9 +7,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/service_locator.dart';
 import '../../data/datasources/location_search_service.dart';
 import '../../data/datasources/transit_route_service.dart';
+import '../../domain/entities/member_proposal_detail.dart';
 import '../../domain/entities/meeting_location.dart';
 import '../../domain/entities/meeting_proposal.dart';
 import '../../domain/entities/task.dart';
+import '../../domain/extensions/task_filter.dart';
 import '../../domain/repositories/friend_repository.dart';
 import '../../domain/repositories/user_location_repository.dart';
 import '../../domain/usecases/suggest_meeting_ai_use_case.dart';
@@ -227,9 +229,10 @@ class MeetingSuggestionNotifier extends Notifier<MeetingSuggestionState> {
         final data = doc.data();
         if (data == null) return (null, null) as (MeetingLocation?, MeetingLocation?);
 
-        final lat = (data['homeLatitude'] as num?)?.toDouble();
-        final lng = (data['homeLongitude'] as num?)?.toDouble();
-        final name = data['homeName'] as String? ?? '';
+        final homeData = data['homeLocation'] as Map<String, dynamic>?;
+        final lat = (homeData?['latitude'] as num?)?.toDouble();
+        final lng = (homeData?['longitude'] as num?)?.toDouble();
+        final name = homeData?['name'] as String? ?? '';
 
         final home = (lat != null && lng != null)
             ? MeetingLocation(name: name, latitude: lat, longitude: lng)
@@ -349,6 +352,10 @@ class MeetingSuggestionNotifier extends Notifier<MeetingSuggestionState> {
     if (proposals.isEmpty) return proposals;
 
     final transitService = getIt<TransitRouteService>();
+    final memberNames = [
+      'You',
+      ...state.selectedFriendNames,
+    ];
     final result = <MeetingProposal>[];
 
     for (final proposal in proposals) {
@@ -366,18 +373,22 @@ class MeetingSuggestionNotifier extends Notifier<MeetingSuggestionState> {
           proposal.startTime.hour * 60 + proposal.startTime.minute;
       final duration = proposal.endTime.difference(proposal.startTime);
 
-      // Find the latest arrival time across all members.
+      // ── Pass 1: Collect per-member gap start + transit TO venue ──
       int latestArrivalMin = originalStartMin;
+
+      // Temporary per-member data collected across pass 1 and 2.
+      final perMemberGapStart = <int>[];   // last task end (or day start)
+      final perMemberTransitTo = <int?>[];
+      final perMemberDeparture = <MeetingLocation?>[]; // reused in debug
 
       for (int i = 0; i < memberSchedules.length; i++) {
         final tasks = memberSchedules[i];
         final home = i < homeLocations.length ? homeLocations[i] : null;
 
-        // Find last task ending before or at the slot start.
         MeetingLocation? departure;
         int lastEndMin = -1;
         for (final task in tasks) {
-          if (!_taskOccursOnDate(task, targetDate)) continue;
+          if (!task.occursOn(targetDate)) continue;
           if (task.endTime == null) continue;
           final endMin = task.endTime!.hour * 60 + task.endTime!.minute;
           if (endMin > originalStartMin) continue;
@@ -394,21 +405,32 @@ class MeetingSuggestionNotifier extends Notifier<MeetingSuggestionState> {
           }
         }
         departure ??= home;
+        perMemberDeparture.add(departure);
 
-        if (departure != null &&
-            departure.hasCoordinates &&
-            lastEndMin >= 0) {
-          final travelMin = await transitService.getTransitTimeMinutes(
+        // Gap starts when their last task ends (or beginning of day).
+        perMemberGapStart.add(lastEndMin >= 0 ? lastEndMin : 0);
+
+        int? travelTo;
+        if (kDebugMode) {
+          debugPrint(
+            '🔍 [TravelTo] Member $i: departure=${departure?.name} '
+            'hasCoord=${departure?.hasCoordinates} '
+            'home=${home?.name}',
+          );
+        }
+        if (departure != null && departure.hasCoordinates) {
+          travelTo = await transitService.getTransitTimeMinutes(
             origin: departure,
             destination: proposal.location,
           );
-          if (travelMin != null) {
-            final arrivalMin = lastEndMin + travelMin;
+          if (travelTo != null && lastEndMin >= 0) {
+            final arrivalMin = lastEndMin + travelTo;
             if (arrivalMin > latestArrivalMin) {
               latestArrivalMin = arrivalMin;
             }
           }
         }
+        perMemberTransitTo.add(travelTo);
       }
 
       // Compute the adjusted start/end times.
@@ -420,20 +442,21 @@ class MeetingSuggestionNotifier extends Notifier<MeetingSuggestionState> {
         microsecond: 0,
       );
       final adjustedEnd = adjustedStart.add(duration);
-
-      // Check that everyone can leave in time for their next task.
       final adjustedEndMin = latestArrivalMin + duration.inMinutes;
+
+      // ── Pass 2: Check departure constraints + collect transit FROM venue ──
       bool fits = true;
+      final perMemberGapEnd = <int>[];
+      final perMemberTransitFrom = <int?>[];
 
       for (int i = 0; i < memberSchedules.length; i++) {
         final tasks = memberSchedules[i];
         final home = i < homeLocations.length ? homeLocations[i] : null;
 
-        // Find first task starting after the adjusted meeting end.
         MeetingLocation? nextDest;
         int nextStartMin = 99999;
         for (final task in tasks) {
-          if (!_taskOccursOnDate(task, targetDate)) continue;
+          if (!task.occursOn(targetDate)) continue;
           if (task.startTime == null) continue;
           final startMin =
               task.startTime!.hour * 60 + task.startTime!.minute;
@@ -452,19 +475,29 @@ class MeetingSuggestionNotifier extends Notifier<MeetingSuggestionState> {
         }
         nextDest ??= home;
 
-        if (nextDest != null &&
-            nextDest.hasCoordinates &&
-            nextStartMin < 99999) {
-          final travelMin = await transitService.getTransitTimeMinutes(
+        // Gap ends when their next task starts (or end of day).
+        perMemberGapEnd.add(nextStartMin < 99999 ? nextStartMin : 24 * 60);
+
+        int? travelFrom;
+        if (kDebugMode) {
+          debugPrint(
+            '🔍 [TravelFrom] Member $i: nextDest=${nextDest?.name} '
+            'hasCoord=${nextDest?.hasCoordinates} '
+            'home=${home?.name}',
+          );
+        }
+        if (nextDest != null && nextDest.hasCoordinates) {
+          travelFrom = await transitService.getTransitTimeMinutes(
             origin: proposal.location,
             destination: nextDest,
           );
-          if (travelMin != null &&
-              adjustedEndMin + travelMin > nextStartMin) {
+          if (travelFrom != null &&
+              nextStartMin < 99999 &&
+              adjustedEndMin + travelFrom > nextStartMin) {
             if (kDebugMode) {
               debugPrint(
                 '❌ Proposal ${proposal.startTime} dropped: '
-                'member $i needs ${travelMin}min to leave, '
+                'member $i needs ${travelFrom}min to leave, '
                 'next task at ${nextStartMin ~/ 60}:'
                 '${(nextStartMin % 60).toString().padLeft(2, '0')}',
               );
@@ -473,22 +506,50 @@ class MeetingSuggestionNotifier extends Notifier<MeetingSuggestionState> {
             break;
           }
         }
+        perMemberTransitFrom.add(travelFrom);
       }
 
       if (!fits) continue;
 
-      if (latestArrivalMin > originalStartMin && kDebugMode) {
-        debugPrint(
-          '🕐 Proposal shifted: '
-          '${proposal.startTime.hour}:${proposal.startTime.minute.toString().padLeft(2, '0')} → '
-          '${adjustedStart.hour}:${adjustedStart.minute.toString().padLeft(2, '0')} '
-          '(+${latestArrivalMin - originalStartMin}min travel)',
-        );
+      // ── Build per-member detail list ──
+      final details = <MemberProposalDetail>[];
+      for (int i = 0; i < memberSchedules.length; i++) {
+        final label = i < memberNames.length ? memberNames[i] : 'Person ${i + 1}';
+        details.add(MemberProposalDetail(
+          label: label,
+          memberIndex: i,
+          gapStartMin: perMemberGapStart[i],
+          gapEndMin: i < perMemberGapEnd.length ? perMemberGapEnd[i] : 24 * 60,
+          transitToMin: perMemberTransitTo[i],
+          transitFromMin: i < perMemberTransitFrom.length
+              ? perMemberTransitFrom[i]
+              : null,
+        ));
+      }
+
+      if (kDebugMode) {
+        for (final d in details) {
+          debugPrint(
+            '📊 ${d.label}: gap ${d.gapStartFmt}–${d.gapEndFmt} '
+            '(${d.gapDurationMin}min) | '
+            'transit → ${d.transitToMin ?? '?'}min | '
+            'transit ← ${d.transitFromMin ?? '?'}min',
+          );
+        }
+        if (latestArrivalMin > originalStartMin) {
+          debugPrint(
+            '🕐 Proposal shifted: '
+            '${proposal.startTime.hour}:${proposal.startTime.minute.toString().padLeft(2, '0')} → '
+            '${adjustedStart.hour}:${adjustedStart.minute.toString().padLeft(2, '0')} '
+            '(+${latestArrivalMin - originalStartMin}min travel)',
+          );
+        }
       }
 
       result.add(proposal.copyWith(
         startTime: adjustedStart,
         endTime: adjustedEnd,
+        memberDetails: details,
       ));
     }
 
@@ -524,7 +585,7 @@ class MeetingSuggestionNotifier extends Notifier<MeetingSuggestionState> {
       MeetingLocation? departure;
       int lastEndMin = -1;
       for (final task in tasks) {
-        if (!_taskOccursOnDate(task, targetDate)) continue;
+        if (!task.occursOn(targetDate)) continue;
         if (task.endTime == null) continue;
         final endMin = task.endTime!.hour * 60 + task.endTime!.minute;
         if (endMin > slotStartMin) continue;
@@ -544,7 +605,7 @@ class MeetingSuggestionNotifier extends Notifier<MeetingSuggestionState> {
       MeetingLocation? nextDest;
       int nextStartMin = 99999;
       for (final task in tasks) {
-        if (!_taskOccursOnDate(task, targetDate)) continue;
+        if (!task.occursOn(targetDate)) continue;
         if (task.startTime == null) continue;
         final startMin = task.startTime!.hour * 60 + task.startTime!.minute;
         if (startMin < slotEndMin) continue;
@@ -594,21 +655,6 @@ class MeetingSuggestionNotifier extends Notifier<MeetingSuggestionState> {
     return (sumLat / totalWeight, sumLng / totalWeight);
   }
 
-  /// Checks whether a task occurs on a given date.
-  bool _taskOccursOnDate(Task task, DateTime date) {
-    if (task.archived) return false;
-
-    if (task.oneTime) {
-      return task.startDate.year == date.year &&
-          task.startDate.month == date.month &&
-          task.startDate.day == date.day;
-    }
-
-    const weekdayKeys = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final key = weekdayKeys[date.weekday - 1];
-    return task.days[key] ?? false;
-  }
-
   /// Picks a place category keyword based on the hour of day.
   String _keywordForTimeOfDay(int hour) {
     if (hour < 11) return 'cafe';
@@ -645,7 +691,7 @@ class MeetingSuggestionNotifier extends Notifier<MeetingSuggestionState> {
       final tasks = memberSchedules[i];
       int nextStartMin = 99999;
       for (final task in tasks) {
-        if (!_taskOccursOnDate(task, targetDate)) continue;
+        if (!task.occursOn(targetDate)) continue;
         if (task.startTime == null) continue;
         final startMin = task.startTime!.hour * 60 + task.startTime!.minute;
         if (startMin >= slotEndMin && startMin < nextStartMin) {

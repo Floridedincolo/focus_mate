@@ -6,10 +6,10 @@ class TaskItem extends StatelessWidget {
   final Task task;
   final TaskCompletionStatus statusForSelectedDay;
   final VoidCallback? onMarkCompleted;
-
-  /// Called when the user taps the edit button or long-presses the card.
-  /// The parent is responsible for navigating to AddTaskMenu with [task].
   final VoidCallback? onEdit;
+
+  // Parametrul nou care va fi pasat de părintele Home
+  final bool isCurrentlyActive;
 
   const TaskItem({
     super.key,
@@ -17,6 +17,7 @@ class TaskItem extends StatelessWidget {
     required this.statusForSelectedDay,
     this.onMarkCompleted,
     this.onEdit,
+    this.isCurrentlyActive = false,
   });
 
   @override
@@ -28,6 +29,8 @@ class TaskItem extends StatelessWidget {
     Color accentColor;
     if (isCompleted) {
       accentColor = Colors.greenAccent;
+    } else if (isCurrentlyActive) {
+      accentColor = Colors.orangeAccent; // Cardul devine portocaliu dacă e task-ul de acum
     } else if (isMissed) {
       accentColor = Colors.redAccent;
     } else if (isFutureLocked) {
@@ -39,10 +42,10 @@ class TaskItem extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: isCurrentlyActive ? Colors.orange.withValues(alpha: 0.05) : const Color(0xFF1A1A1A),
         borderRadius: BorderRadius.circular(16),
         border: Border(
-          left: BorderSide(color: accentColor, width: 3),
+          left: BorderSide(color: accentColor, width: isCurrentlyActive ? 5 : 3),
         ),
       ),
       child: Material(
@@ -51,8 +54,7 @@ class TaskItem extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           onLongPress: onEdit,
           child: Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -67,10 +69,10 @@ class TaskItem extends StatelessWidget {
                       isCompleted
                           ? Icons.check_circle_rounded
                           : isMissed
-                              ? Icons.cancel_rounded
-                              : isFutureLocked
-                                  ? Icons.lock_outline
-                                  : Icons.radio_button_unchecked_rounded,
+                          ? Icons.cancel_rounded
+                          : isFutureLocked
+                          ? Icons.lock_outline
+                          : Icons.radio_button_unchecked_rounded,
                       key: ValueKey(statusForSelectedDay),
                       color: accentColor,
                       size: 26,
@@ -84,25 +86,45 @@ class TaskItem extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Title
-                      Text(
-                        task.title,
-                        style: TextStyle(
-                          color: isCompleted
-                              ? Colors.white54
-                              : isMissed
-                                  ? Colors.redAccent.withValues(alpha: 0.7)
-                                  : isFutureLocked
-                                      ? Colors.white38
-                                      : Colors.white,
-                          decoration: isCompleted
-                              ? TextDecoration.lineThrough
-                              : null,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      // Rândul cu Titlu și eticheta ÎN CURS
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              task.title,
+                              style: TextStyle(
+                                color: isCompleted
+                                    ? Colors.white54
+                                    : isMissed
+                                    ? Colors.redAccent.withValues(alpha: 0.7)
+                                    : isFutureLocked
+                                    ? Colors.white38
+                                    : isCurrentlyActive
+                                    ? Colors.orangeAccent
+                                    : Colors.white,
+                                decoration: isCompleted
+                                    ? TextDecoration.lineThrough
+                                    : null,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 15,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (isCurrentlyActive && !isCompleted)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.orangeAccent.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                "IN PROGRESS",
+                                style: TextStyle(color: Colors.orangeAccent, fontSize: 10, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                        ],
                       ),
 
                       const SizedBox(height: 4),
@@ -120,7 +142,7 @@ class TaskItem extends StatelessWidget {
                                 const SizedBox(width: 3),
                                 Text(
                                   "${task.startTime!.format(context)}"
-                                  "${task.endTime != null ? " – ${task.endTime!.format(context)}" : ""}",
+                                      "${task.endTime != null ? " – ${task.endTime!.format(context)}" : ""}",
                                   style: const TextStyle(
                                       color: Colors.white38, fontSize: 12),
                                 ),
@@ -132,8 +154,7 @@ class TaskItem extends StatelessWidget {
                               task.locationName != null &&
                               task.locationName!.isNotEmpty)
                             const Padding(
-                              padding:
-                                  EdgeInsets.symmetric(horizontal: 6),
+                              padding: EdgeInsets.symmetric(horizontal: 6),
                               child: Text('•',
                                   style: TextStyle(
                                       color: Colors.white24,

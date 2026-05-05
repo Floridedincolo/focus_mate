@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../app_detail_screen.dart';
 import '../models/app_category.dart';
 import '../models/enriched_usage_stats.dart';
 import 'stats_constants.dart';
@@ -37,52 +38,62 @@ class TopAppsCard extends StatelessWidget {
                 maxMinutes > 0 ? app.usageMinutes / maxMinutes : 0.0;
             final barColor = _barColorForCategory(app.category);
 
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Row(
-                children: [
-                  _buildAppIcon(app),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(app.appName,
-                                  style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w500),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis),
-                            ),
-                            _buildCategoryBadge(app.category),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(
-                            value: fraction.clamp(0.0, 1.0),
-                            minHeight: 4,
-                            backgroundColor:
-                                Colors.white.withValues(alpha: 0.06),
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(barColor),
-                          ),
-                        ),
-                      ],
-                    ),
+            return InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => AppDetailScreen(app: app),
                   ),
-                  const SizedBox(width: 12),
-                  Text(formatMinutes(app.usageMinutes),
-                      style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.7),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600)),
-                ],
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Row(
+                  children: [
+                    _buildAppIcon(app),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(app.appName,
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis),
+                              ),
+                              _buildCategoryBadge(app.category),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: fraction.clamp(0.0, 1.0),
+                              minHeight: 4,
+                              backgroundColor:
+                                  Colors.white.withValues(alpha: 0.06),
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(barColor),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(formatMinutes(app.usageMinutes),
+                        style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.7),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600)),
+                  ],
+                ),
               ),
             );
           }),

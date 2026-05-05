@@ -97,45 +97,77 @@ class _MainPageState extends ConsumerState<MainPage> {
         index: _selectedIndex,
         children: pages,
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.of(context).pushNamed('/add_task');
-        },
-        backgroundColor: accentColor,
-        child: const Icon(Icons.add),
+      floatingActionButton: Container(
+        width: 56,
+        height: 56,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              accentColor,
+              accentColor.withValues(alpha: 0.7),
+            ],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: accentColor.withValues(alpha: 0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(28),
+            onTap: () => Navigator.of(context).pushNamed('/add_task'),
+            child: const Icon(Icons.add, color: Colors.white, size: 26),
+          ),
+        ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: BottomAppBar(
-        color: bottomBarColor,
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 8.0,
-        child: SizedBox(
-          height: 60,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildNavItem(
-                icon: Icons.home,
-                label: 'Home',
-                index: 0,
-              ),
-              _buildNavItem(
-                icon: Icons.visibility,
-                label: 'Focus',
-                index: 1,
-              ),
-              const SizedBox(width: 48),
-              _buildNavItem(
-                icon: Icons.bar_chart,
-                label: 'Stats',
-                index: 2,
-              ),
-              _buildNavItem(
-                icon: Icons.person,
-                label: 'Profile',
-                index: 3,
-              ),
-            ],
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF141414),
+          border: Border(
+            top: BorderSide(color: Colors.white.withValues(alpha: 0.06)),
+          ),
+        ),
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: 64,
+            child: Row(
+              children: [
+                _buildNavItem(
+                  icon: Icons.home_outlined,
+                  activeIcon: Icons.home_rounded,
+                  label: 'Home',
+                  index: 0,
+                ),
+                _buildNavItem(
+                  icon: Icons.visibility_outlined,
+                  activeIcon: Icons.visibility,
+                  label: 'Focus',
+                  index: 1,
+                ),
+                const SizedBox(width: 64),
+                _buildNavItem(
+                  icon: Icons.bar_chart_outlined,
+                  activeIcon: Icons.bar_chart_rounded,
+                  label: 'Stats',
+                  index: 2,
+                ),
+                _buildNavItem(
+                  icon: Icons.person_outline,
+                  activeIcon: Icons.person_rounded,
+                  label: 'Profile',
+                  index: 3,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -144,25 +176,34 @@ class _MainPageState extends ConsumerState<MainPage> {
 
   Widget _buildNavItem({
     required IconData icon,
+    required IconData activeIcon,
     required String label,
     required int index,
   }) {
     final isActive = _selectedIndex == index;
     return Expanded(
       child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: () => _onItemTapped(index),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              color: isActive ? accentColor : Colors.grey,
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: Icon(
+                isActive ? activeIcon : icon,
+                key: ValueKey('${index}_$isActive'),
+                color: isActive ? Colors.white : Colors.white30,
+                size: 24,
+              ),
             ),
+            const SizedBox(height: 4),
             Text(
               label,
               style: TextStyle(
-                color: isActive ? accentColor : Colors.grey,
+                color: isActive ? Colors.white : Colors.white30,
                 fontSize: 10,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
               ),
             ),
           ],

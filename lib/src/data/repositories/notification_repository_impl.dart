@@ -1,9 +1,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../domain/entities/reminder.dart';
 import '../../domain/entities/task.dart';
 import '../../domain/repositories/notification_repository.dart';
 import '../datasources/notification_service.dart';
+import '../../presentation/widgets/alarm_debug_overlay.dart';
 
 class NotificationRepositoryImpl implements NotificationRepository {
   final NotificationService _service;
@@ -43,16 +45,24 @@ class NotificationRepositoryImpl implements NotificationRepository {
 
   @override
   Future<void> scheduleAllNotifications(List<Task> tasks) async {
-    await _service.cancelAll();
+    try {
+      await _service.cancelAll();
+    } catch (e) {
+      AlarmDebugLog.log('cancelAll failed (continuing): $e');
+      debugPrint('[NOTIF] cancelAll failed (continuing): $e');
+    }
 
+    AlarmDebugLog.log('scheduleAll called, ${tasks.length} tasks');
     debugPrint('[NOTIF] scheduleAllNotifications called with ${tasks.length} tasks');
 
     int idCounter = 0;
     for (final task in tasks) {
+      AlarmDebugLog.log('Task "${task.title}" oneTime=${task.oneTime} reminders=${task.reminders.length}');
       debugPrint('[NOTIF] Task "${task.title}" oneTime=${task.oneTime} '
           'startDate=${task.startDate} reminders=${task.reminders.length}');
 
       for (final reminder in task.reminders) {
+        AlarmDebugLog.log('  Reminder ${reminder.time.hour}:${reminder.time.minute} type=${reminder.type} days=${reminder.days}');
         debugPrint('[NOTIF]   Reminder time=${reminder.time.hour}:${reminder.time.minute} '
             'days=${reminder.days}');
 
@@ -60,18 +70,31 @@ class NotificationRepositoryImpl implements NotificationRepository {
             ? 'Time for: ${task.title}'
             : reminder.message;
 
+        final isAlarm = reminder.type == ReminderType.alarm;
+        AlarmDebugLog.log('  isAlarm=$isAlarm');
+
         if (task.oneTime) {
-          debugPrint('[NOTIF]   -> Scheduling ONE-TIME for ${task.startDate} '
-              'at ${reminder.time.hour}:${reminder.time.minute}');
-          // One-time task: schedule a single non-repeating notification
-          await _service.scheduleOneTimeNotification(
-            id: idCounter++,
-            title: task.title,
-            body: body,
-            scheduledDate: task.startDate,
-            hour: reminder.time.hour,
-            minute: reminder.time.minute,
-          );
+          debugPrint('[NOTIF]   -> Scheduling ONE-TIME ${isAlarm ? "ALARM" : "NOTIF"} '
+              'for ${task.startDate} at ${reminder.time.hour}:${reminder.time.minute}');
+          if (isAlarm) {
+            await _service.scheduleOneTimeAlarm(
+              id: idCounter++,
+              title: task.title,
+              body: body,
+              scheduledDate: task.startDate,
+              hour: reminder.time.hour,
+              minute: reminder.time.minute,
+            );
+          } else {
+            await _service.scheduleOneTimeNotification(
+              id: idCounter++,
+              title: task.title,
+              body: body,
+              scheduledDate: task.startDate,
+              hour: reminder.time.hour,
+              minute: reminder.time.minute,
+            );
+          }
         } else {
           // Recurring task: schedule weekly for each active day
           for (final entry in reminder.days.entries) {
@@ -79,14 +102,25 @@ class NotificationRepositoryImpl implements NotificationRepository {
             final weekday = _dayToWeekday(entry.key);
             if (weekday == null) continue;
 
-            await _service.scheduleWeeklyNotification(
-              id: idCounter++,
-              title: task.title,
-              body: body,
-              hour: reminder.time.hour,
-              minute: reminder.time.minute,
-              weekday: weekday,
-            );
+            if (isAlarm) {
+              await _service.scheduleWeeklyAlarm(
+                id: idCounter++,
+                title: task.title,
+                body: body,
+                hour: reminder.time.hour,
+                minute: reminder.time.minute,
+                weekday: weekday,
+              );
+            } else {
+              await _service.scheduleWeeklyNotification(
+                id: idCounter++,
+                title: task.title,
+                body: body,
+                hour: reminder.time.hour,
+                minute: reminder.time.minute,
+                weekday: weekday,
+              );
+            }
           }
         }
       }

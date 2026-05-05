@@ -16,6 +16,7 @@ import android.os.Looper
 import android.view.Gravity
 import android.graphics.drawable.Drawable
 import android.graphics.Color
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
@@ -24,9 +25,10 @@ import android.graphics.drawable.GradientDrawable
 import android.widget.LinearLayout.LayoutParams
 import android.widget.Button
 import android.view.animation.AccelerateDecelerateInterpolator
-import android.content.BroadcastReceiver
-import android.content.IntentFilter
-import android.content.SharedPreferences
+import android.net.Uri
+import android.view.accessibility.AccessibilityNodeInfo
+import org.json.JSONArray
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -38,181 +40,389 @@ class AppBlockService : AccessibilityService() {
     private var overlayShown = false
     private var lastActionTime = 0L
 
-    companion object {
-        /** SharedPreferences key prefix for daily prevented-distractions counters.
-         *  Full key example: "prevented_distractions_2026-04-01" */
-        const val PREF_PREVENTED_PREFIX = "prevented_distractions_"
+    // Variabile pentru verificarea periodică (Heartbeat)
+    private var lastPackageSeen: String? = null
+    private val handler = Handler(Looper.getMainLooper())
+    private var tickRunnable: Runnable? = null
 
+    companion object {
+        const val PREF_PREVENTED_PREFIX = "prevented_distractions_"
         val dayFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
 
-        // Packages that must NEVER be blocked regardless of whitelist/blacklist mode.
-        // Blocking these would lock the user out of their device.
-        private val SYSTEM_EXEMPT_PACKAGES = setOf(
-            "com.example.focus_mate",                    // Our own app
-            "com.google.android.apps.nexuslauncher",     // Pixel launcher
-            "com.sec.android.app.launcher",              // Samsung launcher
-            "com.miui.home",                             // Xiaomi launcher
-            "com.huawei.android.launcher",               // Huawei launcher
-            "com.oppo.launcher",                         // Oppo launcher
-            "com.android.launcher",                      // AOSP launcher
-            "com.android.launcher3",                     // AOSP launcher 3
-            "com.android.settings",                      // System settings
-            "com.android.systemui",                      // System UI
-            "com.android.phone",                         // Phone / dialer
-            "com.android.server.telecom",                // Telecom
-            "com.android.emergency",                     // Emergency info
-            "com.google.android.inputmethod.latin",      // Gboard
-            "com.samsung.android.honeyboard",            // Samsung keyboard
-            "com.swiftkey.languageprovider",             // SwiftKey
-            "com.touchtype.swiftkey",                    // SwiftKey (alt package)
-            "com.android.inputmethod.latin",             // AOSP keyboard
+        // Safety net: propriul app nu se blochează niciodată pe sine.
+        private val ALWAYS_EXEMPT = setOf("com.example.focus_mate")
+
+        // Browser package → URL bar view ID(s)
+        private val BROWSER_URL_BAR_IDS = mapOf(
+            "com.android.chrome" to listOf("com.android.chrome:id/url_bar", "com.android.chrome:id/omnibox_text"),
+            "org.mozilla.firefox" to listOf("org.mozilla.firefox:id/mozac_browser_toolbar_url_view"),
+            "org.mozilla.firefox_beta" to listOf("org.mozilla.firefox_beta:id/mozac_browser_toolbar_url_view"),
+            "com.opera.browser" to listOf("com.opera.browser:id/url_field"),
+            "com.opera.mini.native" to listOf("com.opera.mini.native:id/url_field"),
+            "com.brave.browser" to listOf("com.brave.browser:id/url_bar"),
+            "com.microsoft.emmx" to listOf("com.microsoft.emmx:id/url_bar"),
+            "com.sec.android.app.sbrowser" to listOf("com.sec.android.app.sbrowser:id/location_bar_edit_text"),
+            "com.UCMobile.intl" to listOf("com.UCMobile.intl:id/title_bar_input"),
+            "com.vivaldi.browser" to listOf("com.vivaldi.browser:id/url_bar"),
+        )
+
+        private val MOTIVATIONAL_SEARCHES = listOf(
+            "productivity tips for students",
+            "how to stay focused while studying",
+            "motivational quotes for success",
+            "benefits of deep work",
+            "focus techniques pomodoro",
+            "how to beat procrastination",
+            "growth mindset tips",
+            "best study habits",
+            "importance of discipline",
+            "how to build good habits",
         )
     }
 
-    private var blockedApps: MutableSet<String> = mutableSetOf()
-    private var isWhitelist: Boolean = false
+    // Cache pentru a nu interoga PackageManager la fiecare tick.
+    private var cachedHomePackages: Set<String> = emptySet()
+    private var cachedHomePackagesAt: Long = 0L
+    private val exemptDecisionCache = HashMap<String, Boolean>()
+
+    private fun getHomePackages(): Set<String> {
+        val now = System.currentTimeMillis()
+        // Reîmprospătăm la fiecare 30s în caz că userul schimbă launcherul.
+        if (now - cachedHomePackagesAt < 30_000L && cachedHomePackages.isNotEmpty()) {
+            return cachedHomePackages
+        }
+        val result = mutableSetOf<String>()
+        try {
+            val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+            val resolvers = packageManager.queryIntentActivities(homeIntent, 0)
+            for (ri in resolvers) {
+                ri.activityInfo?.packageName?.let { result.add(it) }
+            }
+        } catch (e: Exception) {
+            Log.e("AppAccessibilityService", "❌ Eroare la enumerarea launcherelor: ${e.message}")
+        }
+        cachedHomePackages = result
+        cachedHomePackagesAt = now
+        return result
+    }
+
+    private fun getCurrentImePackage(): String? {
+        return try {
+            val imeId = Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
+            // imeId are forma "package/.ServiceName"
+            imeId?.substringBefore('/')?.takeIf { it.isNotBlank() }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun isSystemExempt(packageName: String): Boolean {
+        if (packageName in ALWAYS_EXEMPT) return true
+
+        exemptDecisionCache[packageName]?.let { return it }
+
+        // 1) Launcherul implicit / orice home app instalat.
+        if (packageName in getHomePackages()) {
+            exemptDecisionCache[packageName] = true
+            return true
+        }
+
+        // 2) Tastatura activă.
+        if (packageName == getCurrentImePackage()) {
+            exemptDecisionCache[packageName] = true
+            return true
+        }
+
+        // 3) Pachete fără icon de lansare = componente de sistem invizibile userului
+        //    (Android System, SystemUI, servicii Google Play, overlay-uri OEM etc.).
+        val hasLauncherIcon = try {
+            packageManager.getLaunchIntentForPackage(packageName) != null
+        } catch (e: Exception) {
+            false
+        }
+        if (!hasLauncherIcon) {
+            exemptDecisionCache[packageName] = true
+            return true
+        }
+
+        // 4) App preinstalat de OEM care NU a fost updatat prin Play Store
+        //    → componentă OS (Honor Home, Honor Search, Settings, Gallery OEM etc.).
+        //    YouTube, Chrome, Gmail etc. sunt FLAG_SYSTEM + FLAG_UPDATED_SYSTEM_APP
+        //    pe majoritatea telefoanelor → NU sunt exempte → rămân blocabile.
+        try {
+            val ai = packageManager.getApplicationInfo(packageName, 0)
+            val isSystem = (ai.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+            val isUpdatedSystem = (ai.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+            if (isSystem && !isUpdatedSystem) {
+                exemptDecisionCache[packageName] = true
+                return true
+            }
+        } catch (e: Exception) {
+            // Dacă nu putem determina, preferăm să NU exceptăm (fail-closed pe blocare).
+        }
+
+        exemptDecisionCache[packageName] = false
+        return false
+    }
+
+    private var lastWebBlockTime = 0L
+    private var lastRedirectTime = 0L
+
+    private fun isBrowser(packageName: String): Boolean = BROWSER_URL_BAR_IDS.containsKey(packageName)
+
+    private fun extractUrlFromBrowser(packageName: String): String? {
+        val root = rootInActiveWindow ?: return null
+        try {
+            val viewIds = BROWSER_URL_BAR_IDS[packageName] ?: return null
+            for (viewId in viewIds) {
+                val nodes = root.findAccessibilityNodeInfosByViewId(viewId)
+                if (!nodes.isNullOrEmpty()) {
+                    val text = nodes[0].text?.toString()
+                    if (!text.isNullOrBlank()) return text
+                }
+            }
+            // Fallback: traverse all nodes looking for URL-like content in EditText
+            return findUrlInNodeTree(root)
+        } catch (e: Exception) {
+            Log.e("AppAccessibilityService", "❌ Eroare la extragerea URL: ${e.message}")
+            return null
+        } finally {
+            root.recycle()
+        }
+    }
+
+    private fun findUrlInNodeTree(node: AccessibilityNodeInfo): String? {
+        val text = node.text?.toString()
+        if (text != null && node.className?.toString() == "android.widget.EditText") {
+            if (text.contains(".") && !text.contains(" ")) return text
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val result = findUrlInNodeTree(child)
+            child.recycle()
+            if (result != null) return result
+        }
+        return null
+    }
+
+    /**
+     * Extracts just the host (domain) portion from a URL string.
+     * Handles both full URLs (https://example.com/path?q=x) and
+     * bare domains (example.com) as shown in browser URL bars.
+     */
+    private fun extractHost(url: String): String {
+        val withoutProtocol = url.replace(Regex("^https?://"), "")
+        return withoutProtocol.substringBefore("/").substringBefore("?").substringBefore("#")
+    }
+
+    private fun urlMatchesBlockedSite(url: String, blockedWebsites: List<String>, blockedKeywords: List<String>): Boolean {
+        val urlLower = url.lowercase()
+
+        for (site in blockedWebsites) {
+            if (urlLower.contains(site.lowercase())) return true
+        }
+        for (keyword in blockedKeywords) {
+            if (urlLower.contains(keyword.lowercase())) return true
+        }
+        return false
+    }
+
+    private fun redirectToMotivationalSearch() {
+        val query = MOTIVATIONAL_SEARCHES.random()
+        val searchUrl = "https://www.google.com/search?q=${Uri.encode(query)}"
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(searchUrl)).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        try {
+            lastRedirectTime = System.currentTimeMillis()
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.e("AppAccessibilityService", "❌ Eroare la redirect: ${e.message}")
+            sendUserToHome()
+        }
+    }
+
+    private var scheduledBlocks: JSONArray = JSONArray()
     private var currentTaskName: String? = null
-    private var updateReceiver: BroadcastReceiver? = null
-    private var prefsListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
+    private var currentTaskStartTimeMs: Long = 0L
+    private var currentTaskEndTimeMs: Long = 0L
+    private var lastFileModified = 0L
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        try {
-            loadBlockedApps()
-            // Înregistrăm receiver-ul AICI pentru a asigura că este activ când serviciul este conectat
-            if (updateReceiver == null) {
-                registerUpdateReceiver()
+        Log.d("AppAccessibilityService", "🔌 Serviciu conectat – Monitorizare activă!")
+        checkAndLoadSchedule()
+        startPeriodicCheck()
+    }
+
+    // Pornește un timer care verifică aplicația curentă la fiecare 3 secunde
+    private fun startPeriodicCheck() {
+        tickRunnable = object : Runnable {
+            override fun run() {
+                lastPackageSeen?.let { pkg ->
+                    checkBlockingLogic(pkg)
+                }
+                handler.postDelayed(this, 3000)
             }
-            // Înregistrăm un listener pentru SharedPreferences ca fallback robust
-            val prefs = getSharedPreferences("focus_mate_prefs", Context.MODE_PRIVATE)
-            prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPrefs, key ->
-                if (key == "blocked_apps" || key == "current_task_name" || key == "is_whitelist") {
-                    Log.d("AppAccessibilityService", "🔔 SharedPreferences change detected for key: $key")
-                    val oldSize = blockedApps.size
-                    loadBlockedApps()
-                    Log.d("AppAccessibilityService", "🔄 Blocked apps refreshed via prefs listener: $oldSize → ${blockedApps.size} apps, task: $currentTaskName")
+        }
+        handler.post(tickRunnable!!)
+    }
+
+    private fun checkAndLoadSchedule() {
+        try {
+            val file = File(filesDir, "schedule.json")
+            if (file.exists()) {
+                val currentModified = file.lastModified()
+                if (currentModified > lastFileModified) {
+                    val jsonString = file.readText()
+                    scheduledBlocks = JSONArray(jsonString)
+                    lastFileModified = currentModified
+                    Log.d("AppAccessibilityService", "📄 Orar sincronizat! (${scheduledBlocks.length()} ferestre)")
                 }
             }
-            prefsListener?.let { prefs.registerOnSharedPreferenceChangeListener(it) }
-            Log.d("AppAccessibilityService", "🔌 Service connected – blocked apps reloaded, receiver registered")
         } catch (e: Exception) {
-            Log.e("AppAccessibilityService", "❌ Error in onServiceConnected: ${e.message}", e)
-        }
-    }
-
-    private fun loadBlockedApps() {
-        val prefs: SharedPreferences = getSharedPreferences("focus_mate_prefs", Context.MODE_PRIVATE)
-        blockedApps = prefs.getStringSet("blocked_apps", setOf())?.toMutableSet() ?: mutableSetOf()
-        isWhitelist = prefs.getBoolean("is_whitelist", false)
-        currentTaskName = prefs.getString("current_task_name", null)
-        Log.d("AppAccessibilityService", "📋 Loaded ${blockedApps.size} apps, whitelist=$isWhitelist")
-        Log.d("AppAccessibilityService", "📋 Current task name: $currentTaskName")
-    }
-
-    private fun registerUpdateReceiver() {
-        updateReceiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                if (intent?.action == "com.example.focus_mate.UPDATE_BLOCKED_APPS") {
-                    Log.d("AppAccessibilityService", "📡 Received UPDATE_BLOCKED_APPS broadcast")
-                    val oldSize = blockedApps.size
-                    loadBlockedApps()
-                    Log.d(
-                        "AppAccessibilityService",
-                        "🔄 Blocked apps refreshed: $oldSize → ${blockedApps.size} apps"
-                    )
-                    blockedApps.forEach {
-                        Log.d("AppAccessibilityService", "  ✓ Now blocking: $it")
-                    }
-                }
-            }
-        }
-
-        val filter = IntentFilter("com.example.focus_mate.UPDATE_BLOCKED_APPS")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(updateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(updateReceiver, filter)
-        }
-        Log.d("AppAccessibilityService", " BroadcastReceiver registered for UPDATE_BLOCKED_APPS")
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        try {
-            updateReceiver?.let {
-                unregisterReceiver(it)
-                updateReceiver = null
-            }
-            // Unregister prefs listener
-            try {
-                val prefs = getSharedPreferences("focus_mate_prefs", Context.MODE_PRIVATE)
-                prefsListener?.let { prefs.unregisterOnSharedPreferenceChangeListener(it) }
-                prefsListener = null
-            } catch (_: Exception) { }
-            removeOverlay()
-            Log.d("AppAccessibilityService", "🔴 Service destroyed - cleanup completed")
-        } catch (e: Exception) {
-            Log.e("AppAccessibilityService", "❌ Error in onDestroy: ${e.message}", e)
+            Log.e("AppAccessibilityService", "❌ Eroare la citirea orarului: ${e.message}")
         }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         try {
-            if (blockedApps.isEmpty()) {
-                loadBlockedApps()
-            }
-
             if (event == null) return
-            if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
 
             val packageName = event.packageName?.toString() ?: return
-            Log.d("AppAccessibilityService", "Foreground app: $packageName, whitelist=$isWhitelist")
 
-            // Never block system-exempt packages
-            if (SYSTEM_EXEMPT_PACKAGES.contains(packageName)) return
-
-            val shouldBlock = if (isWhitelist) {
-                // Whitelist mode: block everything NOT in the list
-                !blockedApps.contains(packageName)
-            } else {
-                // Blacklist mode: block only what IS in the list
-                blockedApps.contains(packageName)
-            }
-
-            Log.d("AppAccessibilityService", "Should block $packageName? $shouldBlock")
-
-            if (shouldBlock) {
-                val now = System.currentTimeMillis()
-                if (now - lastActionTime < 1000) return
-                lastActionTime = now
-
-                // Increment daily prevented-distractions counter
-                incrementPreventedDistractions()
-
-                Log.d("AppAccessibilityService", "🚫 Blocked app detected → HOME + OVERLAY")
-                // Show overlay first
-                showOverlay(packageName)
-                // Apoi trimitem user-ul acasă cu delay
-                Handler(Looper.getMainLooper()).postDelayed({
-                    sendUserToHome()
-                }, 100)
+            when (event.eventType) {
+                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                    lastPackageSeen = packageName
+                    checkBlockingLogic(packageName)
+                }
+                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
+                    // Only process content changes in browsers (URL navigation)
+                    if (isBrowser(packageName)) {
+                        lastPackageSeen = packageName
+                        checkBlockingLogic(packageName)
+                    }
+                }
             }
         } catch (e: Exception) {
-            Log.e("AppAccessibilityService", "❌ Error in onAccessibilityEvent: ${e.message}", e)
-            // Nu aruncăm excepția mai departe - serviciul trebuie să continue să funcționeze
+            Log.e("AppAccessibilityService", "❌ Eroare în onAccessibilityEvent: ${e.message}")
         }
     }
 
-    /** Increment the daily prevented-distractions counter in SharedPreferences. */
-    private fun incrementPreventedDistractions() {
+    private fun checkBlockingLogic(packageName: String) {
+        if (isSystemExempt(packageName)) return
+
+        checkAndLoadSchedule()
+
+        val now = System.currentTimeMillis()
+        var shouldBlockApp = false
+        var shouldBlockWeb = false
+        var foundTaskName: String? = null
+        var foundStartMs = 0L
+        var foundEndMs = 0L
+
+        for (i in 0 until scheduledBlocks.length()) {
+            val block = scheduledBlocks.getJSONObject(i)
+            val startMs = block.getLong("startMs")
+            val endMs = block.getLong("endMs")
+
+            if (now in startMs until endMs) {
+                // Check app blocking
+                val isWhitelist = block.getBoolean("isWhitelist")
+                val appsArray = block.getJSONArray("apps")
+                val blockedApps = mutableSetOf<String>()
+                for (j in 0 until appsArray.length()) { blockedApps.add(appsArray.getString(j)) }
+
+                val isAppBlocked = if (isWhitelist) !blockedApps.contains(packageName) else blockedApps.contains(packageName)
+
+                if (isAppBlocked) {
+                    shouldBlockApp = true
+                    foundTaskName = block.getString("taskName")
+                    foundStartMs = startMs
+                    foundEndMs = endMs
+                    break
+                }
+
+                // Check website/keyword blocking (only if current app is a browser)
+                // Skip if we just redirected to a motivational search (avoid loop)
+                if (isBrowser(packageName) && (now - lastRedirectTime > 10_000L)) {
+                    val websitesArray = block.optJSONArray("blockedWebsites")
+                    val keywordsArray = block.optJSONArray("blockedKeywords")
+                    val blockedWebsites = mutableListOf<String>()
+                    val blockedKeywords = mutableListOf<String>()
+                    if (websitesArray != null) {
+                        for (j in 0 until websitesArray.length()) blockedWebsites.add(websitesArray.getString(j))
+                    }
+                    if (keywordsArray != null) {
+                        for (j in 0 until keywordsArray.length()) blockedKeywords.add(keywordsArray.getString(j))
+                    }
+
+                    if (blockedWebsites.isNotEmpty() || blockedKeywords.isNotEmpty()) {
+                        val url = extractUrlFromBrowser(packageName)
+                        if (url != null && urlMatchesBlockedSite(url, blockedWebsites, blockedKeywords)) {
+                            shouldBlockWeb = true
+                            foundTaskName = block.getString("taskName")
+                            foundStartMs = startMs
+                            foundEndMs = endMs
+                            break
+                        }
+                    }
+                }
+            }
+        }
+
+        if (shouldBlockApp) {
+            currentTaskName = foundTaskName
+            currentTaskStartTimeMs = foundStartMs
+            currentTaskEndTimeMs = foundEndMs
+
+            if (now - lastActionTime < 5000) return
+            lastActionTime = now
+
+            Log.d("AppAccessibilityService", "🚫 Blocare app executată pentru $packageName la ora ${Date(now)}")
+
+            val preventedCount = incrementPreventedDistractions()
+            showOverlay(packageName, preventedCount)
+            Handler(Looper.getMainLooper()).postDelayed({ sendUserToHome() }, 100)
+        } else if (shouldBlockWeb) {
+            currentTaskName = foundTaskName
+            currentTaskStartTimeMs = foundStartMs
+            currentTaskEndTimeMs = foundEndMs
+
+            if (now - lastWebBlockTime < 5000) return
+            lastWebBlockTime = now
+
+            Log.d("AppAccessibilityService", "🚫 Blocare website executată în $packageName la ora ${Date(now)}")
+
+            val preventedCount = incrementPreventedDistractions()
+            val url = extractUrlFromBrowser(packageName)
+            val siteName = if (url != null) extractHost(url) else "Website"
+            showWebOverlay(siteName, preventedCount)
+        }
+    }
+
+    // AICI E MAGIA NOUĂ: Salvăm atât totalul pe zi, cât și totalul pe ora exactă!
+    private fun incrementPreventedDistractions(): Int {
         try {
-            val prefs = getSharedPreferences("focus_mate_prefs", Context.MODE_PRIVATE)
-            val todayKey = PREF_PREVENTED_PREFIX + dayFormat.format(Date())
-            val current = prefs.getInt(todayKey, 0)
-            prefs.edit().putInt(todayKey, current + 1).apply()
-            Log.d("AppAccessibilityService", "🛡️ Prevented distractions today: ${current + 1}")
+            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val now = Date()
+
+            // 1. Găleata mare (Totalul pe Zi)
+            val todayStr = dayFormat.format(now)
+            val todayKey = "flutter." + PREF_PREVENTED_PREFIX + todayStr
+            val currentTotal = prefs.getInt(todayKey, 0)
+            val newTotal = currentTotal + 1
+            prefs.edit().putInt(todayKey, newTotal).apply()
+
+            // 2. Găleata mică (Totalul pe Ora curentă)
+            val hourStr = SimpleDateFormat("HH", Locale.US).format(now) // returnează "00", "01" ... "23"
+            val hourKey = todayKey + "_" + hourStr
+            val currentHourly = prefs.getInt(hourKey, 0)
+            prefs.edit().putInt(hourKey, currentHourly + 1).apply()
+
+            return newTotal // Pentru a-l afișa pe ecranul de overlay
         } catch (e: Exception) {
-            Log.e("AppAccessibilityService", "❌ Error incrementing prevented count: ${e.message}")
+            return 1
         }
     }
 
@@ -225,52 +435,17 @@ class AppBlockService : AccessibilityService() {
     }
 
     private fun loadAppIconAndLabel(pkg: String): Pair<Drawable?, String?> {
-        var icon: Drawable? = null
-        var label: String? = null
-
-        try {
-            icon = packageManager.getApplicationIcon(pkg)
-            label = packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0))?.toString()
-            return Pair(icon, label)
-        } catch (_: Exception) {}
-
-        try {
-            val ai = packageManager.getApplicationInfo(pkg, PackageManager.GET_META_DATA)
-            icon = ai.loadIcon(packageManager)
-            label = ai.loadLabel(packageManager)?.toString()
-            return Pair(icon, label)
-        } catch (_: Exception) {}
-
-        try {
-            val pkgContext = createPackageContext(pkg, Context.CONTEXT_IGNORE_SECURITY or Context.CONTEXT_INCLUDE_CODE)
-            icon = pkgContext.packageManager.getApplicationIcon(pkg)
-            label = pkgContext.packageManager.getApplicationLabel(pkgContext.packageManager.getApplicationInfo(pkg, 0))?.toString()
-            return Pair(icon, label)
-        } catch (_: Exception) {}
-
+        try { return Pair(packageManager.getApplicationIcon(pkg), packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0))?.toString()) } catch (e: Exception) {}
         return Pair(null, null)
     }
 
-    private fun showOverlay(packageName: String) {
-        if (overlayShown) {
-            Log.d("AppAccessibilityService", "⚠️ Overlay already shown, skipping")
-            return
-        }
-
-        // 1️⃣ Verifică permisiunea overlay
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-            Log.e("AppAccessibilityService", "❌ OVERLAY PERMISSION MISSING! Cannot show overlay.")
-            Log.e("AppAccessibilityService", "⚠️ Please enable 'Display over other apps' permission in Settings → Apps → FocusMate → Permissions")
-            return
-        }
-
-        Log.d("AppAccessibilityService", " Overlay permission granted, showing overlay for: $packageName")
+    private fun showOverlay(packageName: String, preventedCount: Int) {
+        if (overlayShown) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) return
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         val scale = resources.displayMetrics.density
-
         val (iconDrawable, appLabel) = loadAppIconAndLabel(packageName)
-        val appName = appLabel ?: "Aplicație"
 
         val backdrop = FrameLayout(this).apply {
             setBackgroundColor(Color.parseColor("#AA000000"))
@@ -281,171 +456,224 @@ class AppBlockService : AccessibilityService() {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            val bg = GradientDrawable().apply {
+            background = GradientDrawable().apply {
                 cornerRadius = 36f * scale
                 setColor(Color.parseColor("#22FFFFFF"))
                 setStroke((1 * scale).toInt(), Color.parseColor("#33FFFFFF"))
             }
-            background = bg
             setPadding((32 * scale).toInt(), (48 * scale).toInt(), (32 * scale).toInt(), (40 * scale).toInt())
-            layoutParams = FrameLayout.LayoutParams(
-                (320 * scale).toInt(),
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER
-            )
+            layoutParams = FrameLayout.LayoutParams((320 * scale).toInt(), FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
         }
 
-        val iconView = ImageView(this).apply {
-            setImageDrawable(iconDrawable)
-            layoutParams = LinearLayout.LayoutParams((72 * scale).toInt(), (72 * scale).toInt()).apply {
-                bottomMargin = (24 * scale).toInt()
-            }
+        iconDrawable?.let {
+            card.addView(ImageView(this).apply {
+                setImageDrawable(it)
+                layoutParams = LinearLayout.LayoutParams((72 * scale).toInt(), (72 * scale).toInt()).apply { bottomMargin = (24 * scale).toInt() }
+            })
         }
-        card.addView(iconView)
 
-        // Citește numele task-ului curent din SharedPreferences (setat de Flutter)
-        val taskName = currentTaskName
-
-        val title = TextView(this).apply {
-            text = "$appName is blocked"
+        card.addView(TextView(this).apply {
+            text = "${appLabel ?: "App"} is blocked right now"
             textSize = 22f
             setTextColor(Color.WHITE)
             typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
             gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = (12 * scale).toInt()
-            }
-        }
-        card.addView(title)
+            layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { bottomMargin = (12 * scale).toInt() }
+        })
 
-        // Afișează numele task-ului dacă este disponibil
-        if (!taskName.isNullOrBlank()) {
-            val focusLabel = TextView(this).apply {
-                text = "You should focus on:"
-                textSize = 14f
-                setTextColor(Color.parseColor("#AAFFFFFF"))
-                gravity = Gravity.CENTER
-                typeface = android.graphics.Typeface.create("sans-serif-light", android.graphics.Typeface.NORMAL)
-                layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                    topMargin = (8 * scale).toInt()
-                }
-            }
-            card.addView(focusLabel)
-
-            val taskNameView = TextView(this).apply {
-                text = taskName
-                textSize = 18f
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
+        if (!currentTaskName.isNullOrBlank()) {
+            card.addView(TextView(this).apply {
+                text = "You need to focus on:"
+                textSize = 14f; setTextColor(Color.parseColor("#AAFFFFFF")); gravity = Gravity.CENTER
+            })
+            card.addView(TextView(this).apply {
+                text = currentTaskName
+                textSize = 18f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
                 typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
-                layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                    topMargin = (4 * scale).toInt()
-                    bottomMargin = (32 * scale).toInt()
-                }
-            }
-            card.addView(taskNameView)
-        } else {
-            val subtitle = TextView(this).apply {
-                text = "by Focus Mate"
-                textSize = 16f
-                setTextColor(Color.parseColor("#AAFFFFFF"))
-                gravity = Gravity.CENTER
-                typeface = android.graphics.Typeface.create("sans-serif-light", android.graphics.Typeface.NORMAL)
-                layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                    bottomMargin = (32 * scale).toInt()
-                }
-            }
-            card.addView(subtitle)
+                layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { topMargin = (4 * scale).toInt(); bottomMargin = (4 * scale).toInt() }
+            })
+
+            val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+            val startTimeStr = timeFormat.format(Date(currentTaskStartTimeMs))
+            val endTimeStr = timeFormat.format(Date(currentTaskEndTimeMs))
+
+            card.addView(TextView(this).apply {
+                text = "$startTimeStr - $endTimeStr"
+                textSize = 14f; setTextColor(Color.parseColor("#FFA726")); gravity = Gravity.CENTER
+                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+                layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { bottomMargin = (24 * scale).toInt() }
+            })
         }
 
-        val btnExit = Button(this).apply {
-            text = "Go Back"
+        card.addView(TextView(this).apply {
+            text = "Distractions prevented today: $preventedCount"
+            textSize = 12f
+            setTextColor(Color.parseColor("#88FFFFFF"))
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = (24 * scale).toInt()
+            }
+        })
+
+        card.addView(Button(this).apply {
+            text = "OK"
             setTextColor(Color.BLACK)
             isAllCaps = false
             textSize = 16f
             typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
-            val btnBg = GradientDrawable().apply {
+            background = GradientDrawable().apply {
                 cornerRadius = 24f * scale
                 setColor(Color.WHITE)
             }
-            background = btnBg
-            elevation = 8f * scale
             layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, (58 * scale).toInt()).apply {
                 bottomMargin = (16 * scale).toInt()
             }
             setOnClickListener { removeOverlay() }
-        }
-        card.addView(btnExit)
-
-        val btnContinue = TextView(this).apply {
-            text = "I need 2 minutes"
-            textSize = 14f
-            setTextColor(Color.parseColor("#88FFFFFF"))
-            gravity = Gravity.CENTER
-            setPadding(0, (12 * scale).toInt(), 0, (12 * scale).toInt())
-            setOnClickListener {
-                this.text = "Wait 5 seconds..."
-                this.isEnabled = false
-                Handler(Looper.getMainLooper()).postDelayed({
-                    removeOverlay()
-                }, 5000)
-            }
-        }
-        //card.addView(btnContinue)
+        })
 
         backdrop.addView(card)
 
         val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
-                    WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM,
             PixelFormat.TRANSLUCENT
         )
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            params.blurBehindRadius = 60
-            params.flags = params.flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
-        }
-
         try {
             windowManager?.addView(backdrop, params)
-            overlayView = backdrop
-            overlayShown = true
-
-            card.alpha = 0f
-            card.scaleX = 0.85f
-            card.scaleY = 0.85f
-            card.animate()
-                .alpha(1f)
-                .scaleX(1f)
-                .scaleY(1f)
-                .setDuration(450)
-                .setInterpolator(AccelerateDecelerateInterpolator())
-                .start()
-
-        } catch (e: Exception) {
-            Log.e("FocusMate", "Nu s-a putut afișa overlay-ul: ${e.message}")
-            overlayShown = false
-        }
+            overlayView = backdrop; overlayShown = true
+            card.alpha = 0f; card.scaleX = 0.85f; card.scaleY = 0.85f
+            card.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(450).setInterpolator(AccelerateDecelerateInterpolator()).start()
+        } catch (e: Exception) { overlayShown = false }
     }
 
     private fun removeOverlay() {
         if (!overlayShown) return
-        try {
-            windowManager?.removeViewImmediate(overlayView)
-        } catch (e: Exception) {
-            Log.w("AppAccessibilityService", "Error removing overlay: ${e.message}")
-            try { if (overlayView != null) windowManager?.removeView(overlayView) } catch (_: Exception) {}
-        }
-        overlayView = null
-        overlayShown = false
-        Log.d("AppAccessibilityService", "Overlay removed")
+        try { windowManager?.removeViewImmediate(overlayView) } catch (e: Exception) {}
+        overlayView = null; overlayShown = false
     }
 
-    override fun onInterrupt() {
+    private fun showWebOverlay(siteName: String, preventedCount: Int) {
+        if (overlayShown) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            redirectToMotivationalSearch()
+            return
+        }
+
+        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        val scale = resources.displayMetrics.density
+
+        val backdrop = FrameLayout(this).apply {
+            setBackgroundColor(Color.parseColor("#AA000000"))
+            isClickable = true
+            isFocusable = true
+        }
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            background = GradientDrawable().apply {
+                cornerRadius = 36f * scale
+                setColor(Color.parseColor("#22FFFFFF"))
+                setStroke((1 * scale).toInt(), Color.parseColor("#33FFFFFF"))
+            }
+            setPadding((32 * scale).toInt(), (48 * scale).toInt(), (32 * scale).toInt(), (40 * scale).toInt())
+            layoutParams = FrameLayout.LayoutParams((320 * scale).toInt(), FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
+        }
+
+        // Globe icon placeholder
+        card.addView(TextView(this).apply {
+            text = "\uD83C\uDF10" // 🌐
+            textSize = 48f
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { bottomMargin = (16 * scale).toInt() }
+        })
+
+        card.addView(TextView(this).apply {
+            text = "$siteName is blocked"
+            textSize = 22f
+            setTextColor(Color.WHITE)
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { bottomMargin = (12 * scale).toInt() }
+        })
+
+        if (!currentTaskName.isNullOrBlank()) {
+            card.addView(TextView(this).apply {
+                text = "You need to focus on:"
+                textSize = 14f; setTextColor(Color.parseColor("#AAFFFFFF")); gravity = Gravity.CENTER
+            })
+            card.addView(TextView(this).apply {
+                text = currentTaskName
+                textSize = 18f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
+                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+                layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { topMargin = (4 * scale).toInt(); bottomMargin = (4 * scale).toInt() }
+            })
+
+            val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+            val startTimeStr = timeFormat.format(Date(currentTaskStartTimeMs))
+            val endTimeStr = timeFormat.format(Date(currentTaskEndTimeMs))
+
+            card.addView(TextView(this).apply {
+                text = "$startTimeStr - $endTimeStr"
+                textSize = 14f; setTextColor(Color.parseColor("#FFA726")); gravity = Gravity.CENTER
+                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+                layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { bottomMargin = (24 * scale).toInt() }
+            })
+        }
+
+        card.addView(TextView(this).apply {
+            text = "Distractions prevented today: $preventedCount"
+            textSize = 12f
+            setTextColor(Color.parseColor("#88FFFFFF"))
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = (24 * scale).toInt()
+            }
+        })
+
+        card.addView(Button(this).apply {
+            text = "OK"
+            setTextColor(Color.BLACK)
+            isAllCaps = false
+            textSize = 16f
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+            background = GradientDrawable().apply {
+                cornerRadius = 24f * scale
+                setColor(Color.WHITE)
+            }
+            layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, (58 * scale).toInt()).apply {
+                bottomMargin = (16 * scale).toInt()
+            }
+            setOnClickListener {
+                removeOverlay()
+                redirectToMotivationalSearch()
+            }
+        })
+
+        backdrop.addView(card)
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM,
+            PixelFormat.TRANSLUCENT
+        )
+
+        try {
+            windowManager?.addView(backdrop, params)
+            overlayView = backdrop; overlayShown = true
+            card.alpha = 0f; card.scaleX = 0.85f; card.scaleY = 0.85f
+            card.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(450).setInterpolator(AccelerateDecelerateInterpolator()).start()
+        } catch (e: Exception) { overlayShown = false }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        tickRunnable?.let { handler.removeCallbacks(it) }
         removeOverlay()
     }
+
+    override fun onInterrupt() { removeOverlay() }
 }

@@ -1,4 +1,5 @@
 // filepath: lib/src/domain/entities/meeting_proposal.dart
+import 'member_proposal_detail.dart';
 import 'meeting_location.dart';
 
 /// Whether the proposal was generated algorithmically or by AI.
@@ -28,6 +29,9 @@ class MeetingProposal {
   /// Always `null` for algorithmic proposals.
   final String? aiRationale;
 
+  /// Per-member gap and transit breakdown (populated for algorithmic proposals).
+  final List<MemberProposalDetail> memberDetails;
+
   const MeetingProposal({
     this.groupMemberUids = const [],
     required this.startTime,
@@ -35,6 +39,7 @@ class MeetingProposal {
     required this.location,
     this.source = ProposalSource.algorithmic,
     this.aiRationale,
+    this.memberDetails = const [],
   });
 
   /// Duration of the proposed meeting.
@@ -47,6 +52,7 @@ class MeetingProposal {
     MeetingLocation? location,
     ProposalSource? source,
     String? aiRationale,
+    List<MemberProposalDetail>? memberDetails,
   }) {
     return MeetingProposal(
       groupMemberUids: groupMemberUids ?? this.groupMemberUids,
@@ -55,6 +61,7 @@ class MeetingProposal {
       location: location ?? this.location,
       source: source ?? this.source,
       aiRationale: aiRationale ?? this.aiRationale,
+      memberDetails: memberDetails ?? this.memberDetails,
     );
   }
 

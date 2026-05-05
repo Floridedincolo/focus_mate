@@ -5,12 +5,16 @@ class BlockTemplateDTO {
   final String name;
   final bool isWhitelist;
   final List<String> packages;
+  final List<String> blockedWebsites;
+  final List<String> blockedKeywords;
 
   const BlockTemplateDTO({
     required this.id,
     required this.name,
     this.isWhitelist = false,
     this.packages = const [],
+    this.blockedWebsites = const [],
+    this.blockedKeywords = const [],
   });
 
   factory BlockTemplateDTO.fromMap(Map<String, dynamic> map) {
@@ -19,6 +23,14 @@ class BlockTemplateDTO {
       name: map['name'] as String? ?? '',
       isWhitelist: map['isWhitelist'] as bool? ?? false,
       packages: (map['packages'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          [],
+      blockedWebsites: (map['blockedWebsites'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          [],
+      blockedKeywords: (map['blockedKeywords'] as List<dynamic>?)
               ?.map((e) => e as String)
               .toList() ??
           [],
@@ -31,6 +43,8 @@ class BlockTemplateDTO {
       'name': name,
       'isWhitelist': isWhitelist,
       'packages': packages,
+      'blockedWebsites': blockedWebsites,
+      'blockedKeywords': blockedKeywords,
     };
   }
 

@@ -3,18 +3,9 @@ import 'package:intl/intl.dart';
 import '../../../domain/entities/extracted_class.dart';
 import 'edit_class_dialog.dart';
 
-/// Card shown in [TimetableAdjustmentPage] for one **subject** (grouped).
-///
-/// Displays all day/time occurrences as chips, plus a single homework
-/// toggle and a single hours-per-week slider that apply to the subject
-/// as a whole. Also includes a "Has final exam?" toggle with a unified end date picker.
-/// Each occurrence chip has an edit icon so the user can correct AI
-/// extraction mistakes.
 class SubjectGroupCard extends StatelessWidget {
-  /// All [ExtractedClass] occurrences that share the same subject name.
   final List<ExtractedClass> occurrences;
 
-  /// Called when the user changes any setting (homework, exam, etc.).
   final void Function({
     required bool needsHomework,
     required double homeworkHoursPerWeek,
@@ -22,9 +13,8 @@ class SubjectGroupCard extends StatelessWidget {
     required DateTime? endDate,
   }) onChanged;
 
-  /// Called when the user edits a single occurrence via the edit dialog.
-  /// The caller receives the original [ExtractedClass] and the updated one.
-  final void Function(ExtractedClass original, ExtractedClass updated)? onOccurrenceEdited;
+  final void Function(ExtractedClass original, ExtractedClass updated)?
+      onOccurrenceEdited;
 
   const SubjectGroupCard({
     super.key,
@@ -38,128 +28,201 @@ class SubjectGroupCard extends StatelessWidget {
     assert(occurrences.isNotEmpty);
     final representative = occurrences.first;
 
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Subject name
-            Text(
-              representative.subject,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF141414),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Subject name
+          Text(
+            representative.subject,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Day/time chips
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: occurrences.map((c) {
+              final start = _fmt(c.startTime);
+              final end = _fmt(c.endTime);
+              final roomSuffix = c.room != null ? '  \u{1F4CD}${c.room}' : '';
+              return GestureDetector(
+                onTap: () => _editOccurrence(context, c),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E1E1E),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.06)),
                   ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.edit_outlined,
+                          size: 13, color: Colors.white24),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${c.day}  $start\u2013$end$roomSuffix',
+                        style: const TextStyle(
+                            color: Colors.white54, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+
+          // Divider
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Container(
+                height: 1, color: Colors.white.withValues(alpha: 0.06)),
+          ),
+
+          // Homework toggle
+          _switchRow(
+            title: 'Needs weekly study/homework',
+            value: representative.needsHomework,
+            onChanged: (v) => onChanged(
+              needsHomework: v,
+              homeworkHoursPerWeek: representative.homeworkHoursPerWeek,
+              hasFinalExam: representative.hasFinalExam,
+              endDate: representative.endDate,
             ),
+          ),
 
-            const SizedBox(height: 8),
-
-            // Day/time chips for every occurrence — tappable to edit
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: occurrences.map((c) {
-                final start = _fmt(c.startTime);
-                final end = _fmt(c.endTime);
-                final roomSuffix = c.room != null ? '  📍${c.room}' : '';
-                return ActionChip(
-                  avatar: const Icon(Icons.edit_outlined, size: 16),
-                  label: Text('${c.day}  $start–$end$roomSuffix'),
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => _editOccurrence(context, c),
-                );
-              }).toList(),
-            ),
-
-            const Divider(height: 16),
-
-            // Homework toggle
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Needs weekly study/homework'),
-              value: representative.needsHomework,
-              onChanged: (v) => onChanged(
-                needsHomework: v,
-                homeworkHoursPerWeek: representative.homeworkHoursPerWeek,
-                hasFinalExam: representative.hasFinalExam,
-                endDate: representative.endDate,
-              ),
-            ),
-
-            // Hours slider — only visible when homework is on
-            AnimatedSize(
-              duration: const Duration(milliseconds: 200),
-              child: representative.needsHomework
-                  ? Column(
+          // Hours slider
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            child: representative.needsHomework
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 8, bottom: 4),
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           'Study time: ${representative.homeworkHoursPerWeek.toStringAsFixed(1)} h/week',
-                          style: Theme.of(context).textTheme.bodyMedium,
+                          style: const TextStyle(
+                              color: Colors.white38, fontSize: 13),
                         ),
-                        Slider(
-                          min: 0.5,
-                          max: 8,
-                          divisions: 15,
-                          value: representative.homeworkHoursPerWeek,
-                          label:
-                              '${representative.homeworkHoursPerWeek.toStringAsFixed(1)}h',
-                          onChanged: (v) => onChanged(
-                            needsHomework: representative.needsHomework,
-                            homeworkHoursPerWeek: v,
-                            hasFinalExam: representative.hasFinalExam,
-                            endDate: representative.endDate,
+                        SliderTheme(
+                          data: SliderThemeData(
+                            activeTrackColor: Colors.blueAccent,
+                            inactiveTrackColor:
+                                Colors.blueAccent.withValues(alpha: 0.2),
+                            thumbColor: Colors.white,
+                            overlayColor:
+                                Colors.blueAccent.withValues(alpha: 0.1),
+                            trackHeight: 3,
+                          ),
+                          child: Slider(
+                            min: 0.5,
+                            max: 8,
+                            divisions: 15,
+                            value: representative.homeworkHoursPerWeek,
+                            label:
+                                '${representative.homeworkHoursPerWeek.toStringAsFixed(1)}h',
+                            onChanged: (v) => onChanged(
+                              needsHomework: representative.needsHomework,
+                              homeworkHoursPerWeek: v,
+                              hasFinalExam: representative.hasFinalExam,
+                              endDate: representative.endDate,
+                            ),
                           ),
                         ),
                       ],
-                    )
-                  : const SizedBox.shrink(),
-            ),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
 
-            const Divider(height: 16),
+          // Divider
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Container(
+                height: 1, color: Colors.white.withValues(alpha: 0.06)),
+          ),
 
-            // ── Has final exam toggle ──
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Has final exam?'),
-              value: representative.hasFinalExam,
-              onChanged: (v) {
-                DateTime? newEndDate = representative.endDate;
-                // If enabling exam, preselect 14 weeks from now if not already set
-                if (v && newEndDate == null) {
-                  newEndDate = DateTime.now().add(const Duration(days: 14 * 7));
-                }
-                onChanged(
-                  needsHomework: representative.needsHomework,
-                  homeworkHoursPerWeek: representative.homeworkHoursPerWeek,
-                  hasFinalExam: v,
-                  endDate: newEndDate,
-                );
-              },
-            ),
+          // Final exam toggle
+          _switchRow(
+            title: 'Has final exam?',
+            value: representative.hasFinalExam,
+            onChanged: (v) {
+              DateTime? newEndDate = representative.endDate;
+              if (v && newEndDate == null) {
+                newEndDate = DateTime.now().add(const Duration(days: 14 * 7));
+              }
+              onChanged(
+                needsHomework: representative.needsHomework,
+                homeworkHoursPerWeek: representative.homeworkHoursPerWeek,
+                hasFinalExam: v,
+                endDate: newEndDate,
+              );
+            },
+          ),
 
-            // End date picker — shows for all cases
-            AnimatedSize(
-              duration: const Duration(milliseconds: 200),
-              child: _EndDateRow(
-                endDate: representative.endDate,
+          // End date
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            child: _EndDateRow(
+              endDate: representative.endDate,
+              hasFinalExam: representative.hasFinalExam,
+              onDateChanged: (newDate) => onChanged(
+                needsHomework: representative.needsHomework,
+                homeworkHoursPerWeek: representative.homeworkHoursPerWeek,
                 hasFinalExam: representative.hasFinalExam,
-                onDateChanged: (newDate) => onChanged(
-                  needsHomework: representative.needsHomework,
-                  homeworkHoursPerWeek: representative.homeworkHoursPerWeek,
-                  hasFinalExam: representative.hasFinalExam,
-                  endDate: newDate,
-                ),
+                endDate: newDate,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  Future<void> _editOccurrence(BuildContext context, ExtractedClass original) async {
+  Widget _switchRow({
+    required String title,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(title,
+                style: const TextStyle(color: Colors.white70, fontSize: 14)),
+          ),
+          SizedBox(
+            height: 28,
+            child: Switch.adaptive(
+              value: value,
+              onChanged: onChanged,
+              activeColor: Colors.blueAccent,
+              inactiveTrackColor: Colors.white12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _editOccurrence(
+      BuildContext context, ExtractedClass original) async {
     final updated = await EditClassDialog.show(context, original);
     if (updated != null && onOccurrenceEdited != null) {
       onOccurrenceEdited!(original, updated);
@@ -170,8 +233,6 @@ class SubjectGroupCard extends StatelessWidget {
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 }
 
-/// Row displaying the end date with a tap-to-pick date interaction.
-/// Shows as "Exam: ..." if hasFinalExam is true, otherwise "Study ends: ..."
 class _EndDateRow extends StatelessWidget {
   final DateTime? endDate;
   final bool hasFinalExam;
@@ -185,23 +246,27 @@ class _EndDateRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final displayDate = endDate ?? DateTime.now().add(const Duration(days: 14 * 7));
+    final displayDate =
+        endDate ?? DateTime.now().add(const Duration(days: 14 * 7));
     final label = hasFinalExam ? 'Exam date' : 'Study ends';
 
     return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      padding: const EdgeInsets.only(top: 8, bottom: 4),
       child: Row(
         children: [
-          const Icon(Icons.calendar_today_outlined, size: 18),
+          const Icon(Icons.calendar_today_outlined,
+              size: 15, color: Colors.white30),
           const SizedBox(width: 8),
-          Text(
-            '$label: ${DateFormat('EEE, MMM d yyyy').format(displayDate)}',
-            style: Theme.of(context).textTheme.bodyMedium,
+          Expanded(
+            child: Text(
+              '$label: ${DateFormat('EEE, MMM d yyyy').format(displayDate)}',
+              style: const TextStyle(color: Colors.white38, fontSize: 13),
+            ),
           ),
-          const Spacer(),
-          TextButton(
-            onPressed: () => _pickDate(context, displayDate),
-            child: const Text('Change'),
+          GestureDetector(
+            onTap: () => _pickDate(context, displayDate),
+            child: const Text('Change',
+                style: TextStyle(color: Colors.blueAccent, fontSize: 13)),
           ),
         ],
       ),
@@ -220,4 +285,3 @@ class _EndDateRow extends StatelessWidget {
     }
   }
 }
-

@@ -20,5 +20,25 @@ abstract class NotificationService {
     required int minute,
   });
 
+  /// Alarm-style scheduling: uses full-screen intent, alarm category,
+  /// alarm audio attributes (bypasses DND/silent), high importance channel.
+  Future<void> scheduleWeeklyAlarm({
+    required int id,
+    required String title,
+    required String body,
+    required int hour,
+    required int minute,
+    required int weekday,
+  });
+
+  Future<void> scheduleOneTimeAlarm({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime scheduledDate,
+    required int hour,
+    required int minute,
+  });
+
   Future<void> cancelAll();
 }

@@ -61,7 +61,7 @@ const _distractingKeywords = [
   'social', 'tiktok', 'instagram', 'facebook', 'snapchat', 'twitter',
   'reddit', 'pinterest', 'tumblr', 'dating', 'tinder', 'bumble',
   'stream', 'netflix', 'hulu', 'twitch', 'manga', 'anime', 'comic',
-  'meme', 'funny', 'entertainment', 'video player',
+  'meme', 'funny', 'entertainment', 'video player','youtube'
 ];
 
 const _productiveKeywords = [

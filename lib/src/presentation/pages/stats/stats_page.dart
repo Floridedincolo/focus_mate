@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // <-- Adăugat importul aici
+
 import '../../providers/usage_stats_providers.dart';
 import 'models/app_category.dart';
 import 'models/enriched_usage_stats.dart';
@@ -21,6 +23,34 @@ import 'widgets/trend_comparison_card.dart';
 import 'widgets/trend_line_chart.dart';
 import 'widgets/trend_sub_toggle.dart';
 import 'widgets/weekly_pattern_card.dart';
+
+// --- PROVIDER NOU PENTRU DISTRAGERI PREVENITE ---
+final preventedDistractionsProvider = FutureProvider.autoDispose.family<int, (int days, int offset)>((ref, params) async {
+  final days = params.$1;
+  final offset = params.$2;
+  final prefs = await SharedPreferences.getInstance();
+  int total = 0;
+
+  // Data de bază (poate fi azi, ieri, etc. în funcție de săgețile de navigare)
+  final baseDate = DateTime.now().add(Duration(days: offset));
+
+  if (days == 1) {
+    // Pentru o singură zi
+    final dateStr = DateFormat('yyyy-MM-dd').format(baseDate);
+    // Kotlin a salvat cu "flutter_", dar plugin-ul SharedPreferences din Flutter
+    // cere/adaugă el automat prefixul ăsta "sub capotă".
+    return prefs.getInt('prevented_distractions_$dateStr') ?? 0;
+  } else {
+    // Pentru 7 sau 30 de zile (Facem suma pe zilele respective)
+    for (int i = 0; i < days; i++) {
+      final d = baseDate.subtract(Duration(days: i));
+      final dateStr = DateFormat('yyyy-MM-dd').format(d);
+      total += prefs.getInt('prevented_distractions_$dateStr') ?? 0;
+    }
+    return total;
+  }
+});
+// -------------------------------------------------
 
 class StatsPage extends ConsumerStatefulWidget {
   const StatsPage({super.key});
@@ -54,6 +84,8 @@ class _StatsPageState extends ConsumerState<StatsPage>
       ref.invalidate(enrichedUsageStatsProvider);
       ref.invalidate(taskStatsProvider);
       ref.invalidate(heatmapDataProvider);
+      // Invalidate și providerul nou ca să facem refresh la distrageri prevenite
+      ref.invalidate(preventedDistractionsProvider);
     }
   }
 
@@ -199,7 +231,7 @@ class _StatsPageState extends ConsumerState<StatsPage>
             const SizedBox(height: 16),
 
             if (isTrend)
-              // ── TREND VIEW ──
+            // ── TREND VIEW ──
               enrichedAsync.when(
                 loading: () => const Center(
                   child: Padding(
@@ -300,7 +332,7 @@ class _StatsPageState extends ConsumerState<StatsPage>
     if (_selectedHour != null && days == 1) {
       final h = _selectedHour!;
       selectionSubtitle =
-          '${h.toString().padLeft(2, '0')}:00 – ${(h + 1).toString().padLeft(2, '0')}:00';
+      '${h.toString().padLeft(2, '0')}:00 – ${(h + 1).toString().padLeft(2, '0')}:00';
     } else if (_selectedDay != null && days > 1) {
       const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
       selectionSubtitle = dayNames[_selectedDay!];
@@ -399,7 +431,6 @@ class _StatsPageState extends ConsumerState<StatsPage>
     }
 
     // Fixed-period comparison: last 7 days vs previous 7 days
-    // Falls back to splitting available non-zero data if not enough history
     final bool hasFullHistory = daily.length >= 14 &&
         daily.sublist(0, daily.length - 7).any((d) => d > 0);
 
@@ -426,7 +457,6 @@ class _StatsPageState extends ConsumerState<StatsPage>
     final prevWeekAvg = avgNonZero(prevWeek);
 
     // Compute per-app deltas
-    // Use last 7 vs previous 7 when enough data, otherwise split available data in half
     final appDeltas = <String, int>{}; // packageName -> delta minutes/day
     final appNames = <String, String>{};
     final appIcons = <String, String>{};
@@ -435,14 +465,12 @@ class _StatsPageState extends ConsumerState<StatsPage>
       appIcons[app.packageName] = app.iconBase64;
     }
 
-    // Check if we have enough history for a proper 7-vs-7 comparison
     final bool hasEnoughHistory = daily.length >= 14 &&
         daily.sublist(0, daily.length - 7).any((d) => d > 0);
 
     for (final entry in enriched.dailyAppUsage.entries) {
       final pkg = entry.key;
       final perDay = entry.value;
-      // Need at least 2 non-zero days to compare
       final nonZeroDays = perDay.where((d) => d > 0).length;
       if (nonZeroDays < 2) continue;
 
@@ -450,7 +478,6 @@ class _StatsPageState extends ConsumerState<StatsPage>
       List<int> olderPart;
 
       if (hasEnoughHistory) {
-        // Fixed 7-day comparison
         recentPart = perDay.length >= 7
             ? perDay.sublist(perDay.length - 7)
             : perDay;
@@ -458,7 +485,6 @@ class _StatsPageState extends ConsumerState<StatsPage>
             ? perDay.sublist(perDay.length - 14, perDay.length - 7)
             : perDay.sublist(0, perDay.length - 7);
       } else {
-        // Split available non-zero data in half
         final validIndices = <int>[];
         for (int i = 0; i < perDay.length; i++) {
           if (perDay[i] > 0) validIndices.add(i);
@@ -479,23 +505,23 @@ class _StatsPageState extends ConsumerState<StatsPage>
     final decreased = appDeltas.entries
         .where((e) => e.value < 0)
         .toList()
-      ..sort((a, b) => a.value.compareTo(b.value)); // most negative first
+      ..sort((a, b) => a.value.compareTo(b.value));
     final topSavers = decreased.take(3).map((e) => AppTrendEntry(
-          appName: appNames[e.key] ?? e.key,
-          iconBase64: appIcons[e.key] ?? '',
-          deltaMinutes: e.value,
-        )).toList();
+      appName: appNames[e.key] ?? e.key,
+      iconBase64: appIcons[e.key] ?? '',
+      deltaMinutes: e.value,
+    )).toList();
 
     // Top increase (biggest increase)
     final increased = appDeltas.entries
         .where((e) => e.value > 0)
         .toList()
-      ..sort((a, b) => b.value.compareTo(a.value)); // most positive first
+      ..sort((a, b) => b.value.compareTo(a.value));
     final topIncrease = increased.take(3).map((e) => AppTrendEntry(
-          appName: appNames[e.key] ?? e.key,
-          iconBase64: appIcons[e.key] ?? '',
-          deltaMinutes: e.value,
-        )).toList();
+      appName: appNames[e.key] ?? e.key,
+      iconBase64: appIcons[e.key] ?? '',
+      deltaMinutes: e.value,
+    )).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -535,29 +561,90 @@ class _StatsPageState extends ConsumerState<StatsPage>
         ),
         const SizedBox(height: 16),
 
-        // Top time-savers
         if (topSavers.isNotEmpty)
           TopTimeSaversCard(entries: topSavers),
         if (topSavers.isNotEmpty)
           const SizedBox(height: 16),
 
-        // Top increase
         if (topIncrease.isNotEmpty)
           TopIncreaseCard(entries: topIncrease),
         if (topIncrease.isNotEmpty)
           const SizedBox(height: 16),
 
-        // Most used apps
         TopAppsCard(topApps: enriched.topApps),
         const SizedBox(height: 16),
 
-        // Category breakdown
         AppCategoryBar(
           productiveMinutes: enriched.productiveMinutes,
           distractingMinutes: enriched.distractingMinutes,
           neutralMinutes: enriched.neutralMinutes,
         ),
       ],
+    );
+  }
+
+  // --- WIDGET NOU PENTRU AFIȘAREA DISTRAGERILOR PREVENITE ---
+  Widget _buildPreventedDistractionsCard(int days, int dateOffset) {
+    // Apelăm providerul cu argumentele de zi curentă și offset
+    final preventedAsync = ref.watch(preventedDistractionsProvider((days, dateOffset)));
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: kStatsCard, // Folosește variabila ta de culoare
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.orangeAccent.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.shield_outlined,
+              color: Colors.orangeAccent,
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Distractions Prevented",
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.6),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                preventedAsync.when(
+                  data: (count) => Text(
+                    '$count times',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  loading: () => const SizedBox(
+                    height: 22,
+                    width: 22,
+                    child: CircularProgressIndicator(color: Colors.orangeAccent, strokeWidth: 2),
+                  ),
+                  error: (_, __) => const Text('0 times', style: TextStyle(color: Colors.white, fontSize: 22)),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -568,7 +655,6 @@ class _StatsPageState extends ConsumerState<StatsPage>
     int? heroSelectedHour;
 
     if (days == 1) {
-      // Daily view: hourly chart, hour selection
       heroSelectedHour = _selectedHour;
 
       if (_selectedHour != null) {
@@ -586,8 +672,7 @@ class _StatsPageState extends ConsumerState<StatsPage>
         displayNeut = enriched.neutralMinutes;
       }
     } else {
-      // Weekly/monthly view: daily chart, day selection
-      heroSelectedHour = null; // hero uses day-level data, not hour
+      heroSelectedHour = null;
 
       if (_selectedDay != null) {
         final dayIdx = _weekdayToDayIndex(enriched, _selectedDay!, days);
@@ -600,7 +685,6 @@ class _StatsPageState extends ConsumerState<StatsPage>
           displayDist = b?.distractingMinutes ?? 0;
           displayNeut = b?.neutralMinutes ?? 0;
         } else {
-          // Monthly averaged: use totals
           displayApps = enriched.topApps;
           displayProd = enriched.productiveMinutes;
           displayDist = enriched.distractingMinutes;
@@ -635,6 +719,7 @@ class _StatsPageState extends ConsumerState<StatsPage>
           selectedHour: heroSelectedHour,
           selectedScreenTimeOverride: heroScreenTimeOverride,
         ),
+
         const SizedBox(height: 16),
 
         // Chart: hourly for daily view, daily for weekly/monthly
@@ -686,10 +771,10 @@ class _StatsPageState extends ConsumerState<StatsPage>
   }
 
   Widget _buildAiReportButton(
-    AsyncValue<EnrichedUsageStats?> enrichedAsync,
-    AsyncValue<TaskStatsData> taskStatsAsync,
-    int perfectDays,
-  ) {
+      AsyncValue<EnrichedUsageStats?> enrichedAsync,
+      AsyncValue<TaskStatsData> taskStatsAsync,
+      int perfectDays,
+      ) {
     return GestureDetector(
       onTap: () => _showAiReport(enrichedAsync, taskStatsAsync, perfectDays),
       child: Container(
@@ -716,19 +801,17 @@ class _StatsPageState extends ConsumerState<StatsPage>
   }
 
   Future<void> _showAiReport(
-    AsyncValue<EnrichedUsageStats?> enrichedAsync,
-    AsyncValue<TaskStatsData> taskStatsAsync,
-    int perfectDays,
-  ) async {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      AsyncValue<EnrichedUsageStats?> enrichedAsync,
+      AsyncValue<TaskStatsData> taskStatsAsync,
+      int perfectDays,
+      ) async {
+    Navigator.of(context).push(MaterialPageRoute(
+      fullscreenDialog: true,
       builder: (_) => AiReportSheet(
         enrichedStats: enrichedAsync.valueOrNull,
         taskStats: taskStatsAsync.valueOrNull ?? TaskStatsData.empty,
         perfectDays: perfectDays,
       ),
-    );
+    ));
   }
 }
