@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // <-- Import nou pentru citirea blocărilor pe ore
 
 import '../../core/service_locator.dart';
+import '../../data/datasources/local_app_classification_datasource.dart';
 import '../../data/datasources/usage_stats_datasource.dart';
+import '../../domain/entities/app_classification.dart';
 import '../../domain/entities/task.dart';
 import '../../domain/entities/task_completion_status.dart';
 import '../../domain/entities/repeat_type.dart';
@@ -39,6 +41,66 @@ final isTrendModeProvider = StateProvider<bool>((ref) => false);
 /// Sub-period inside Trend view: 30 = 1M, 90 = 3M, 365 = Max.
 final trendPeriodProvider = StateProvider<int>((ref) => 30);
 
+// ── Per-app user classifications (override category + exclude) ──
+
+final appClassificationDsProvider =
+    Provider<LocalAppClassificationDataSource>(
+        (ref) => LocalAppClassificationDataSource());
+
+class AppClassificationsNotifier
+    extends StateNotifier<Map<String, AppClassification>> {
+  final LocalAppClassificationDataSource _ds;
+
+  AppClassificationsNotifier(this._ds) : super({}) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    state = await _ds.loadAll();
+  }
+
+  Future<void> setCategory(String pkg, AppCategory category) async {
+    final next = Map<String, AppClassification>.from(state);
+    final existing = next[pkg] ?? AppClassification(packageName: pkg);
+    next[pkg] = existing.copyWith(userCategory: category);
+    state = next;
+    await _ds.saveAll(next);
+  }
+
+  Future<void> clearCategory(String pkg) async {
+    final next = Map<String, AppClassification>.from(state);
+    final existing = next[pkg];
+    if (existing == null) return;
+    next[pkg] = existing.copyWith(clearUserCategory: true);
+    state = next;
+    await _ds.saveAll(next);
+  }
+
+  Future<void> setExcluded(String pkg, bool excluded) async {
+    final next = Map<String, AppClassification>.from(state);
+    final existing = next[pkg] ?? AppClassification(packageName: pkg);
+    next[pkg] = existing.copyWith(excluded: excluded);
+    state = next;
+    await _ds.saveAll(next);
+  }
+}
+
+final appClassificationsProvider = StateNotifierProvider<
+    AppClassificationsNotifier, Map<String, AppClassification>>((ref) {
+  return AppClassificationsNotifier(ref.watch(appClassificationDsProvider));
+});
+
+/// Resolves the effective category for an app, applying user overrides.
+AppCategory resolveCategory(
+  String packageName,
+  String? appName,
+  Map<String, AppClassification> classifications,
+) {
+  final override = classifications[packageName]?.userCategory;
+  if (override != null) return override;
+  return categorizeApp(packageName, appName: appName);
+}
+
 final usageStatsProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
   final hasPermission = await ref.watch(hasUsagePermissionProvider.future);
   if (!hasPermission) return null;
@@ -46,6 +108,17 @@ final usageStatsProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
   final days = ref.watch(usageStatsDaysProvider);
   final dayOffset = ref.watch(dateOffsetProvider);
   return ds.getUsageStats(days: days, dayOffset: dayOffset);
+});
+
+/// Standalone per-period raw stats fetch (used by per-app detail screen).
+/// Independent of the global [usageStatsDaysProvider] so the detail screen
+/// can pick its own period without affecting the main stats page.
+final usageStatsForPeriodProvider =
+    FutureProvider.autoDispose.family<Map<String, dynamic>?, int>((ref, days) async {
+  final hasPermission = await ref.watch(hasUsagePermissionProvider.future);
+  if (!hasPermission) return null;
+  final ds = ref.watch(usageStatsDsProvider);
+  return ds.getUsageStats(days: days, dayOffset: 0);
 });
 
 // ── Rich Task Stats ──
@@ -255,6 +328,9 @@ FutureProvider<EnrichedUsageStats?>((ref) async {
   final rawData = await ref.watch(usageStatsProvider.future);
   if (rawData == null) return null;
 
+  final classifications = ref.watch(appClassificationsProvider);
+  bool isExcluded(String pkg) => classifications[pkg]?.excluded ?? false;
+
   // Inițializăm accesul la baza de date locală pentru a citi block-urile pe ore
   final prefs = await SharedPreferences.getInstance();
   final dayOffset = ref.watch(dateOffsetProvider);
@@ -267,13 +343,13 @@ FutureProvider<EnrichedUsageStats?>((ref) async {
       .where((t) => !t.archived)
       .toList();
 
-  final totalMinutes =
+  final rawTotalMinutes =
       (rawData['totalScreenTimeMinutes'] as num?)?.toInt() ?? 0;
-  final focusMinutes =
-      (rawData['focusTimeMinutes'] as num?)?.toInt() ?? 0;
+  // focusMinutes computed later from task-based hourlyFocus
+  var focusMinutes = 0;
   final prevented =
       (rawData['preventedDistractions'] as num?)?.toInt() ?? 0;
-  final idleMinutes = totalMinutes - focusMinutes;
+  var idleMinutes = 0;
 
   // Parse hourly usage
   final hourlyRaw = rawData['hourlyUsage'] as List<dynamic>? ?? [];
@@ -282,21 +358,44 @@ FutureProvider<EnrichedUsageStats?>((ref) async {
     hourly.add(0);
   }
 
-  // Parse per-app per-hour usage from Kotlin
+  // Parse per-app per-hour usage from Kotlin (skip excluded apps)
   final rawHourlyApp = rawData['hourlyAppUsage'] as Map<dynamic, dynamic>? ?? {};
   final hourlyAppUsage = <String, List<int>>{};
+  // Track minutes per hour we need to subtract from totals due to exclusions.
+  final excludedHourlyAdjust = List<int>.filled(24, 0);
   for (final entry in rawHourlyApp.entries) {
     final pkg = entry.key as String;
     final hours = (entry.value as List<dynamic>).map((e) => (e as num).toInt()).toList();
     while (hours.length < 24) {
       hours.add(0);
     }
+    if (isExcluded(pkg)) {
+      for (int h = 0; h < 24; h++) {
+        excludedHourlyAdjust[h] += hours[h];
+      }
+      continue;
+    }
     hourlyAppUsage[pkg] = hours;
   }
 
-  // Parse top apps early so annotations can use app names for categorization
-  final rawApps = (rawData['topApps'] as List<dynamic>? ?? [])
+  // Subtract excluded apps' minutes from the global hourly array.
+  for (int h = 0; h < 24; h++) {
+    hourly[h] = (hourly[h] - excludedHourlyAdjust[h]).clamp(0, 1 << 30);
+  }
+
+  // Parse top apps early so annotations can use app names for categorization (skip excluded)
+  final rawAppsAll = (rawData['topApps'] as List<dynamic>? ?? [])
       .map((e) => Map<String, dynamic>.from(e as Map))
+      .toList();
+  int excludedTotalMinutes = 0;
+  for (final a in rawAppsAll) {
+    final pkg = a['packageName'] as String? ?? '';
+    if (isExcluded(pkg)) {
+      excludedTotalMinutes += (a['usageMinutes'] as num?)?.toInt() ?? 0;
+    }
+  }
+  final rawApps = rawAppsAll
+      .where((a) => !isExcluded(a['packageName'] as String? ?? ''))
       .toList();
 
   // Build hour annotations
@@ -351,7 +450,7 @@ FutureProvider<EnrichedUsageStats?>((ref) async {
           ? appNameMatch.first['appName'] as String?
           : null;
 
-      final cat = categorizeApp(pkg, appName: appName);
+      final cat = resolveCategory(pkg, appName, classifications);
       switch (cat) {
         case AppCategory.productive:
           prodMin += appMinThisHour;
@@ -373,7 +472,7 @@ FutureProvider<EnrichedUsageStats?>((ref) async {
     );
   });
 
-  // Categorize top apps
+  // Categorize top apps (excluded already filtered out of rawApps above)
   final topApps = rawApps.map((app) {
     final pkg = app['packageName'] as String? ?? '';
     return AppUsageEntry(
@@ -381,7 +480,7 @@ FutureProvider<EnrichedUsageStats?>((ref) async {
       appName: app['appName'] as String? ?? pkg,
       usageMinutes: (app['usageMinutes'] as num?)?.toInt() ?? 0,
       iconBase64: app['iconBase64'] as String? ?? '',
-      category: categorizeApp(pkg, appName: app['appName'] as String?),
+      category: resolveCategory(pkg, app['appName'] as String?, classifications),
     );
   }).toList();
 
@@ -407,14 +506,33 @@ FutureProvider<EnrichedUsageStats?>((ref) async {
   }
 
   // Compute per-hour focus time from tasks with blocking templates
+  // For today (dayOffset == 0), clamp to current time so we don't count future hours
+  final now = DateTime.now();
+  final isToday = dayOffset == 0;
+  final nowH = now.hour;
+  final nowM = now.minute;
+
   final hourlyFocus = List<int>.filled(24, 0);
   for (final task in activeTasks) {
     if (task.blockTemplateId == null) continue;
     if (task.startTime == null || task.endTime == null) continue;
+    if (!occursOnTask(task, targetDate)) continue;
     final sH = task.startTime!.hour;
     final sM = task.startTime!.minute;
-    final eH = task.endTime!.hour;
-    final eM = task.endTime!.minute;
+    var eH = task.endTime!.hour;
+    var eM = task.endTime!.minute;
+
+    // For today, clamp end time to now so future focus time isn't counted
+    if (isToday) {
+      if (eH > nowH || (eH == nowH && eM > nowM)) {
+        eH = nowH;
+        eM = nowM;
+      }
+    }
+
+    // Skip if the task hasn't started yet today
+    if (isToday && (sH > nowH || (sH == nowH && sM > nowM))) continue;
+
     for (int h = sH; h <= eH && h < 24; h++) {
       final overlapStart = (h == sH) ? sM : 0;
       final overlapEnd = (h == eH) ? eM : 60;
@@ -425,6 +543,13 @@ FutureProvider<EnrichedUsageStats?>((ref) async {
   for (int h = 0; h < 24; h++) {
     if (hourlyFocus[h] > 60) hourlyFocus[h] = 60;
   }
+
+  final totalMinutes =
+      (rawTotalMinutes - excludedTotalMinutes).clamp(0, 1 << 30);
+
+  // Compute total focus from hourly task-based data
+  focusMinutes = hourlyFocus.fold(0, (sum, m) => sum + m);
+  idleMinutes = totalMinutes - focusMinutes;
 
   // Citim din telefon numărul EXACT de distrageri prevenite pentru fiecare oră în parte
   final hourlyBlocked = List<int>.filled(24, 0);
@@ -441,10 +566,21 @@ FutureProvider<EnrichedUsageStats?>((ref) async {
 
   final rawDailyApp = rawData['dailyAppUsage'] as Map<dynamic, dynamic>? ?? {};
   final dailyAppUsage = <String, List<int>>{};
+  final excludedDailyAdjust = List<int>.filled(dailyUsage.length, 0);
   for (final entry in rawDailyApp.entries) {
     final pkg = entry.key as String;
     final days = (entry.value as List<dynamic>).map((e) => (e as num).toInt()).toList();
+    if (isExcluded(pkg)) {
+      for (int d = 0; d < days.length && d < excludedDailyAdjust.length; d++) {
+        excludedDailyAdjust[d] += days[d];
+      }
+      continue;
+    }
     dailyAppUsage[pkg] = days;
+  }
+  // Subtract excluded apps' minutes from per-day totals.
+  for (int d = 0; d < dailyUsage.length; d++) {
+    dailyUsage[d] = (dailyUsage[d] - excludedDailyAdjust[d]).clamp(0, 1 << 30);
   }
 
   final startWeekday = (rawData['startWeekday'] as num?)?.toInt() ?? 0;
@@ -463,7 +599,7 @@ FutureProvider<EnrichedUsageStats?>((ref) async {
           ? appNameMatch.first['appName'] as String?
           : null;
 
-      final cat = categorizeApp(pkg, appName: appName);
+      final cat = resolveCategory(pkg, appName, classifications);
       switch (cat) {
         case AppCategory.productive:
           dayProd += appMinThisDay;

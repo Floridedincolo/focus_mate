@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../domain/entities/reminder.dart';
+import 'time_picker.dart';
 
 class ReminderPickerDialog extends StatefulWidget {
   final bool isOneTime;
@@ -12,6 +13,7 @@ class ReminderPickerDialog extends StatefulWidget {
 
 class _ReminderPickerDialogState extends State<ReminderPickerDialog> {
   TimeOfDay? _selectedTime;
+  ReminderType _type = ReminderType.notification;
   final Map<String, bool> _days = {
     'Mon': false,
     'Tue': false,
@@ -22,6 +24,41 @@ class _ReminderPickerDialogState extends State<ReminderPickerDialog> {
     'Sun': false,
   };
   final TextEditingController _messageController = TextEditingController();
+
+  Widget _typeOption({
+    required ReminderType type,
+    required IconData icon,
+    required String label,
+  }) {
+    final selected = _type == type;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _type = type),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            color: selected ? Colors.blueAccent : const Color(0xFF1A1A1A),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Column(
+            children: [
+              Icon(icon,
+                  color: selected ? Colors.white : Colors.white70, size: 22),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected ? Colors.white : Colors.white70,
+                  fontSize: 14,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,35 +73,27 @@ class _ReminderPickerDialogState extends State<ReminderPickerDialog> {
             style: TextStyle(color: Colors.white, fontSize: 22),
           ),
           const SizedBox(height: 20),
-          GestureDetector(
-            onTap: () async {
-              final picked = await showTimePicker(
-                context: context,
-                initialTime: _selectedTime ?? TimeOfDay.now(),
-              );
-              if (picked != null) {
-                setState(() => _selectedTime = picked);
-              }
-            },
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A1A1A),
-                borderRadius: BorderRadius.circular(10),
+          Row(
+            children: [
+              _typeOption(
+                type: ReminderType.notification,
+                icon: Icons.notifications_outlined,
+                label: "Notification",
               ),
-              child: Row(
-                children: [
-                  const Icon(Icons.access_time, color: Colors.white70),
-                  const SizedBox(width: 10),
-                  Text(
-                    _selectedTime != null
-                        ? _selectedTime!.format(context)
-                        : "Pick Time",
-                    style: const TextStyle(color: Colors.white, fontSize: 18),
-                  ),
-                ],
+              const SizedBox(width: 10),
+              _typeOption(
+                type: ReminderType.alarm,
+                icon: Icons.alarm,
+                label: "Alarm",
               ),
-            ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          TimePicker(
+            label: "Pick Time",
+            initialTime: _selectedTime,
+            onTimeSelected: (picked) =>
+                setState(() => _selectedTime = picked),
           ),
           if (!widget.isOneTime) ...[
             const SizedBox(height: 20),
@@ -123,6 +152,7 @@ class _ReminderPickerDialogState extends State<ReminderPickerDialog> {
                         time: _selectedTime!,
                         days: Map.from(_days),
                         message: _messageController.text,
+                        type: _type,
                       ),
                     );
                   }

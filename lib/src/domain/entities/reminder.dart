@@ -1,17 +1,26 @@
 import 'package:flutter/material.dart';
 
+enum ReminderType { notification, alarm }
+
 class Reminder {
   final TimeOfDay time;
   final Map<String, bool> days;
   final String message;
+  final ReminderType type;
 
-  Reminder({required this.time, required this.days, this.message = ' '});
+  Reminder({
+    required this.time,
+    required this.days,
+    this.message = ' ',
+    this.type = ReminderType.notification,
+  });
 
   Map<String, dynamic> toMap() {
     return {
       'time': "${time.hour}:${time.minute}",
       'days': days,
       'message': message,
+      'type': type.name,
     };
   }
 
@@ -27,6 +36,10 @@ class Reminder {
           ) ??
           {},
       message: map['message'] ?? ' ',
+      type: ReminderType.values.firstWhere(
+        (t) => t.name == (map['type'] as String?),
+        orElse: () => ReminderType.notification,
+      ),
     );
   }
 
@@ -34,12 +47,13 @@ class Reminder {
     TimeOfDay? time,
     Map<String, bool>? days,
     String? message,
+    ReminderType? type,
   }) {
     return Reminder(
       time: time ?? this.time,
       days: days ?? this.days,
       message: message ?? this.message,
+      type: type ?? this.type,
     );
   }
 }
-

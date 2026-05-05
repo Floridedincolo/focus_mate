@@ -25,6 +25,8 @@ import android.graphics.drawable.GradientDrawable
 import android.widget.LinearLayout.LayoutParams
 import android.widget.Button
 import android.view.animation.AccelerateDecelerateInterpolator
+import android.net.Uri
+import android.view.accessibility.AccessibilityNodeInfo
 import org.json.JSONArray
 import java.io.File
 import java.text.SimpleDateFormat
@@ -49,6 +51,33 @@ class AppBlockService : AccessibilityService() {
 
         // Safety net: propriul app nu se blochează niciodată pe sine.
         private val ALWAYS_EXEMPT = setOf("com.example.focus_mate")
+
+        // Browser package → URL bar view ID(s)
+        private val BROWSER_URL_BAR_IDS = mapOf(
+            "com.android.chrome" to listOf("com.android.chrome:id/url_bar", "com.android.chrome:id/omnibox_text"),
+            "org.mozilla.firefox" to listOf("org.mozilla.firefox:id/mozac_browser_toolbar_url_view"),
+            "org.mozilla.firefox_beta" to listOf("org.mozilla.firefox_beta:id/mozac_browser_toolbar_url_view"),
+            "com.opera.browser" to listOf("com.opera.browser:id/url_field"),
+            "com.opera.mini.native" to listOf("com.opera.mini.native:id/url_field"),
+            "com.brave.browser" to listOf("com.brave.browser:id/url_bar"),
+            "com.microsoft.emmx" to listOf("com.microsoft.emmx:id/url_bar"),
+            "com.sec.android.app.sbrowser" to listOf("com.sec.android.app.sbrowser:id/location_bar_edit_text"),
+            "com.UCMobile.intl" to listOf("com.UCMobile.intl:id/title_bar_input"),
+            "com.vivaldi.browser" to listOf("com.vivaldi.browser:id/url_bar"),
+        )
+
+        private val MOTIVATIONAL_SEARCHES = listOf(
+            "productivity tips for students",
+            "how to stay focused while studying",
+            "motivational quotes for success",
+            "benefits of deep work",
+            "focus techniques pomodoro",
+            "how to beat procrastination",
+            "growth mindset tips",
+            "best study habits",
+            "importance of discipline",
+            "how to build good habits",
+        )
     }
 
     // Cache pentru a nu interoga PackageManager la fiecare tick.
@@ -136,6 +165,83 @@ class AppBlockService : AccessibilityService() {
         return false
     }
 
+    private var lastWebBlockTime = 0L
+    private var lastRedirectTime = 0L
+
+    private fun isBrowser(packageName: String): Boolean = BROWSER_URL_BAR_IDS.containsKey(packageName)
+
+    private fun extractUrlFromBrowser(packageName: String): String? {
+        val root = rootInActiveWindow ?: return null
+        try {
+            val viewIds = BROWSER_URL_BAR_IDS[packageName] ?: return null
+            for (viewId in viewIds) {
+                val nodes = root.findAccessibilityNodeInfosByViewId(viewId)
+                if (!nodes.isNullOrEmpty()) {
+                    val text = nodes[0].text?.toString()
+                    if (!text.isNullOrBlank()) return text
+                }
+            }
+            // Fallback: traverse all nodes looking for URL-like content in EditText
+            return findUrlInNodeTree(root)
+        } catch (e: Exception) {
+            Log.e("AppAccessibilityService", "❌ Eroare la extragerea URL: ${e.message}")
+            return null
+        } finally {
+            root.recycle()
+        }
+    }
+
+    private fun findUrlInNodeTree(node: AccessibilityNodeInfo): String? {
+        val text = node.text?.toString()
+        if (text != null && node.className?.toString() == "android.widget.EditText") {
+            if (text.contains(".") && !text.contains(" ")) return text
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val result = findUrlInNodeTree(child)
+            child.recycle()
+            if (result != null) return result
+        }
+        return null
+    }
+
+    /**
+     * Extracts just the host (domain) portion from a URL string.
+     * Handles both full URLs (https://example.com/path?q=x) and
+     * bare domains (example.com) as shown in browser URL bars.
+     */
+    private fun extractHost(url: String): String {
+        val withoutProtocol = url.replace(Regex("^https?://"), "")
+        return withoutProtocol.substringBefore("/").substringBefore("?").substringBefore("#")
+    }
+
+    private fun urlMatchesBlockedSite(url: String, blockedWebsites: List<String>, blockedKeywords: List<String>): Boolean {
+        val urlLower = url.lowercase()
+
+        for (site in blockedWebsites) {
+            if (urlLower.contains(site.lowercase())) return true
+        }
+        for (keyword in blockedKeywords) {
+            if (urlLower.contains(keyword.lowercase())) return true
+        }
+        return false
+    }
+
+    private fun redirectToMotivationalSearch() {
+        val query = MOTIVATIONAL_SEARCHES.random()
+        val searchUrl = "https://www.google.com/search?q=${Uri.encode(query)}"
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(searchUrl)).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        try {
+            lastRedirectTime = System.currentTimeMillis()
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.e("AppAccessibilityService", "❌ Eroare la redirect: ${e.message}")
+            sendUserToHome()
+        }
+    }
+
     private var scheduledBlocks: JSONArray = JSONArray()
     private var currentTaskName: String? = null
     private var currentTaskStartTimeMs: Long = 0L
@@ -181,12 +287,23 @@ class AppBlockService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         try {
-            if (event == null || event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+            if (event == null) return
 
             val packageName = event.packageName?.toString() ?: return
-            lastPackageSeen = packageName
 
-            checkBlockingLogic(packageName)
+            when (event.eventType) {
+                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                    lastPackageSeen = packageName
+                    checkBlockingLogic(packageName)
+                }
+                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
+                    // Only process content changes in browsers (URL navigation)
+                    if (isBrowser(packageName)) {
+                        lastPackageSeen = packageName
+                        checkBlockingLogic(packageName)
+                    }
+                }
+            }
         } catch (e: Exception) {
             Log.e("AppAccessibilityService", "❌ Eroare în onAccessibilityEvent: ${e.message}")
         }
@@ -198,7 +315,8 @@ class AppBlockService : AccessibilityService() {
         checkAndLoadSchedule()
 
         val now = System.currentTimeMillis()
-        var shouldBlock = false
+        var shouldBlockApp = false
+        var shouldBlockWeb = false
         var foundTaskName: String? = null
         var foundStartMs = 0L
         var foundEndMs = 0L
@@ -209,6 +327,7 @@ class AppBlockService : AccessibilityService() {
             val endMs = block.getLong("endMs")
 
             if (now in startMs until endMs) {
+                // Check app blocking
                 val isWhitelist = block.getBoolean("isWhitelist")
                 val appsArray = block.getJSONArray("apps")
                 val blockedApps = mutableSetOf<String>()
@@ -217,31 +336,68 @@ class AppBlockService : AccessibilityService() {
                 val isAppBlocked = if (isWhitelist) !blockedApps.contains(packageName) else blockedApps.contains(packageName)
 
                 if (isAppBlocked) {
-                    shouldBlock = true
+                    shouldBlockApp = true
                     foundTaskName = block.getString("taskName")
                     foundStartMs = startMs
                     foundEndMs = endMs
                     break
                 }
+
+                // Check website/keyword blocking (only if current app is a browser)
+                // Skip if we just redirected to a motivational search (avoid loop)
+                if (isBrowser(packageName) && (now - lastRedirectTime > 10_000L)) {
+                    val websitesArray = block.optJSONArray("blockedWebsites")
+                    val keywordsArray = block.optJSONArray("blockedKeywords")
+                    val blockedWebsites = mutableListOf<String>()
+                    val blockedKeywords = mutableListOf<String>()
+                    if (websitesArray != null) {
+                        for (j in 0 until websitesArray.length()) blockedWebsites.add(websitesArray.getString(j))
+                    }
+                    if (keywordsArray != null) {
+                        for (j in 0 until keywordsArray.length()) blockedKeywords.add(keywordsArray.getString(j))
+                    }
+
+                    if (blockedWebsites.isNotEmpty() || blockedKeywords.isNotEmpty()) {
+                        val url = extractUrlFromBrowser(packageName)
+                        if (url != null && urlMatchesBlockedSite(url, blockedWebsites, blockedKeywords)) {
+                            shouldBlockWeb = true
+                            foundTaskName = block.getString("taskName")
+                            foundStartMs = startMs
+                            foundEndMs = endMs
+                            break
+                        }
+                    }
+                }
             }
         }
 
-        if (shouldBlock) {
+        if (shouldBlockApp) {
             currentTaskName = foundTaskName
             currentTaskStartTimeMs = foundStartMs
             currentTaskEndTimeMs = foundEndMs
 
-            // Perioadă de grație mărită la 5 secunde pentru a evita numărătoarea dublă (săritul)
             if (now - lastActionTime < 5000) return
             lastActionTime = now
 
-            Log.d("AppAccessibilityService", "🚫 Blocare executată pentru $packageName la ora ${Date(now)}")
+            Log.d("AppAccessibilityService", "🚫 Blocare app executată pentru $packageName la ora ${Date(now)}")
 
-            // Incrementăm și extragem numărul
             val preventedCount = incrementPreventedDistractions()
-
             showOverlay(packageName, preventedCount)
             Handler(Looper.getMainLooper()).postDelayed({ sendUserToHome() }, 100)
+        } else if (shouldBlockWeb) {
+            currentTaskName = foundTaskName
+            currentTaskStartTimeMs = foundStartMs
+            currentTaskEndTimeMs = foundEndMs
+
+            if (now - lastWebBlockTime < 5000) return
+            lastWebBlockTime = now
+
+            Log.d("AppAccessibilityService", "🚫 Blocare website executată în $packageName la ora ${Date(now)}")
+
+            val preventedCount = incrementPreventedDistractions()
+            val url = extractUrlFromBrowser(packageName)
+            val siteName = if (url != null) extractHost(url) else "Website"
+            showWebOverlay(siteName, preventedCount)
         }
     }
 
@@ -396,6 +552,121 @@ class AppBlockService : AccessibilityService() {
         if (!overlayShown) return
         try { windowManager?.removeViewImmediate(overlayView) } catch (e: Exception) {}
         overlayView = null; overlayShown = false
+    }
+
+    private fun showWebOverlay(siteName: String, preventedCount: Int) {
+        if (overlayShown) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            redirectToMotivationalSearch()
+            return
+        }
+
+        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        val scale = resources.displayMetrics.density
+
+        val backdrop = FrameLayout(this).apply {
+            setBackgroundColor(Color.parseColor("#AA000000"))
+            isClickable = true
+            isFocusable = true
+        }
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            background = GradientDrawable().apply {
+                cornerRadius = 36f * scale
+                setColor(Color.parseColor("#22FFFFFF"))
+                setStroke((1 * scale).toInt(), Color.parseColor("#33FFFFFF"))
+            }
+            setPadding((32 * scale).toInt(), (48 * scale).toInt(), (32 * scale).toInt(), (40 * scale).toInt())
+            layoutParams = FrameLayout.LayoutParams((320 * scale).toInt(), FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
+        }
+
+        // Globe icon placeholder
+        card.addView(TextView(this).apply {
+            text = "\uD83C\uDF10" // 🌐
+            textSize = 48f
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { bottomMargin = (16 * scale).toInt() }
+        })
+
+        card.addView(TextView(this).apply {
+            text = "$siteName is blocked"
+            textSize = 22f
+            setTextColor(Color.WHITE)
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { bottomMargin = (12 * scale).toInt() }
+        })
+
+        if (!currentTaskName.isNullOrBlank()) {
+            card.addView(TextView(this).apply {
+                text = "You need to focus on:"
+                textSize = 14f; setTextColor(Color.parseColor("#AAFFFFFF")); gravity = Gravity.CENTER
+            })
+            card.addView(TextView(this).apply {
+                text = currentTaskName
+                textSize = 18f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
+                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+                layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { topMargin = (4 * scale).toInt(); bottomMargin = (4 * scale).toInt() }
+            })
+
+            val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+            val startTimeStr = timeFormat.format(Date(currentTaskStartTimeMs))
+            val endTimeStr = timeFormat.format(Date(currentTaskEndTimeMs))
+
+            card.addView(TextView(this).apply {
+                text = "$startTimeStr - $endTimeStr"
+                textSize = 14f; setTextColor(Color.parseColor("#FFA726")); gravity = Gravity.CENTER
+                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+                layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { bottomMargin = (24 * scale).toInt() }
+            })
+        }
+
+        card.addView(TextView(this).apply {
+            text = "Distractions prevented today: $preventedCount"
+            textSize = 12f
+            setTextColor(Color.parseColor("#88FFFFFF"))
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = (24 * scale).toInt()
+            }
+        })
+
+        card.addView(Button(this).apply {
+            text = "OK"
+            setTextColor(Color.BLACK)
+            isAllCaps = false
+            textSize = 16f
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+            background = GradientDrawable().apply {
+                cornerRadius = 24f * scale
+                setColor(Color.WHITE)
+            }
+            layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, (58 * scale).toInt()).apply {
+                bottomMargin = (16 * scale).toInt()
+            }
+            setOnClickListener {
+                removeOverlay()
+                redirectToMotivationalSearch()
+            }
+        })
+
+        backdrop.addView(card)
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM,
+            PixelFormat.TRANSLUCENT
+        )
+
+        try {
+            windowManager?.addView(backdrop, params)
+            overlayView = backdrop; overlayShown = true
+            card.alpha = 0f; card.scaleX = 0.85f; card.scaleY = 0.85f
+            card.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(450).setInterpolator(AccelerateDecelerateInterpolator()).start()
+        } catch (e: Exception) { overlayShown = false }
     }
 
     override fun onDestroy() {

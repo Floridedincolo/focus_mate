@@ -22,6 +22,12 @@ import 'src/presentation/pages/friends/plan_meeting_page.dart';
 import 'src/presentation/pages/full_schedule_page.dart';
 import 'src/domain/repositories/user_location_repository.dart';
 import 'src/domain/repositories/notification_repository.dart';
+import 'src/presentation/pages/alarm_screen.dart';
+import 'src/presentation/widgets/alarm_debug_overlay.dart';
+
+/// Global navigator key – used by the notification service to push the alarm
+/// screen from outside the widget tree.
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -72,9 +78,12 @@ class FocusMateApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       home: const _AuthGate(),
+
       routes: {
+        '/alarm': (context) => const AlarmScreen(),
         '/profile': (context) => const Profile(),
         '/add_task': (context) => const AddTaskMenu(),
         '/focus_page': (context) => const FocusPage(),
@@ -95,24 +104,6 @@ class FocusMateApp extends StatelessWidget {
 class _AuthGate extends StatelessWidget {
   const _AuthGate();
 
-  Future<void> _syncProfile(User user) async {
-    try {
-      final name = user.displayName ?? user.email ?? 'User';
-      final data = <String, dynamic>{
-        'displayName': name,
-        'displayNameLower': name.toLowerCase(),
-        if (user.photoURL != null) 'photoUrl': user.photoURL,
-        if (user.email != null) 'email': user.email,
-      };
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .set(data, SetOptions(merge: true));
-    } catch (e) {
-      if (kDebugMode) debugPrint('Profile sync failed: $e');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
@@ -128,8 +119,7 @@ class _AuthGate extends StatelessWidget {
         }
 
         if (snapshot.hasData) {
-          _syncProfile(snapshot.data!);
-          return const _OnboardingGate();
+          return _OnboardingGate(user: snapshot.data!);
         }
 
         return const LoginPage();
@@ -138,14 +128,50 @@ class _AuthGate extends StatelessWidget {
   }
 }
 
-/// Checks whether the user has completed initial location setup.
-class _OnboardingGate extends StatelessWidget {
-  const _OnboardingGate();
+/// Syncs profile, then checks whether the user has completed initial location setup.
+class _OnboardingGate extends StatefulWidget {
+  final User user;
+  const _OnboardingGate({required this.user});
+
+  @override
+  State<_OnboardingGate> createState() => _OnboardingGateState();
+}
+
+class _OnboardingGateState extends State<_OnboardingGate> {
+  late final Future<bool> _setupFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _setupFuture = _syncThenCheck();
+  }
+
+  Future<bool> _syncThenCheck() async {
+    // Sync profile first (ensures Firestore doc exists)
+    try {
+      final user = widget.user;
+      final name = user.displayName ?? user.email ?? 'User';
+      final data = <String, dynamic>{
+        'displayName': name,
+        'displayNameLower': name.toLowerCase(),
+        if (user.photoURL != null) 'photoUrl': user.photoURL,
+        if (user.email != null) 'email': user.email,
+      };
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set(data, SetOptions(merge: true));
+    } catch (e) {
+      if (kDebugMode) debugPrint('Profile sync failed: $e');
+    }
+    // Now check setup status
+    return getIt<UserLocationRepository>().hasCompletedSetup();
+  }
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<bool>(
-      future: getIt<UserLocationRepository>().hasCompletedSetup(),
+      future: _setupFuture,
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Scaffold(

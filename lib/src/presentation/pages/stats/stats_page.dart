@@ -805,15 +805,13 @@ class _StatsPageState extends ConsumerState<StatsPage>
       AsyncValue<TaskStatsData> taskStatsAsync,
       int perfectDays,
       ) async {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+    Navigator.of(context).push(MaterialPageRoute(
+      fullscreenDialog: true,
       builder: (_) => AiReportSheet(
         enrichedStats: enrichedAsync.valueOrNull,
         taskStats: taskStatsAsync.valueOrNull ?? TaskStatsData.empty,
         perfectDays: perfectDays,
       ),
-    );
+    ));
   }
 }

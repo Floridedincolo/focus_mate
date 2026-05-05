@@ -77,6 +77,8 @@ class BlockTemplateRepositoryImpl implements BlockTemplateRepository {
           name: dto.name,
           isWhitelist: dto.isWhitelist,
           packages: dto.packages,
+          blockedWebsites: dto.blockedWebsites,
+          blockedKeywords: dto.blockedKeywords,
         );
       }).toList();
     } catch (e) {
@@ -101,6 +103,8 @@ class BlockTemplateRepositoryImpl implements BlockTemplateRepository {
         name: dto.name,
         isWhitelist: dto.isWhitelist,
         packages: dto.packages,
+        blockedWebsites: dto.blockedWebsites,
+        blockedKeywords: dto.blockedKeywords,
       );
     } catch (e) {
       if (kDebugMode) debugPrint('❌ Error loading template $id: $e');
@@ -118,6 +122,8 @@ class BlockTemplateRepositoryImpl implements BlockTemplateRepository {
       name: template.name,
       isWhitelist: template.isWhitelist,
       packages: template.packages,
+      blockedWebsites: template.blockedWebsites,
+      blockedKeywords: template.blockedKeywords,
     );
 
     await col.doc(template.id).set(dto.toMap());

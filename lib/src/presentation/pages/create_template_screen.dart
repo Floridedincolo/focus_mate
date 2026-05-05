@@ -19,10 +19,17 @@ class CreateTemplateScreen extends ConsumerStatefulWidget {
       _CreateTemplateScreenState();
 }
 
-class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen> {
+class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen>
+    with SingleTickerProviderStateMixin {
   late final TextEditingController _nameController;
+  late final TextEditingController _websiteController;
+  late final TextEditingController _keywordController;
+  late final TabController _tabController;
+
   bool _isWhitelist = false;
   Set<String> _selectedPackages = {};
+  Set<String> _blockedWebsites = {};
+  Set<String> _blockedKeywords = {};
   List<InstalledApplication> _apps = [];
   bool _loadingApps = true;
   String _searchQuery = '';
@@ -34,14 +41,22 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen> {
     super.initState();
     final t = widget.existingTemplate;
     _nameController = TextEditingController(text: t?.name ?? '');
+    _websiteController = TextEditingController();
+    _keywordController = TextEditingController();
+    _tabController = TabController(length: 3, vsync: this);
     _isWhitelist = t?.isWhitelist ?? false;
     _selectedPackages = Set.from(t?.packages ?? []);
+    _blockedWebsites = Set.from(t?.blockedWebsites ?? []);
+    _blockedKeywords = Set.from(t?.blockedKeywords ?? []);
     _loadApps();
   }
 
   @override
   void dispose() {
     _nameController.dispose();
+    _websiteController.dispose();
+    _keywordController.dispose();
+    _tabController.dispose();
     super.dispose();
   }
 
@@ -55,6 +70,27 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen> {
         _loadingApps = false;
       });
     }
+  }
+
+  void _addWebsite() {
+    final site = _websiteController.text.trim().toLowerCase();
+    if (site.isEmpty) return;
+    // Strip protocol if user pastes full URL
+    final cleaned = site
+        .replaceAll(RegExp(r'^https?://'), '')
+        .replaceAll(RegExp(r'^www\.'), '')
+        .replaceAll(RegExp(r'/.*$'), '');
+    if (cleaned.isNotEmpty) {
+      setState(() => _blockedWebsites.add(cleaned));
+      _websiteController.clear();
+    }
+  }
+
+  void _addKeyword() {
+    final keyword = _keywordController.text.trim().toLowerCase();
+    if (keyword.isEmpty) return;
+    setState(() => _blockedKeywords.add(keyword));
+    _keywordController.clear();
   }
 
   Future<void> _save() async {
@@ -74,6 +110,8 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen> {
       name: name,
       isWhitelist: _isWhitelist,
       packages: _selectedPackages.toList(),
+      blockedWebsites: _blockedWebsites.toList(),
+      blockedKeywords: _blockedKeywords.toList(),
     );
 
     await getIt<BlockTemplateRepository>().saveTemplate(template);
@@ -97,16 +135,6 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final filteredApps = _searchQuery.isEmpty
-        ? _apps
-        : _apps
-            .where((a) =>
-                a.appName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-                a.packageName
-                    .toLowerCase()
-                    .contains(_searchQuery.toLowerCase()))
-            .toList();
-
     return Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
@@ -207,38 +235,69 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen> {
                     style: TextStyle(color: Colors.grey[600], fontSize: 12),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
 
-                // Search
-                const Text('APPS',
-                    style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.8)),
-                const SizedBox(height: 8),
-                TextFormField(
-                  style: const TextStyle(color: Colors.white),
-                  onChanged: (v) => setState(() => _searchQuery = v),
-                  decoration: InputDecoration(
-                    hintText: 'Search apps...',
-                    hintStyle: const TextStyle(color: Colors.white38),
-                    prefixIcon:
-                        const Icon(Icons.search, color: Colors.white38),
-                    filled: true,
-                    fillColor: _card,
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
+          // Tab bar
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: _card,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: TabBar(
+              controller: _tabController,
+              indicatorSize: TabBarIndicatorSize.tab,
+              indicator: BoxDecoration(
+                color: _accent.withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _accent.withValues(alpha: 0.5)),
+              ),
+              dividerColor: Colors.transparent,
+              labelColor: _accent,
+              unselectedLabelColor: Colors.white54,
+              labelStyle:
+                  const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+              unselectedLabelStyle:
+                  const TextStyle(fontWeight: FontWeight.w400, fontSize: 14),
+              tabs: [
+                Tab(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Apps'),
+                      if (_selectedPackages.isNotEmpty) ...[
+                        const SizedBox(width: 4),
+                        _badge(_selectedPackages.length),
+                      ],
+                    ],
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '${_selectedPackages.length} selected',
-                  style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                Tab(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Webs'),
+                      if (_blockedWebsites.isNotEmpty) ...[
+                        const SizedBox(width: 4),
+                        _badge(_blockedWebsites.length),
+                      ],
+                    ],
+                  ),
+                ),
+                Tab(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Keywords'),
+                      if (_blockedKeywords.isNotEmpty) ...[
+                        const SizedBox(width: 4),
+                        _badge(_blockedKeywords.length),
+                      ],
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -246,65 +305,16 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen> {
 
           const SizedBox(height: 8),
 
-          // Apps list
+          // Tab content
           Expanded(
-            child: _loadingApps
-                ? const Center(
-                    child:
-                        CircularProgressIndicator(color: Colors.blueAccent))
-                : ListView.builder(
-                    itemCount: filteredApps.length,
-                    itemBuilder: (context, index) {
-                      final app = filteredApps[index];
-                      final isSelected =
-                          _selectedPackages.contains(app.packageName);
-
-                      return ListTile(
-                        leading: app.iconBytes != null
-                            ? Image.memory(
-                                Uint8List.fromList(app.iconBytes!),
-                                width: 36,
-                                height: 36,
-                              )
-                            : const Icon(Icons.android,
-                                color: Colors.white, size: 36),
-                        title: Text(
-                          app.appName,
-                          style: const TextStyle(
-                              color: Colors.white, fontSize: 14),
-                        ),
-                        subtitle: Text(
-                          app.packageName,
-                          style:
-                              TextStyle(color: Colors.grey[600], fontSize: 11),
-                        ),
-                        trailing: Checkbox(
-                          value: isSelected,
-                          activeColor: _isWhitelist
-                              ? Colors.greenAccent
-                              : Colors.redAccent,
-                          onChanged: (val) {
-                            setState(() {
-                              if (val == true) {
-                                _selectedPackages.add(app.packageName);
-                              } else {
-                                _selectedPackages.remove(app.packageName);
-                              }
-                            });
-                          },
-                        ),
-                        onTap: () {
-                          setState(() {
-                            if (isSelected) {
-                              _selectedPackages.remove(app.packageName);
-                            } else {
-                              _selectedPackages.add(app.packageName);
-                            }
-                          });
-                        },
-                      );
-                    },
-                  ),
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildAppsTab(),
+                _buildWebsitesTab(),
+                _buildKeywordsTab(),
+              ],
+            ),
           ),
         ],
       ),
@@ -326,6 +336,338 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _badge(int count) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: _accent.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        '$count',
+        style: const TextStyle(color: Colors.white70, fontSize: 11),
+      ),
+    );
+  }
+
+  // ── Apps Tab ──
+
+  Widget _buildAppsTab() {
+    final filteredApps = _searchQuery.isEmpty
+        ? _apps
+        : _apps
+            .where((a) =>
+                a.appName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+                a.packageName
+                    .toLowerCase()
+                    .contains(_searchQuery.toLowerCase()))
+            .toList();
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextFormField(
+                style: const TextStyle(color: Colors.white),
+                onChanged: (v) => setState(() => _searchQuery = v),
+                decoration: InputDecoration(
+                  hintText: 'Search apps...',
+                  hintStyle: const TextStyle(color: Colors.white38),
+                  prefixIcon:
+                      const Icon(Icons.search, color: Colors.white38),
+                  filled: true,
+                  fillColor: _card,
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 12),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${_selectedPackages.length} selected',
+                style: TextStyle(color: Colors.grey[500], fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 4),
+        Expanded(
+          child: _loadingApps
+              ? const Center(
+                  child:
+                      CircularProgressIndicator(color: Colors.blueAccent))
+              : ListView.builder(
+                  itemCount: filteredApps.length,
+                  itemBuilder: (context, index) {
+                    final app = filteredApps[index];
+                    final isSelected =
+                        _selectedPackages.contains(app.packageName);
+
+                    return ListTile(
+                      leading: app.iconBytes != null
+                          ? Image.memory(
+                              Uint8List.fromList(app.iconBytes!),
+                              width: 36,
+                              height: 36,
+                            )
+                          : const Icon(Icons.android,
+                              color: Colors.white, size: 36),
+                      title: Text(
+                        app.appName,
+                        style: const TextStyle(
+                            color: Colors.white, fontSize: 14),
+                      ),
+                      subtitle: Text(
+                        app.packageName,
+                        style:
+                            TextStyle(color: Colors.grey[600], fontSize: 11),
+                      ),
+                      trailing: Checkbox(
+                        value: isSelected,
+                        activeColor: _isWhitelist
+                            ? Colors.greenAccent
+                            : Colors.redAccent,
+                        onChanged: (val) {
+                          setState(() {
+                            if (val == true) {
+                              _selectedPackages.add(app.packageName);
+                            } else {
+                              _selectedPackages.remove(app.packageName);
+                            }
+                          });
+                        },
+                      ),
+                      onTap: () {
+                        setState(() {
+                          if (isSelected) {
+                            _selectedPackages.remove(app.packageName);
+                          } else {
+                            _selectedPackages.add(app.packageName);
+                          }
+                        });
+                      },
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  // ── Websites Tab ──
+
+  Widget _buildWebsitesTab() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: _websiteController,
+                  style: const TextStyle(color: Colors.white),
+                  onFieldSubmitted: (_) => _addWebsite(),
+                  decoration: InputDecoration(
+                    hintText: 'Add website (e.g. youtube.com)',
+                    hintStyle: const TextStyle(color: Colors.white38),
+                    prefixIcon:
+                        const Icon(Icons.language, color: Colors.white38),
+                    filled: true,
+                    fillColor: _card,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton.filled(
+                onPressed: _addWebsite,
+                icon: const Icon(Icons.add),
+                style: IconButton.styleFrom(
+                  backgroundColor: _accent,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '${_blockedWebsites.length} website${_blockedWebsites.length == 1 ? '' : 's'} blocked',
+            style: TextStyle(color: Colors.grey[500], fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: _blockedWebsites.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.language,
+                            color: Colors.grey[700], size: 48),
+                        const SizedBox(height: 12),
+                        Text(
+                          'No websites blocked yet',
+                          style: TextStyle(
+                              color: Colors.grey[600], fontSize: 14),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Add websites above to block them during focus sessions',
+                          style: TextStyle(
+                              color: Colors.grey[700], fontSize: 12),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: _blockedWebsites.length,
+                    itemBuilder: (context, index) {
+                      final site = _blockedWebsites.elementAt(index);
+                      return ListTile(
+                        leading: const Icon(Icons.language,
+                            color: Colors.blueAccent, size: 28),
+                        title: Text(
+                          site,
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 14),
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.close,
+                              color: Colors.white38, size: 20),
+                          onPressed: () =>
+                              setState(() => _blockedWebsites.remove(site)),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Keywords Tab ──
+
+  Widget _buildKeywordsTab() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: _keywordController,
+                  style: const TextStyle(color: Colors.white),
+                  onFieldSubmitted: (_) => _addKeyword(),
+                  decoration: InputDecoration(
+                    hintText: 'Add keyword (e.g. tiktok)',
+                    hintStyle: const TextStyle(color: Colors.white38),
+                    prefixIcon: const Icon(Icons.text_fields,
+                        color: Colors.white38),
+                    filled: true,
+                    fillColor: _card,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton.filled(
+                onPressed: _addKeyword,
+                icon: const Icon(Icons.add),
+                style: IconButton.styleFrom(
+                  backgroundColor: _accent,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '${_blockedKeywords.length} keyword${_blockedKeywords.length == 1 ? '' : 's'} blocked',
+            style: TextStyle(color: Colors.grey[500], fontSize: 12),
+          ),
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
+              'URLs containing these keywords will be blocked',
+              style: TextStyle(color: Colors.grey[700], fontSize: 12),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: _blockedKeywords.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.text_fields,
+                            color: Colors.grey[700], size: 48),
+                        const SizedBox(height: 12),
+                        Text(
+                          'No keywords blocked yet',
+                          style: TextStyle(
+                              color: Colors.grey[600], fontSize: 14),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Add keywords to block any URL that contains them',
+                          style: TextStyle(
+                              color: Colors.grey[700], fontSize: 12),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: _blockedKeywords.length,
+                    itemBuilder: (context, index) {
+                      final keyword = _blockedKeywords.elementAt(index);
+                      return ListTile(
+                        leading: const Icon(Icons.text_fields,
+                            color: Colors.orangeAccent, size: 28),
+                        title: Text(
+                          keyword,
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 14),
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.close,
+                              color: Colors.white38, size: 20),
+                          onPressed: () => setState(
+                              () => _blockedKeywords.remove(keyword)),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }

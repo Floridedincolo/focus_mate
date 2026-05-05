@@ -12,6 +12,7 @@ import '../../domain/usecases/notification_usecases.dart';
 import '../../core/service_locator.dart';
 import 'friend_providers.dart';
 import 'block_template_providers.dart';
+import '../widgets/alarm_debug_overlay.dart';
 
 final getTasksUseCaseProvider = Provider<GetTasksUseCase>((ref) => getIt<GetTasksUseCase>());
 final saveTaskUseCaseProvider = Provider<SaveTaskUseCase>((ref) => getIt<SaveTaskUseCase>());
@@ -26,9 +27,17 @@ final tasksStreamProvider = StreamProvider<List<Task>>((ref) {
 });
 
 Future<void> _refreshNotifications() async {
-  final enabled = await getIt<GetNotificationsEnabledUseCase>()();
-  if (enabled) {
-    await getIt<ToggleNotificationsUseCase>().scheduleAll();
+  AlarmDebugLog.log('_refreshNotifications called');
+  try {
+    final enabled = await getIt<GetNotificationsEnabledUseCase>()();
+    AlarmDebugLog.log('notifications enabled=$enabled');
+    if (enabled) {
+      await getIt<ToggleNotificationsUseCase>().scheduleAll();
+      AlarmDebugLog.log('scheduleAll() done');
+    }
+  } catch (e, st) {
+    AlarmDebugLog.log('ERROR _refreshNotifications: $e');
+    debugPrint('[task_providers] notification refresh failed (ignored): $e\n$st');
   }
 }
 
@@ -177,6 +186,8 @@ Future<void> syncFocusScheduleToNative(List<Task> tasks, List<AppBlockTemplate> 
             'taskName': task.title,
             'apps': template.packages,
             'isWhitelist': template.isWhitelist,
+            'blockedWebsites': template.blockedWebsites,
+            'blockedKeywords': template.blockedKeywords,
           });
         }
       }

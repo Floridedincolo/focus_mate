@@ -1,9 +1,11 @@
 // filepath: lib/src/domain/usecases/suggest_meeting_algorithmic_use_case.dart
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart';
 
 import '../entities/meeting_location.dart';
 import '../entities/meeting_proposal.dart';
 import '../entities/task.dart';
+import '../extensions/task_filter.dart';
 
 export '../entities/meeting_proposal.dart' show ProposalSource;
 
@@ -31,16 +33,36 @@ class SuggestMeetingAlgorithmicUseCase {
 
     // ── 1. Collect all busy intervals across every member ─────────────────
     final List<_Interval> allBusy = [];
-    for (final tasks in memberSchedules) {
-      for (final task in tasks) {
+    for (int m = 0; m < memberSchedules.length; m++) {
+      for (final task in memberSchedules[m]) {
         final interval = _taskToInterval(task, date);
-        if (interval != null) allBusy.add(interval);
+        if (interval != null) {
+          allBusy.add(interval);
+          if (kDebugMode) {
+            debugPrint(
+              '🔒 [Algo] Member $m busy: '
+              '${interval.start.hour}:${interval.start.minute.toString().padLeft(2, '0')}'
+              '–${interval.end.hour}:${interval.end.minute.toString().padLeft(2, '0')}'
+              ' (${task.title})',
+            );
+          }
+        }
       }
     }
 
     // ── 2. Sort and merge overlapping busy intervals ──────────────────────
     allBusy.sort((a, b) => a.start.compareTo(b.start));
     final merged = _mergeIntervals(allBusy);
+
+    if (kDebugMode) {
+      for (final iv in merged) {
+        debugPrint(
+          '🔗 [Algo] Merged busy: '
+          '${iv.start.hour}:${iv.start.minute.toString().padLeft(2, '0')}'
+          '–${iv.end.hour}:${iv.end.minute.toString().padLeft(2, '0')}',
+        );
+      }
+    }
 
     // ── 3. Walk the gaps and collect free slots ───────────────────────────
     final meetingDuration = Duration(minutes: meetingDurationMinutes);
@@ -86,7 +108,7 @@ class SuggestMeetingAlgorithmicUseCase {
     final et = task.endTime;
     if (st == null || et == null) return null;
 
-    if (!_taskOccursOnDate(task, date)) return null;
+    if (!task.occursOn(date)) return null;
 
     final start = date.copyWith(
         hour: st.hour, minute: st.minute, second: 0, millisecond: 0, microsecond: 0);
@@ -96,20 +118,6 @@ class SuggestMeetingAlgorithmicUseCase {
     if (end.isBefore(start)) end = end.add(const Duration(days: 1));
 
     return _Interval(start, end);
-  }
-
-  bool _taskOccursOnDate(Task task, DateTime date) {
-    if (task.archived) return false;
-
-    if (task.oneTime) {
-      return task.startDate.year == date.year &&
-          task.startDate.month == date.month &&
-          task.startDate.day == date.day;
-    }
-
-    const weekdayKeys = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final key = weekdayKeys[date.weekday - 1];
-    return task.days[key] ?? false;
   }
 
   List<_Interval> _mergeIntervals(List<_Interval> sorted) {
@@ -139,6 +147,13 @@ class SuggestMeetingAlgorithmicUseCase {
     while (proposals.length < maxProposals) {
       final slotEnd = slotStart.add(duration);
       if (slotEnd.isAfter(to)) break;
+      if (kDebugMode) {
+        debugPrint(
+          '✅ [Algo] Free slot: '
+          '${slotStart.hour}:${slotStart.minute.toString().padLeft(2, '0')}'
+          '–${slotEnd.hour}:${slotEnd.minute.toString().padLeft(2, '0')}',
+        );
+      }
       proposals.add(MeetingProposal(
         startTime: slotStart,
         endTime: slotEnd,
