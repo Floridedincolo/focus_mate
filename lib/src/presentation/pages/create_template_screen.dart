@@ -27,6 +27,7 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen>
   late final TabController _tabController;
 
   bool _isWhitelist = false;
+  String _mode = 'hard';
   Set<String> _selectedPackages = {};
   Set<String> _blockedWebsites = {};
   Set<String> _blockedKeywords = {};
@@ -45,6 +46,7 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen>
     _keywordController = TextEditingController();
     _tabController = TabController(length: 3, vsync: this);
     _isWhitelist = t?.isWhitelist ?? false;
+    _mode = t?.mode ?? 'hard';
     _selectedPackages = Set.from(t?.packages ?? []);
     _blockedWebsites = Set.from(t?.blockedWebsites ?? []);
     _blockedKeywords = Set.from(t?.blockedKeywords ?? []);
@@ -109,6 +111,7 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen>
           DateTime.now().millisecondsSinceEpoch.toString(),
       name: name,
       isWhitelist: _isWhitelist,
+      mode: _mode,
       packages: _selectedPackages.toList(),
       blockedWebsites: _blockedWebsites.toList(),
       blockedKeywords: _blockedKeywords.toList(),
@@ -232,6 +235,48 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen>
                     _isWhitelist
                         ? 'Only selected apps will be ALLOWED. Everything else is blocked.'
                         : 'Selected apps will be BLOCKED. Everything else is allowed.',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                const Text('MODE',
+                    style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.8)),
+                const SizedBox(height: 8),
+                Container(
+                  decoration: BoxDecoration(
+                      color: _card, borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.all(4),
+                  child: Row(
+                    children: [
+                      _typeToggle(
+                        label: 'Hard',
+                        icon: Icons.lock,
+                        selected: _mode == 'hard',
+                        color: Colors.redAccent,
+                        onTap: () => setState(() => _mode = 'hard'),
+                      ),
+                      _typeToggle(
+                        label: 'Light',
+                        icon: Icons.notifications_active_outlined,
+                        selected: _mode == 'light',
+                        color: Colors.amberAccent,
+                        onTap: () => setState(() => _mode = 'light'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text(
+                    _mode == 'hard'
+                        ? 'Re-blocks the app every time you reopen it.'
+                        : 'Shows a warning, then gives you 30s on the app before blocking again.',
                     style: TextStyle(color: Colors.grey[600], fontSize: 12),
                   ),
                 ),

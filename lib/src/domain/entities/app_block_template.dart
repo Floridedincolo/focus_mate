@@ -2,6 +2,9 @@ class AppBlockTemplate {
   final String id;
   final String name;
   final bool isWhitelist;
+  // 'hard' = re-blocks aggressively (5s cooldown).
+  // 'light' = warns once, then leaves the app alone for 30s.
+  final String mode;
   final List<String> packages;
   final List<String> blockedWebsites;
   final List<String> blockedKeywords;
@@ -10,6 +13,7 @@ class AppBlockTemplate {
     required this.id,
     required this.name,
     this.isWhitelist = false,
+    this.mode = 'hard',
     this.packages = const [],
     this.blockedWebsites = const [],
     this.blockedKeywords = const [],
@@ -19,6 +23,7 @@ class AppBlockTemplate {
     String? id,
     String? name,
     bool? isWhitelist,
+    String? mode,
     List<String>? packages,
     List<String>? blockedWebsites,
     List<String>? blockedKeywords,
@@ -27,6 +32,7 @@ class AppBlockTemplate {
       id: id ?? this.id,
       name: name ?? this.name,
       isWhitelist: isWhitelist ?? this.isWhitelist,
+      mode: mode ?? this.mode,
       packages: packages ?? this.packages,
       blockedWebsites: blockedWebsites ?? this.blockedWebsites,
       blockedKeywords: blockedKeywords ?? this.blockedKeywords,
@@ -40,13 +46,14 @@ class AppBlockTemplate {
         other.id == id &&
         other.name == name &&
         other.isWhitelist == isWhitelist &&
+        other.mode == mode &&
         _listEquals(other.packages, packages) &&
         _listEquals(other.blockedWebsites, blockedWebsites) &&
         _listEquals(other.blockedKeywords, blockedKeywords);
   }
 
   @override
-  int get hashCode => Object.hash(id, name, isWhitelist, Object.hashAll(packages), Object.hashAll(blockedWebsites), Object.hashAll(blockedKeywords));
+  int get hashCode => Object.hash(id, name, isWhitelist, mode, Object.hashAll(packages), Object.hashAll(blockedWebsites), Object.hashAll(blockedKeywords));
 
   static bool _listEquals(List<String> a, List<String> b) {
     if (a.length != b.length) return false;

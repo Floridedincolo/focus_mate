@@ -4,6 +4,7 @@ class BlockTemplateDTO {
   final String id;
   final String name;
   final bool isWhitelist;
+  final String mode;
   final List<String> packages;
   final List<String> blockedWebsites;
   final List<String> blockedKeywords;
@@ -12,6 +13,7 @@ class BlockTemplateDTO {
     required this.id,
     required this.name,
     this.isWhitelist = false,
+    this.mode = 'hard',
     this.packages = const [],
     this.blockedWebsites = const [],
     this.blockedKeywords = const [],
@@ -22,6 +24,7 @@ class BlockTemplateDTO {
       id: map['id'] as String? ?? '',
       name: map['name'] as String? ?? '',
       isWhitelist: map['isWhitelist'] as bool? ?? false,
+      mode: map['mode'] as String? ?? 'hard',
       packages: (map['packages'] as List<dynamic>?)
               ?.map((e) => e as String)
               .toList() ??
@@ -42,6 +45,7 @@ class BlockTemplateDTO {
       'id': id,
       'name': name,
       'isWhitelist': isWhitelist,
+      'mode': mode,
       'packages': packages,
       'blockedWebsites': blockedWebsites,
       'blockedKeywords': blockedKeywords,

@@ -40,6 +40,10 @@ class AppBlockService : AccessibilityService() {
     private var overlayShown = false
     private var lastActionTime = 0L
 
+    // Per-app cooldown used only by 'light' mode templates: after blocking app X,
+    // we leave X alone for 30s so the user can briefly use it.
+    private val lastBlockedPerApp = HashMap<String, Long>()
+
     // Variabile pentru verificarea periodică (Heartbeat)
     private var lastPackageSeen: String? = null
     private val handler = Handler(Looper.getMainLooper())
@@ -320,6 +324,7 @@ class AppBlockService : AccessibilityService() {
         var foundTaskName: String? = null
         var foundStartMs = 0L
         var foundEndMs = 0L
+        var foundMode = "hard"
 
         for (i in 0 until scheduledBlocks.length()) {
             val block = scheduledBlocks.getJSONObject(i)
@@ -340,6 +345,7 @@ class AppBlockService : AccessibilityService() {
                     foundTaskName = block.getString("taskName")
                     foundStartMs = startMs
                     foundEndMs = endMs
+                    foundMode = block.optString("mode", "hard")
                     break
                 }
 
@@ -376,10 +382,18 @@ class AppBlockService : AccessibilityService() {
             currentTaskStartTimeMs = foundStartMs
             currentTaskEndTimeMs = foundEndMs
 
-            if (now - lastActionTime < 5000) return
-            lastActionTime = now
+            // Light mode: per-app 30s cooldown so the user gets a warning,
+            // then is left alone briefly. Hard mode: global 5s cooldown.
+            if (foundMode == "light") {
+                val lastSeen = lastBlockedPerApp[packageName] ?: 0L
+                if (now - lastSeen < 30_000L) return
+                lastBlockedPerApp[packageName] = now
+            } else {
+                if (now - lastActionTime < 5000) return
+                lastActionTime = now
+            }
 
-            Log.d("AppAccessibilityService", "🚫 Blocare app executată pentru $packageName la ora ${Date(now)}")
+            Log.d("AppAccessibilityService", "🚫 Blocare app ($foundMode) executată pentru $packageName la ora ${Date(now)}")
 
             val preventedCount = incrementPreventedDistractions()
             showOverlay(packageName, preventedCount)
