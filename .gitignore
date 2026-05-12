@@ -95,3 +95,8 @@ linux/flutter/ephemeral/
 # Environment Variables
 # -----------------------
 .env
+
+# -----------------------
+# Claude Code
+# -----------------------
+.claude/

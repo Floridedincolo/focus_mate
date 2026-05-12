@@ -149,21 +149,11 @@ class AppBlockService : AccessibilityService() {
             return true
         }
 
-        // 4) App preinstalat de OEM care NU a fost updatat prin Play Store
-        //    → componentă OS (Honor Home, Honor Search, Settings, Gallery OEM etc.).
-        //    YouTube, Chrome, Gmail etc. sunt FLAG_SYSTEM + FLAG_UPDATED_SYSTEM_APP
-        //    pe majoritatea telefoanelor → NU sunt exempte → rămân blocabile.
-        try {
-            val ai = packageManager.getApplicationInfo(packageName, 0)
-            val isSystem = (ai.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-            val isUpdatedSystem = (ai.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
-            if (isSystem && !isUpdatedSystem) {
-                exemptDecisionCache[packageName] = true
-                return true
-            }
-        } catch (e: Exception) {
-            // Dacă nu putem determina, preferăm să NU exceptăm (fail-closed pe blocare).
-        }
+        // Note: nu mai exceptăm automat system apps non-updated. Pe emulator
+        // și pe telefoane unde Play Store nu a actualizat încă Google apps
+        // (Calendar, Maps etc.) acea regulă le scotea silent din blocare.
+        // Verificarea launcher icon de mai sus filtrează deja componentele
+        // OS invizibile (System UI, GMS internals, overlay-uri OEM).
 
         exemptDecisionCache[packageName] = false
         return false
@@ -397,7 +387,14 @@ class AppBlockService : AccessibilityService() {
 
             val preventedCount = incrementPreventedDistractions()
             showOverlay(packageName, preventedCount)
-            Handler(Looper.getMainLooper()).postDelayed({ sendUserToHome() }, 100)
+            // Hard mode kicks user out so they can't bypass the overlay on
+            // fullscreen apps. Light mode just shows the overlay and lets the
+            // user dismiss it (with a 30s grace period before re-blocking).
+            if (foundMode != "light") {
+                Handler(Looper.getMainLooper()).postDelayed({ sendUserToHome() }, 100)
+            } else {
+                Handler(Looper.getMainLooper()).postDelayed({ removeOverlay() }, 4000)
+            }
         } else if (shouldBlockWeb) {
             currentTaskName = foundTaskName
             currentTaskStartTimeMs = foundStartMs

@@ -5,9 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/service_locator.dart';
 import '../../domain/entities/app_block_template.dart';
 import '../../domain/entities/installed_application.dart';
+import '../../domain/entities/task.dart';
 import '../../domain/repositories/block_template_repository.dart';
 import '../../domain/usecases/app_usecases.dart';
 import '../providers/block_template_providers.dart';
+import '../providers/task_providers.dart';
 
 class CreateTemplateScreen extends ConsumerStatefulWidget {
   final AppBlockTemplate? existingTemplate;
@@ -119,6 +121,19 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen>
 
     await getIt<BlockTemplateRepository>().saveTemplate(template);
     ref.invalidate(blockTemplatesProvider);
+
+    // Force schedule.json to be rewritten immediately so the native
+    // accessibility service sees the new mode/isWhitelist/packages
+    // without depending on Home's listener being mounted.
+    try {
+      final freshTemplates =
+          await ref.read(blockTemplatesProvider.future);
+      final List<Task> tasks =
+          ref.read(tasksStreamProvider).valueOrNull ?? const [];
+      await syncFocusScheduleToNative(tasks, freshTemplates);
+    } catch (_) {
+      // Best-effort; the Home listener will still try to sync later.
+    }
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
