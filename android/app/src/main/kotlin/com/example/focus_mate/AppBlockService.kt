@@ -44,6 +44,30 @@ class AppBlockService : AccessibilityService() {
     // we leave X alone for 30s so the user can briefly use it.
     private val lastBlockedPerApp = HashMap<String, Long>()
 
+    // Cooldown for in-app feature blocks (key: "pkg/feature"). Prevents the
+    // service from spamming GLOBAL_ACTION_BACK while a feature is on screen.
+    private val lastInAppBlock = HashMap<String, Long>()
+
+    // Lockdown-mode state.
+    private var lockdownActive = false
+    private var lockdownEndMs = 0L
+    private var lockdownTaskName: String? = null
+    private var lockdownCountdownView: TextView? = null
+    private var lockdownTickRunnable: Runnable? = null
+    // True while the user is on a phone call (we briefly hide the overlay
+    // so the dialer is usable). Restored when the dialer is left.
+    private var lockdownPausedForCall = false
+
+    // Dialer packages we trust to be visible during lockdown. The OS default
+    // dialer is added at runtime via TelecomManager.
+    private val dialerExemptPackages = mutableSetOf(
+        "com.android.dialer",
+        "com.google.android.dialer",
+        "com.samsung.android.dialer",
+        "com.android.server.telecom",
+        "com.android.incallui",
+    )
+
     // Variabile pentru verificarea periodică (Heartbeat)
     private var lastPackageSeen: String? = null
     private val handler = Handler(Looper.getMainLooper())
@@ -68,6 +92,120 @@ class AppBlockService : AccessibilityService() {
             "com.sec.android.app.sbrowser" to listOf("com.sec.android.app.sbrowser:id/location_bar_edit_text"),
             "com.UCMobile.intl" to listOf("com.UCMobile.intl:id/title_bar_input"),
             "com.vivaldi.browser" to listOf("com.vivaldi.browser:id/url_bar"),
+        )
+
+        // ── In-app feature detectors ──
+        // For each (package, featureId) we list multi-pronged signals: view IDs
+        // (most stable), content-descriptions (resilient to UI text changes),
+        // and visible text fallbacks (with common localizations).
+        // Detection is fuzzy on purpose: any single match flips the feature on,
+        // but we also require the node to be visible to the user.
+        // Each detector is intentionally narrow: signals that match the
+        // *active* feature page only — not toolbar icons or tabs that are
+        // visible on every screen. View IDs are the most reliable signal;
+        // contentDesc/text are last-resort fallbacks and must be specific
+        // enough that they don't appear on the app's home/feed.
+        //
+        // `viewIdsActive` view IDs only count if the node is currently
+        // focused or selected — used for things like a search EditText so
+        // it doesn't trigger when the user is merely on the home feed.
+        // `selectedContentDescs` / `selectedTexts` only count when the
+        // matching node is in `isSelected=true` state — used to detect that
+        // a bottom-nav tab (Reels, Explore, ...) is currently the active
+        // destination, rather than just being a label in the nav bar.
+        data class InAppDetector(
+            val viewIds: List<String> = emptyList(),
+            val viewIdsActive: List<String> = emptyList(),
+            val contentDescs: List<String> = emptyList(),
+            val texts: List<String> = emptyList(),
+            val selectedContentDescs: List<String> = emptyList(),
+            val selectedTexts: List<String> = emptyList()
+        )
+
+        private val IN_APP_DETECTORS: Map<String, Map<String, InAppDetector>> = mapOf(
+            "com.google.android.youtube" to mapOf(
+                // The Shorts player has its own fullscreen container.
+                "shorts" to InAppDetector(
+                    viewIds = listOf(
+                        "com.google.android.youtube:id/reel_recycler",
+                        "com.google.android.youtube:id/reel_player_page_container",
+                        "com.google.android.youtube:id/reel_watch_player",
+                    )
+                ),
+                // Only fire when the search field is actively focused (i.e.
+                // the user opened search) — NOT when the search icon is just
+                // present in the toolbar of the home feed.
+                "video_search" to InAppDetector(
+                    viewIdsActive = listOf(
+                        "com.google.android.youtube:id/search_edit_text"
+                    )
+                ),
+                // Comments panel is a bottom sheet with this container id.
+                "comments" to InAppDetector(
+                    viewIds = listOf(
+                        "com.google.android.youtube:id/watch_comments",
+                        "com.google.android.youtube:id/comments_container",
+                    )
+                ),
+                // Picture-in-picture has no on-screen node inside YouTube
+                // itself; the system PiP overlay belongs to com.android.systemui.
+                // This detector is effectively a no-op for now.
+                "pip" to InAppDetector(),
+            ),
+            "com.instagram.android" to mapOf(
+                // Story viewer has a "Reply to <user>" / "Send message"
+                // input + an options button described by the author's name.
+                // We rely on the "Reply to" / "Send message" contentDesc
+                // which only appears on the fullscreen story viewer.
+                "stories" to InAppDetector(
+                    contentDescs = listOf(
+                        "reply to ",
+                        "send message",
+                        "story by ",
+                        "trimite mesaj",
+                    )
+                ),
+                // Reels: fires when the Reels bottom-nav tab is currently
+                // selected (user is on the Reels feed). Also catches the
+                // fullscreen reels viewer via author byline contentDesc.
+                "reels" to InAppDetector(
+                    selectedContentDescs = listOf("reels"),
+                    contentDescs = listOf("reels by ", "reels viewer")
+                ),
+                // Explore = the Search tab in IG's bottom nav. Tab is
+                // selected only when user is on the explore grid.
+                "explore" to InAppDetector(
+                    selectedContentDescs = listOf("search and explore", "explore")
+                ),
+            ),
+            "com.facebook.katana" to mapOf(
+                // Facebook obfuscates view IDs heavily; we lean on highly
+                // specific content descriptions for the fullscreen viewers.
+                "reels" to InAppDetector(
+                    contentDescs = listOf("reels viewer", "reels video")
+                ),
+                "stories" to InAppDetector(
+                    contentDescs = listOf("story viewer")
+                ),
+            ),
+            "com.snapchat.android" to mapOf(
+                "spotlight" to InAppDetector(
+                    contentDescs = listOf("spotlight viewer", "spotlight feed")
+                ),
+                "stories" to InAppDetector(
+                    contentDescs = listOf("story viewer")
+                ),
+            ),
+            "com.zhiliaoapp.musically" to mapOf(
+                "fyp" to InAppDetector(
+                    contentDescs = listOf("for you feed", "for you page")
+                ),
+                "search" to InAppDetector(
+                    viewIdsActive = listOf(
+                        "com.zhiliaoapp.musically:id/search_edit_text"
+                    )
+                ),
+            ),
         )
 
         private val MOTIVATIONAL_SEARCHES = listOf(
@@ -245,7 +383,9 @@ class AppBlockService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         Log.d("AppAccessibilityService", "🔌 Serviciu conectat – Monitorizare activă!")
+        refreshDefaultDialer()
         checkAndLoadSchedule()
+        maintainLockdown()
         startPeriodicCheck()
     }
 
@@ -253,6 +393,8 @@ class AppBlockService : AccessibilityService() {
     private fun startPeriodicCheck() {
         tickRunnable = object : Runnable {
             override fun run() {
+                checkAndLoadSchedule()
+                maintainLockdown(lastPackageSeen)
                 lastPackageSeen?.let { pkg ->
                     checkBlockingLogic(pkg)
                 }
@@ -288,11 +430,17 @@ class AppBlockService : AccessibilityService() {
             when (event.eventType) {
                 AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
                     lastPackageSeen = packageName
+                    // Lockdown takes priority — if a lockdown window is
+                    // active and the user just left the dialer, snap the
+                    // overlay back BEFORE running the regular block logic.
+                    maintainLockdown(packageName)
+                    if (lockdownActive) return
                     checkBlockingLogic(packageName)
                 }
                 AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
-                    // Only process content changes in browsers (URL navigation)
-                    if (isBrowser(packageName)) {
+                    // Process content changes in browsers (URL navigation) and
+                    // in apps with in-app feature detectors (Shorts, Reels, ...)
+                    if (isBrowser(packageName) || IN_APP_DETECTORS.containsKey(packageName)) {
                         lastPackageSeen = packageName
                         checkBlockingLogic(packageName)
                     }
@@ -315,6 +463,9 @@ class AppBlockService : AccessibilityService() {
         var foundStartMs = 0L
         var foundEndMs = 0L
         var foundMode = "hard"
+        // Aggregated in-app feature flags active for this package across any
+        // currently-active schedule window (union — most aggressive wins).
+        val activeInAppFeatures = mutableSetOf<String>()
 
         for (i in 0 until scheduledBlocks.length()) {
             val block = scheduledBlocks.getJSONObject(i)
@@ -322,6 +473,17 @@ class AppBlockService : AccessibilityService() {
             val endMs = block.getLong("endMs")
 
             if (now in startMs until endMs) {
+                // Collect in-app feature flags for this package, if any.
+                val inAppObj = block.optJSONObject("inAppBlocks")
+                if (inAppObj != null) {
+                    val arr = inAppObj.optJSONArray(packageName)
+                    if (arr != null) {
+                        for (k in 0 until arr.length()) {
+                            activeInAppFeatures.add(arr.getString(k))
+                        }
+                    }
+                }
+
                 // Check app blocking
                 val isWhitelist = block.getBoolean("isWhitelist")
                 val appsArray = block.getJSONArray("apps")
@@ -409,7 +571,175 @@ class AppBlockService : AccessibilityService() {
             val url = extractUrlFromBrowser(packageName)
             val siteName = if (url != null) extractHost(url) else "Website"
             showWebOverlay(siteName, preventedCount)
+        } else if (activeInAppFeatures.isNotEmpty()) {
+            handleInAppFeatureBlock(packageName, activeInAppFeatures)
         }
+    }
+
+    /**
+     * Walks the active window's accessibility tree looking for nodes that
+     * match any enabled in-app feature detector for [packageName]. If found,
+     * dismisses the feature with GLOBAL_ACTION_BACK (works for fullscreen
+     * Shorts/Reels viewers and most modal feature panels).
+     *
+     * Per (package, feature) cooldown of 4 seconds avoids spamming back-presses
+     * while the same feature is on screen.
+     */
+    private fun handleInAppFeatureBlock(packageName: String, enabled: Set<String>) {
+        val detectors = IN_APP_DETECTORS[packageName] ?: return
+        val root = rootInActiveWindow ?: return
+        val now = System.currentTimeMillis()
+        try {
+            for (featureId in enabled) {
+                val det = detectors[featureId] ?: continue
+                // Per (pkg, feature) cooldown: long enough that we don't spam
+                // the overlay while the feature stays on screen, short enough
+                // to fire again on a fresh attempt.
+                val cooldownKey = "$packageName/$featureId"
+                if (now - (lastInAppBlock[cooldownKey] ?: 0L) < 20_000L) continue
+                if (detectFeature(root, det)) {
+                    lastInAppBlock[cooldownKey] = now
+                    Log.d("AppAccessibilityService", "🚫 In-app block: $packageName / $featureId")
+
+                    // Find the active schedule window's task name so the
+                    // overlay can show the same "You need to focus on: X"
+                    // line as the regular block.
+                    populateActiveTaskContext(packageName)
+                    val preventedCount = incrementPreventedDistractions()
+                    showInAppOverlay(packageName, featureId, preventedCount)
+                    // Pop back to dismiss the feature view. Slight delay so
+                    // the overlay actually paints before the underlying app
+                    // reacts to the back press.
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        performGlobalAction(GLOBAL_ACTION_BACK)
+                    }, 250)
+                    return
+                }
+            }
+        } finally {
+            root.recycle()
+        }
+    }
+
+    /**
+     * Looks up the currently-active schedule window (if any) for [packageName]
+     * and stores its task name / time range on the instance so overlay UI can
+     * render the standard "focus on X" hint.
+     */
+    private fun populateActiveTaskContext(packageName: String) {
+        val now = System.currentTimeMillis()
+        for (i in 0 until scheduledBlocks.length()) {
+            val block = scheduledBlocks.getJSONObject(i)
+            val startMs = block.getLong("startMs")
+            val endMs = block.getLong("endMs")
+            if (now in startMs until endMs) {
+                currentTaskName = block.optString("taskName", null)
+                currentTaskStartTimeMs = startMs
+                currentTaskEndTimeMs = endMs
+                return
+            }
+        }
+    }
+
+    private fun detectFeature(root: AccessibilityNodeInfo, det: InAppDetector): Boolean {
+        // 1) Plain view-id lookup — node must be visible.
+        for (vid in det.viewIds) {
+            val nodes = try { root.findAccessibilityNodeInfosByViewId(vid) } catch (e: Exception) { null }
+            if (!nodes.isNullOrEmpty()) {
+                var hit = false
+                for (n in nodes) {
+                    if (!hit && n.isVisibleToUser) hit = true
+                    n.recycle()
+                }
+                if (hit) return true
+            }
+        }
+        // 2) Active view-id lookup — node must be visible AND (focused OR
+        // selected). Used for things like a search EditText that we only
+        // want to count when the user has actually engaged with it.
+        for (vid in det.viewIdsActive) {
+            val nodes = try { root.findAccessibilityNodeInfosByViewId(vid) } catch (e: Exception) { null }
+            if (!nodes.isNullOrEmpty()) {
+                var hit = false
+                for (n in nodes) {
+                    if (!hit && n.isVisibleToUser && (n.isFocused || n.isSelected)) hit = true
+                    n.recycle()
+                }
+                if (hit) return true
+            }
+        }
+        val hasTextSignals = det.contentDescs.isNotEmpty() ||
+            det.texts.isNotEmpty() ||
+            det.selectedContentDescs.isNotEmpty() ||
+            det.selectedTexts.isNotEmpty()
+        if (!hasTextSignals) return false
+        // 3) Bounded BFS that handles both plain and "selected-only" text /
+        // contentDescription matches in a single tree walk.
+        return bfsMatch(
+            root,
+            det.contentDescs,
+            det.texts,
+            det.selectedContentDescs,
+            det.selectedTexts,
+            maxNodes = 400
+        )
+    }
+
+    private fun bfsMatch(
+        root: AccessibilityNodeInfo,
+        contentDescs: List<String>,
+        texts: List<String>,
+        selectedContentDescs: List<String>,
+        selectedTexts: List<String>,
+        maxNodes: Int
+    ): Boolean {
+        val queue: ArrayDeque<AccessibilityNodeInfo> = ArrayDeque()
+        queue.add(root)
+        var visited = 0
+        while (queue.isNotEmpty() && visited < maxNodes) {
+            val node = queue.removeFirst()
+            visited++
+            try {
+                if (node.isVisibleToUser) {
+                    val cd = node.contentDescription?.toString()?.lowercase()
+                    if (cd != null) {
+                        for (needle in contentDescs) {
+                            if (cd.contains(needle.lowercase())) return true
+                        }
+                        if (node.isSelected) {
+                            for (needle in selectedContentDescs) {
+                                if (cd.contains(needle.lowercase())) return true
+                            }
+                        }
+                    }
+                    val tx = node.text?.toString()?.lowercase()
+                    if (tx != null) {
+                        for (needle in texts) {
+                            if (tx.contains(needle.lowercase())) return true
+                        }
+                        if (node.isSelected) {
+                            for (needle in selectedTexts) {
+                                if (tx.contains(needle.lowercase())) return true
+                            }
+                        }
+                    }
+                }
+                for (i in 0 until node.childCount) {
+                    val c = node.getChild(i) ?: continue
+                    queue.add(c)
+                }
+            } catch (e: Exception) {
+                // Ignore individual node errors and keep walking.
+            } finally {
+                if (node !== root) node.recycle()
+            }
+        }
+        // Drain any remaining nodes so we don't leak them.
+        while (queue.isNotEmpty()) {
+            val n = queue.removeFirst()
+            if (n !== root) n.recycle()
+        }
+        return false
     }
 
     // AICI E MAGIA NOUĂ: Salvăm atât totalul pe zi, cât și totalul pe ora exactă!
@@ -680,11 +1010,394 @@ class AppBlockService : AccessibilityService() {
         } catch (e: Exception) { overlayShown = false }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        tickRunnable?.let { handler.removeCallbacks(it) }
+    /**
+     * The source of truth for lockdown lifecycle. Walks the schedule, finds a
+     * currently-active window with `mode == "lockdown"`, and toggles the
+     * overlay on/off based purely on time — independent of which app the
+     * user has opened.
+     *
+     * Safe to call on every tick / event; idempotent.
+     */
+    private fun maintainLockdown(currentPackage: String? = null) {
+        val now = System.currentTimeMillis()
+        var taskName: String? = null
+        var endMs = 0L
+        for (i in 0 until scheduledBlocks.length()) {
+            val block = scheduledBlocks.getJSONObject(i)
+            if (block.optString("mode") != "lockdown") continue
+            val s = block.getLong("startMs")
+            val e = block.getLong("endMs")
+            if (now in s until e) {
+                taskName = block.optString("taskName").takeIf { it.isNotBlank() }
+                endMs = e
+                break
+            }
+        }
+
+        if (endMs > 0) {
+            // Window is active.
+            if (lockdownPausedForCall) {
+                // User opened the dialer. Keep overlay hidden while the
+                // current foreground is the dialer; restore the moment they
+                // leave it.
+                val pkg = currentPackage
+                if (pkg != null && pkg !in dialerExemptPackages) {
+                    Log.d("AppAccessibilityService", "🛡️ Left dialer ($pkg) — restoring lockdown")
+                    lockdownPausedForCall = false
+                    showLockdownOverlay(taskName, endMs)
+                }
+                return
+            }
+            if (!lockdownActive) {
+                Log.d("AppAccessibilityService", "🛡️ Lockdown window entered until ${Date(endMs)}")
+                incrementPreventedDistractions()
+                showLockdownOverlay(taskName, endMs)
+            } else {
+                // Already active — just refresh task name/end in case the
+                // schedule changed underfoot.
+                lockdownTaskName = taskName
+                lockdownEndMs = endMs
+            }
+        } else {
+            // No active lockdown window.
+            if (lockdownActive || lockdownPausedForCall) {
+                Log.d("AppAccessibilityService", "🛡️ Lockdown window ended")
+                dismissLockdown()
+            }
+        }
+    }
+
+    /** Records the OS default dialer so it's allowed through during lockdown. */
+    private fun refreshDefaultDialer() {
+        try {
+            val tm = getSystemService(Context.TELECOM_SERVICE) as? android.telecom.TelecomManager
+            tm?.defaultDialerPackage?.let { dialerExemptPackages.add(it) }
+        } catch (_: Exception) {}
+    }
+
+    /**
+     * Persistent fullscreen lockdown screen — covers everything (including the
+     * launcher) with the current task name and a live countdown to the end of
+     * the focus window. The only escape hatch is the phone-call icon, which
+     * temporarily hides the overlay while the dialer is foregrounded.
+     */
+    private fun showLockdownOverlay(taskName: String?, endMs: Long) {
+        if (lockdownActive) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) return
+
+        // Remove any pre-existing non-lockdown overlay first (we want full
+        // control of the screen — no leftover "OK" buttons floating around).
+        removeOverlay()
+
+        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        val scale = resources.displayMetrics.density
+        val lockdownGreen = Color.parseColor("#3CA374")
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(lockdownGreen)
+            isClickable = true; isFocusable = true
+        }
+
+        val untilFormat = SimpleDateFormat("EEE HH:mm:ss", Locale.getDefault())
+        root.addView(TextView(this).apply {
+            text = "Until ${untilFormat.format(Date(endMs))}"
+            textSize = 16f
+            setTextColor(Color.parseColor("#CCFFFFFF"))
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = (8 * scale).toInt() }
+        })
+
+        val countdown = TextView(this).apply {
+            text = formatCountdown(endMs - System.currentTimeMillis())
+            textSize = 56f
+            setTextColor(Color.WHITE)
+            typeface = android.graphics.Typeface.create("sans-serif-light", android.graphics.Typeface.NORMAL)
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = (16 * scale).toInt() }
+        }
+        root.addView(countdown)
+        lockdownCountdownView = countdown
+
+        if (!taskName.isNullOrBlank()) {
+            root.addView(TextView(this).apply {
+                text = taskName
+                textSize = 22f
+                setTextColor(Color.WHITE)
+                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+                gravity = Gravity.CENTER
+                setPadding((24 * scale).toInt(), 0, (24 * scale).toInt(), 0)
+                layoutParams = LinearLayout.LayoutParams(
+                    LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = (8 * scale).toInt() }
+            })
+        }
+
+        root.addView(TextView(this).apply {
+            text = "Focus mode is locked until the session ends."
+            textSize = 13f
+            setTextColor(Color.parseColor("#AAFFFFFF"))
+            gravity = Gravity.CENTER
+            setPadding((32 * scale).toInt(), 0, (32 * scale).toInt(), 0)
+            layoutParams = LinearLayout.LayoutParams(
+                LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = (48 * scale).toInt() }
+        })
+
+        // Phone-call escape hatch. The only way out of lockdown until the
+        // session ends. Tapping opens the system dialer; the overlay
+        // auto-pauses while the dialer is foregrounded and snaps back the
+        // moment the user leaves it.
+        val callButton = buildLockdownCallButton(scale)
+        root.addView(callButton)
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
+            // Touchable overlay so taps don't fall through to the underlying
+            // app. No FLAG_NOT_FOCUSABLE so back-press is consumed.
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
+                WindowManager.LayoutParams.FLAG_FULLSCREEN,
+            PixelFormat.OPAQUE
+        )
+
+        try {
+            windowManager?.addView(root, params)
+            overlayView = root
+            overlayShown = true
+            lockdownActive = true
+            lockdownEndMs = endMs
+            lockdownTaskName = taskName
+            startLockdownTick()
+        } catch (e: Exception) {
+            Log.e("AppAccessibilityService", "❌ Lockdown overlay failed: ${e.message}")
+            lockdownActive = false
+        }
+    }
+
+    private fun startLockdownTick() {
+        stopLockdownTick()
+        val r = object : Runnable {
+            override fun run() {
+                val remaining = lockdownEndMs - System.currentTimeMillis()
+                if (remaining <= 0) {
+                    Log.d("AppAccessibilityService", "🛡️ Lockdown window ended — dismissing overlay")
+                    dismissLockdown()
+                    return
+                }
+                lockdownCountdownView?.text = formatCountdown(remaining)
+                handler.postDelayed(this, 1000)
+            }
+        }
+        lockdownTickRunnable = r
+        handler.post(r)
+    }
+
+    private fun stopLockdownTick() {
+        lockdownTickRunnable?.let { handler.removeCallbacks(it) }
+        lockdownTickRunnable = null
+    }
+
+    private fun dismissLockdown() {
+        stopLockdownTick()
+        lockdownActive = false
+        lockdownPausedForCall = false
+        lockdownEndMs = 0L
+        lockdownTaskName = null
+        lockdownCountdownView = null
         removeOverlay()
     }
 
-    override fun onInterrupt() { removeOverlay() }
+    /**
+     * Builds the circular phone-call button shown on the lockdown overlay.
+     * White outline + handset glyph, matching the design.
+     */
+    private fun buildLockdownCallButton(scale: Float): View {
+        val size = (84 * scale).toInt()
+        return TextView(this).apply {
+            // The classic phone handset glyph. Unicode is rendered as a
+            // monochrome symbol on every Android skin, which fits the
+            // green minimalist look.
+            text = "☎"
+            textSize = 34f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setStroke((2 * scale).toInt(), Color.WHITE)
+                setColor(Color.TRANSPARENT)
+            }
+            layoutParams = LinearLayout.LayoutParams(size, size)
+            isClickable = true; isFocusable = true
+            setOnClickListener { launchDialerFromLockdown() }
+        }
+    }
+
+    private fun launchDialerFromLockdown() {
+        if (!lockdownActive) return
+        try {
+            refreshDefaultDialer()
+            // ACTION_DIAL opens the dialer without requiring CALL_PHONE perm.
+            val intent = Intent(Intent.ACTION_DIAL).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            // Pause lockdown BEFORE launching, otherwise our own overlay
+            // will sit on top of the dialer. We clear `lockdownActive` too
+            // so the re-show path (when the user leaves the dialer) isn't
+            // blocked by the idempotency guard in showLockdownOverlay.
+            lockdownPausedForCall = true
+            lockdownActive = false
+            stopLockdownTick()
+            removeOverlay()
+            startActivity(intent)
+            Log.d("AppAccessibilityService", "🛡️ Lockdown paused for dialer")
+        } catch (e: Exception) {
+            Log.e("AppAccessibilityService", "❌ Could not launch dialer: ${e.message}")
+            // If we failed to launch the dialer, undo the pause so we don't
+            // leave the user stuck without an overlay AND without a dialer.
+            lockdownPausedForCall = false
+            maintainLockdown()
+        }
+    }
+
+    private fun formatCountdown(remainingMs: Long): String {
+        if (remainingMs <= 0) return "00:00:00"
+        val totalSec = remainingMs / 1000
+        val h = totalSec / 3600
+        val m = (totalSec % 3600) / 60
+        val s = totalSec % 60
+        return String.format(Locale.US, "%02d:%02d:%02d", h, m, s)
+    }
+
+    private fun featureLabel(featureId: String): String = when (featureId) {
+        "shorts" -> "Shorts"
+        "reels" -> "Reels"
+        "stories" -> "Stories"
+        "explore" -> "Explore"
+        "spotlight" -> "Spotlight"
+        "fyp" -> "For You feed"
+        "comments" -> "Comments"
+        "video_search", "search" -> "Search"
+        "pip" -> "Picture-in-picture"
+        else -> featureId.replaceFirstChar { it.uppercase() }
+    }
+
+    private fun showInAppOverlay(packageName: String, featureId: String, preventedCount: Int) {
+        if (overlayShown) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) return
+
+        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        val scale = resources.displayMetrics.density
+        val (iconDrawable, appLabel) = loadAppIconAndLabel(packageName)
+        val featureName = featureLabel(featureId)
+
+        val backdrop = FrameLayout(this).apply {
+            setBackgroundColor(Color.parseColor("#AA000000"))
+            isClickable = true; isFocusable = true
+        }
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            background = GradientDrawable().apply {
+                cornerRadius = 36f * scale
+                setColor(Color.parseColor("#22FFFFFF"))
+                setStroke((1 * scale).toInt(), Color.parseColor("#33FFFFFF"))
+            }
+            setPadding((32 * scale).toInt(), (48 * scale).toInt(), (32 * scale).toInt(), (40 * scale).toInt())
+            layoutParams = FrameLayout.LayoutParams((320 * scale).toInt(), FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
+        }
+
+        iconDrawable?.let {
+            card.addView(ImageView(this).apply {
+                setImageDrawable(it)
+                layoutParams = LinearLayout.LayoutParams((72 * scale).toInt(), (72 * scale).toInt()).apply { bottomMargin = (24 * scale).toInt() }
+            })
+        }
+
+        card.addView(TextView(this).apply {
+            text = "$featureName is blocked"
+            textSize = 22f
+            setTextColor(Color.WHITE)
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { bottomMargin = (6 * scale).toInt() }
+        })
+
+        card.addView(TextView(this).apply {
+            text = "You can still use ${appLabel ?: "this app"} — just not this part."
+            textSize = 13f
+            setTextColor(Color.parseColor("#AAFFFFFF"))
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { bottomMargin = (16 * scale).toInt() }
+        })
+
+        if (!currentTaskName.isNullOrBlank()) {
+            card.addView(TextView(this).apply {
+                text = "You need to focus on:"
+                textSize = 14f; setTextColor(Color.parseColor("#AAFFFFFF")); gravity = Gravity.CENTER
+            })
+            card.addView(TextView(this).apply {
+                text = currentTaskName
+                textSize = 18f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
+                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+                layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { topMargin = (4 * scale).toInt(); bottomMargin = (16 * scale).toInt() }
+            })
+        }
+
+        card.addView(TextView(this).apply {
+            text = "Distractions prevented today: $preventedCount"
+            textSize = 12f
+            setTextColor(Color.parseColor("#88FFFFFF"))
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { bottomMargin = (24 * scale).toInt() }
+        })
+
+        card.addView(Button(this).apply {
+            text = "OK"
+            setTextColor(Color.BLACK); isAllCaps = false; textSize = 16f
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+            background = GradientDrawable().apply { cornerRadius = 24f * scale; setColor(Color.WHITE) }
+            layoutParams = LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, (58 * scale).toInt())
+            setOnClickListener { removeOverlay() }
+        })
+
+        backdrop.addView(card)
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM,
+            PixelFormat.TRANSLUCENT
+        )
+
+        try {
+            windowManager?.addView(backdrop, params)
+            overlayView = backdrop; overlayShown = true
+            card.alpha = 0f; card.scaleX = 0.85f; card.scaleY = 0.85f
+            card.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(450).setInterpolator(AccelerateDecelerateInterpolator()).start()
+            // Auto-dismiss after 4s so the overlay doesn't linger forever
+            // if the user just walks away.
+            Handler(Looper.getMainLooper()).postDelayed({ removeOverlay() }, 4000)
+        } catch (e: Exception) { overlayShown = false }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        tickRunnable?.let { handler.removeCallbacks(it) }
+        stopLockdownTick()
+        removeOverlay()
+    }
+
+    override fun onInterrupt() {
+        stopLockdownTick()
+        lockdownActive = false
+        removeOverlay()
+    }
 }

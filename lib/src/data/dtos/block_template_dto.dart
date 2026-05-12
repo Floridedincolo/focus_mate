@@ -8,6 +8,7 @@ class BlockTemplateDTO {
   final List<String> packages;
   final List<String> blockedWebsites;
   final List<String> blockedKeywords;
+  final Map<String, List<String>> inAppBlocks;
 
   const BlockTemplateDTO({
     required this.id,
@@ -17,9 +18,20 @@ class BlockTemplateDTO {
     this.packages = const [],
     this.blockedWebsites = const [],
     this.blockedKeywords = const [],
+    this.inAppBlocks = const {},
   });
 
   factory BlockTemplateDTO.fromMap(Map<String, dynamic> map) {
+    final rawInApp = map['inAppBlocks'];
+    Map<String, List<String>> parsedInApp = {};
+    if (rawInApp is Map) {
+      rawInApp.forEach((k, v) {
+        if (v is List) {
+          parsedInApp[k.toString()] =
+              v.map((e) => e.toString()).toList(growable: false);
+        }
+      });
+    }
     return BlockTemplateDTO(
       id: map['id'] as String? ?? '',
       name: map['name'] as String? ?? '',
@@ -37,6 +49,7 @@ class BlockTemplateDTO {
               ?.map((e) => e as String)
               .toList() ??
           [],
+      inAppBlocks: parsedInApp,
     );
   }
 
@@ -49,6 +62,7 @@ class BlockTemplateDTO {
       'packages': packages,
       'blockedWebsites': blockedWebsites,
       'blockedKeywords': blockedKeywords,
+      'inAppBlocks': inAppBlocks,
     };
   }
 

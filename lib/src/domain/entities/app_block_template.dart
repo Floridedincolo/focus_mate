@@ -8,6 +8,10 @@ class AppBlockTemplate {
   final List<String> packages;
   final List<String> blockedWebsites;
   final List<String> blockedKeywords;
+  // Per-app in-app feature blocks. Key = package name, value = enabled feature
+  // flags (e.g. 'shorts', 'reels', 'stories', 'explore', 'comments',
+  // 'video_search', 'pip'). Empty/missing = nothing extra to block for that app.
+  final Map<String, List<String>> inAppBlocks;
 
   const AppBlockTemplate({
     required this.id,
@@ -17,6 +21,7 @@ class AppBlockTemplate {
     this.packages = const [],
     this.blockedWebsites = const [],
     this.blockedKeywords = const [],
+    this.inAppBlocks = const {},
   });
 
   AppBlockTemplate copyWith({
@@ -27,6 +32,7 @@ class AppBlockTemplate {
     List<String>? packages,
     List<String>? blockedWebsites,
     List<String>? blockedKeywords,
+    Map<String, List<String>>? inAppBlocks,
   }) {
     return AppBlockTemplate(
       id: id ?? this.id,
@@ -36,6 +42,7 @@ class AppBlockTemplate {
       packages: packages ?? this.packages,
       blockedWebsites: blockedWebsites ?? this.blockedWebsites,
       blockedKeywords: blockedKeywords ?? this.blockedKeywords,
+      inAppBlocks: inAppBlocks ?? this.inAppBlocks,
     );
   }
 
@@ -49,16 +56,37 @@ class AppBlockTemplate {
         other.mode == mode &&
         _listEquals(other.packages, packages) &&
         _listEquals(other.blockedWebsites, blockedWebsites) &&
-        _listEquals(other.blockedKeywords, blockedKeywords);
+        _listEquals(other.blockedKeywords, blockedKeywords) &&
+        _inAppBlocksEqual(other.inAppBlocks, inAppBlocks);
   }
 
   @override
-  int get hashCode => Object.hash(id, name, isWhitelist, mode, Object.hashAll(packages), Object.hashAll(blockedWebsites), Object.hashAll(blockedKeywords));
+  int get hashCode => Object.hash(
+        id,
+        name,
+        isWhitelist,
+        mode,
+        Object.hashAll(packages),
+        Object.hashAll(blockedWebsites),
+        Object.hashAll(blockedKeywords),
+        Object.hashAll(inAppBlocks.entries
+            .map((e) => Object.hash(e.key, Object.hashAll(e.value)))),
+      );
 
   static bool _listEquals(List<String> a, List<String> b) {
     if (a.length != b.length) return false;
     for (int i = 0; i < a.length; i++) {
       if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  static bool _inAppBlocksEqual(
+      Map<String, List<String>> a, Map<String, List<String>> b) {
+    if (a.length != b.length) return false;
+    for (final key in a.keys) {
+      if (!b.containsKey(key)) return false;
+      if (!_listEquals(a[key]!, b[key]!)) return false;
     }
     return true;
   }
