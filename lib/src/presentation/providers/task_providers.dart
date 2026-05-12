@@ -186,8 +186,10 @@ Future<void> syncFocusScheduleToNative(List<Task> tasks, List<AppBlockTemplate> 
             'taskName': task.title,
             'apps': template.packages,
             'isWhitelist': template.isWhitelist,
+            'mode': template.mode,
             'blockedWebsites': template.blockedWebsites,
             'blockedKeywords': template.blockedKeywords,
+            'inAppBlocks': template.inAppBlocks,
           });
         }
       }

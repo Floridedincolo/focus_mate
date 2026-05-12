@@ -5,9 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/service_locator.dart';
 import '../../domain/entities/app_block_template.dart';
 import '../../domain/entities/installed_application.dart';
+import '../../domain/entities/task.dart';
 import '../../domain/repositories/block_template_repository.dart';
 import '../../domain/usecases/app_usecases.dart';
 import '../providers/block_template_providers.dart';
+import '../providers/task_providers.dart';
 
 class CreateTemplateScreen extends ConsumerStatefulWidget {
   final AppBlockTemplate? existingTemplate;
@@ -27,12 +29,46 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen>
   late final TabController _tabController;
 
   bool _isWhitelist = false;
+  String _mode = 'hard';
   Set<String> _selectedPackages = {};
   Set<String> _blockedWebsites = {};
   Set<String> _blockedKeywords = {};
+  // package -> set of enabled in-app feature flags
+  Map<String, Set<String>> _inAppBlocks = {};
+  // packages whose in-app block panel is currently expanded in the UI
+  final Set<String> _expandedInApp = {};
   List<InstalledApplication> _apps = [];
   bool _loadingApps = true;
   String _searchQuery = '';
+
+  // Catalog of supported in-app feature blocks per package.
+  // Add more entries here to support additional apps.
+  static const Map<String, List<_InAppFeature>> _inAppCatalog = {
+    'com.google.android.youtube': [
+      _InAppFeature('shorts', 'Block shorts', Icons.videocam_outlined),
+      _InAppFeature('video_search', 'Block video search', Icons.search),
+      _InAppFeature('pip', 'Block picture-in-picture mode',
+          Icons.picture_in_picture_alt_outlined),
+      _InAppFeature('comments', 'Block comments', Icons.chat_bubble_outline),
+    ],
+    'com.instagram.android': [
+      _InAppFeature('stories', 'Block stories', Icons.circle_outlined),
+      _InAppFeature('reels', 'Block reels', Icons.movie_creation_outlined),
+      _InAppFeature('explore', 'Block explore tab', Icons.search),
+    ],
+    'com.facebook.katana': [
+      _InAppFeature('reels', 'Block reels', Icons.movie_creation_outlined),
+      _InAppFeature('stories', 'Block stories', Icons.circle_outlined),
+    ],
+    'com.snapchat.android': [
+      _InAppFeature('spotlight', 'Block spotlight', Icons.movie_creation_outlined),
+      _InAppFeature('stories', 'Block stories', Icons.circle_outlined),
+    ],
+    'com.zhiliaoapp.musically': [
+      _InAppFeature('fyp', 'Block For You page', Icons.movie_creation_outlined),
+      _InAppFeature('search', 'Block search', Icons.search),
+    ],
+  };
 
   bool get _isEditing => widget.existingTemplate != null;
 
@@ -45,9 +81,14 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen>
     _keywordController = TextEditingController();
     _tabController = TabController(length: 3, vsync: this);
     _isWhitelist = t?.isWhitelist ?? false;
+    _mode = t?.mode ?? 'hard';
     _selectedPackages = Set.from(t?.packages ?? []);
     _blockedWebsites = Set.from(t?.blockedWebsites ?? []);
     _blockedKeywords = Set.from(t?.blockedKeywords ?? []);
+    _inAppBlocks = {
+      for (final e in (t?.inAppBlocks ?? const <String, List<String>>{}).entries)
+        e.key: Set<String>.from(e.value),
+    };
     _loadApps();
   }
 
@@ -109,13 +150,31 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen>
           DateTime.now().millisecondsSinceEpoch.toString(),
       name: name,
       isWhitelist: _isWhitelist,
+      mode: _mode,
       packages: _selectedPackages.toList(),
       blockedWebsites: _blockedWebsites.toList(),
       blockedKeywords: _blockedKeywords.toList(),
+      inAppBlocks: {
+        for (final e in _inAppBlocks.entries)
+          if (e.value.isNotEmpty) e.key: e.value.toList(),
+      },
     );
 
     await getIt<BlockTemplateRepository>().saveTemplate(template);
     ref.invalidate(blockTemplatesProvider);
+
+    // Force schedule.json to be rewritten immediately so the native
+    // accessibility service sees the new mode/isWhitelist/packages
+    // without depending on Home's listener being mounted.
+    try {
+      final freshTemplates =
+          await ref.read(blockTemplatesProvider.future);
+      final List<Task> tasks =
+          ref.read(tasksStreamProvider).valueOrNull ?? const [];
+      await syncFocusScheduleToNative(tasks, freshTemplates);
+    } catch (_) {
+      // Best-effort; the Home listener will still try to sync later.
+    }
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -235,87 +294,110 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen>
                     style: TextStyle(color: Colors.grey[600], fontSize: 12),
                   ),
                 ),
+                const SizedBox(height: 16),
+
+                const Text('MODE',
+                    style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.8)),
+                const SizedBox(height: 8),
+                Container(
+                  decoration: BoxDecoration(
+                      color: _card, borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.all(4),
+                  child: Row(
+                    children: [
+                      _typeToggle(
+                        label: 'Light',
+                        icon: Icons.notifications_active_outlined,
+                        selected: _mode == 'light',
+                        color: Colors.amberAccent,
+                        onTap: () => setState(() => _mode = 'light'),
+                      ),
+                      _typeToggle(
+                        label: 'Hard',
+                        icon: Icons.lock,
+                        selected: _mode == 'hard',
+                        color: Colors.redAccent,
+                        onTap: () => setState(() => _mode = 'hard'),
+                      ),
+                      _typeToggle(
+                        label: 'Lockdown',
+                        icon: Icons.shield_outlined,
+                        selected: _mode == 'lockdown',
+                        color: Colors.greenAccent,
+                        onTap: () => setState(() => _mode = 'lockdown'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text(
+                    _mode == 'hard'
+                        ? 'Re-blocks the app every time you reopen it.'
+                        : _mode == 'light'
+                            ? 'Shows a warning, then gives you 30s on the app before blocking again.'
+                            : 'Fullscreen takeover with the task name and a countdown — no way out until the session ends.',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  ),
+                ),
                 const SizedBox(height: 12),
               ],
             ),
           ),
 
-          // Tab bar
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: _card,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: TabBar(
-              controller: _tabController,
-              indicatorSize: TabBarIndicatorSize.tab,
-              indicator: BoxDecoration(
-                color: _accent.withValues(alpha: 0.25),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _accent.withValues(alpha: 0.5)),
+          // Tab bar + content (hidden entirely in Lockdown — the mode is
+          // device-wide and the apps/webs/keywords lists have no effect).
+          if (_mode == 'lockdown')
+            Expanded(child: _buildLockdownPlaceholder())
+          else ...[
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: _card,
+                borderRadius: BorderRadius.circular(12),
               ),
-              dividerColor: Colors.transparent,
-              labelColor: _accent,
-              unselectedLabelColor: Colors.white54,
-              labelStyle:
-                  const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-              unselectedLabelStyle:
-                  const TextStyle(fontWeight: FontWeight.w400, fontSize: 14),
-              tabs: [
-                Tab(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text('Apps'),
-                      if (_selectedPackages.isNotEmpty) ...[
-                        const SizedBox(width: 4),
-                        _badge(_selectedPackages.length),
-                      ],
-                    ],
-                  ),
+              child: TabBar(
+                controller: _tabController,
+                indicatorSize: TabBarIndicatorSize.tab,
+                indicator: BoxDecoration(
+                  color: _accent.withValues(alpha: 0.25),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: _accent.withValues(alpha: 0.5)),
                 ),
-                Tab(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text('Webs'),
-                      if (_blockedWebsites.isNotEmpty) ...[
-                        const SizedBox(width: 4),
-                        _badge(_blockedWebsites.length),
-                      ],
-                    ],
-                  ),
-                ),
-                Tab(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text('Keywords'),
-                      if (_blockedKeywords.isNotEmpty) ...[
-                        const SizedBox(width: 4),
-                        _badge(_blockedKeywords.length),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
+                dividerColor: Colors.transparent,
+                labelColor: _accent,
+                unselectedLabelColor: Colors.white54,
+                labelStyle:
+                    const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                unselectedLabelStyle:
+                    const TextStyle(fontWeight: FontWeight.w400, fontSize: 14),
+                tabs: [
+                  _tabLabel('Apps', _selectedPackages.length),
+                  _tabLabel('Webs', _blockedWebsites.length),
+                  _tabLabel('Keywords', _blockedKeywords.length),
+                ],
+              ),
             ),
-          ),
 
-          const SizedBox(height: 8),
+            const SizedBox(height: 8),
 
-          // Tab content
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildAppsTab(),
-                _buildWebsitesTab(),
-                _buildKeywordsTab(),
-              ],
+            // Tab content
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildAppsTab(),
+                  _buildWebsitesTab(),
+                  _buildKeywordsTab(),
+                ],
+              ),
             ),
-          ),
+          ],
         ],
       ),
       bottomNavigationBar: SafeArea(
@@ -335,6 +417,53 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen>
                   const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLockdownPlaceholder() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.shield_outlined,
+                color: Colors.greenAccent.withValues(alpha: 0.7), size: 64),
+            const SizedBox(height: 16),
+            const Text(
+              'Lockdown is device-wide',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Nothing to pick — the whole device is locked for the entire session. Only the phone dialer is allowed through.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey[500], fontSize: 13),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tabLabel(String label, int count) {
+    return Tab(
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label),
+            if (count > 0) ...[
+              const SizedBox(width: 4),
+              _badge(count),
+            ],
+          ],
         ),
       ),
     );
@@ -410,57 +539,157 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen>
                   itemCount: filteredApps.length,
                   itemBuilder: (context, index) {
                     final app = filteredApps[index];
-                    final isSelected =
-                        _selectedPackages.contains(app.packageName);
-
-                    return ListTile(
-                      leading: app.iconBytes != null
-                          ? Image.memory(
-                              Uint8List.fromList(app.iconBytes!),
-                              width: 36,
-                              height: 36,
-                            )
-                          : const Icon(Icons.android,
-                              color: Colors.white, size: 36),
-                      title: Text(
-                        app.appName,
-                        style: const TextStyle(
-                            color: Colors.white, fontSize: 14),
-                      ),
-                      subtitle: Text(
-                        app.packageName,
-                        style:
-                            TextStyle(color: Colors.grey[600], fontSize: 11),
-                      ),
-                      trailing: Checkbox(
-                        value: isSelected,
-                        activeColor: _isWhitelist
-                            ? Colors.greenAccent
-                            : Colors.redAccent,
-                        onChanged: (val) {
-                          setState(() {
-                            if (val == true) {
-                              _selectedPackages.add(app.packageName);
-                            } else {
-                              _selectedPackages.remove(app.packageName);
-                            }
-                          });
-                        },
-                      ),
-                      onTap: () {
-                        setState(() {
-                          if (isSelected) {
-                            _selectedPackages.remove(app.packageName);
-                          } else {
-                            _selectedPackages.add(app.packageName);
-                          }
-                        });
-                      },
-                    );
+                    return _buildAppRow(app);
                   },
                 ),
         ),
       ],
+    );
+  }
+
+  Widget _buildAppRow(InstalledApplication app) {
+    final isSelected = _selectedPackages.contains(app.packageName);
+    final features = _inAppCatalog[app.packageName];
+    final hasInApp = features != null && features.isNotEmpty;
+    final isExpanded = _expandedInApp.contains(app.packageName);
+    final enabledFeatures =
+        _inAppBlocks[app.packageName] ?? const <String>{};
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ListTile(
+          leading: app.iconBytes != null
+              ? Image.memory(
+                  Uint8List.fromList(app.iconBytes!),
+                  width: 36,
+                  height: 36,
+                )
+              : const Icon(Icons.android, color: Colors.white, size: 36),
+          title: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  app.appName,
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                ),
+              ),
+              if (hasInApp && enabledFeatures.isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.only(right: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: _accent.withValues(alpha: 0.25),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${enabledFeatures.length}',
+                    style: const TextStyle(
+                        color: Colors.white70, fontSize: 11),
+                  ),
+                ),
+            ],
+          ),
+          subtitle: Text(
+            app.packageName,
+            style: TextStyle(color: Colors.grey[600], fontSize: 11),
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (hasInApp)
+                IconButton(
+                  icon: Icon(
+                    isExpanded
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    color: Colors.white54,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      if (isExpanded) {
+                        _expandedInApp.remove(app.packageName);
+                      } else {
+                        _expandedInApp.add(app.packageName);
+                      }
+                    });
+                  },
+                ),
+              Checkbox(
+                value: isSelected,
+                activeColor:
+                    _isWhitelist ? Colors.greenAccent : Colors.redAccent,
+                onChanged: (val) {
+                  setState(() {
+                    if (val == true) {
+                      _selectedPackages.add(app.packageName);
+                    } else {
+                      _selectedPackages.remove(app.packageName);
+                    }
+                  });
+                },
+              ),
+            ],
+          ),
+          onTap: () {
+            setState(() {
+              if (isSelected) {
+                _selectedPackages.remove(app.packageName);
+              } else {
+                _selectedPackages.add(app.packageName);
+              }
+            });
+          },
+        ),
+        if (hasInApp && isExpanded)
+          _buildInAppPanel(app.packageName, features),
+      ],
+    );
+  }
+
+  Widget _buildInAppPanel(String pkg, List<_InAppFeature> features) {
+    final enabled = _inAppBlocks.putIfAbsent(pkg, () => <String>{});
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: _card,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          for (final f in features)
+            SwitchListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              activeColor: _accent,
+              value: enabled.contains(f.id),
+              onChanged: (v) {
+                setState(() {
+                  if (v) {
+                    enabled.add(f.id);
+                  } else {
+                    enabled.remove(f.id);
+                  }
+                });
+              },
+              title: Row(
+                children: [
+                  Icon(f.icon, color: Colors.white70, size: 20),
+                  const SizedBox(width: 10),
+                  Flexible(
+                    child: Text(
+                      f.label,
+                      style: const TextStyle(
+                          color: Colors.white, fontSize: 14),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -623,26 +852,31 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen>
           const SizedBox(height: 8),
           Expanded(
             child: _blockedKeywords.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.text_fields,
-                            color: Colors.grey[700], size: 48),
-                        const SizedBox(height: 12),
-                        Text(
-                          'No keywords blocked yet',
-                          style: TextStyle(
-                              color: Colors.grey[600], fontSize: 14),
+                ? SingleChildScrollView(
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.text_fields,
+                                color: Colors.grey[700], size: 48),
+                            const SizedBox(height: 12),
+                            Text(
+                              'No keywords blocked yet',
+                              style: TextStyle(
+                                  color: Colors.grey[600], fontSize: 14),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Add keywords to block any URL that contains them',
+                              style: TextStyle(
+                                  color: Colors.grey[700], fontSize: 12),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Add keywords to block any URL that contains them',
-                          style: TextStyle(
-                              color: Colors.grey[700], fontSize: 12),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
+                      ),
                     ),
                   )
                 : ListView.builder(
@@ -711,4 +945,11 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen>
       ),
     );
   }
+}
+
+class _InAppFeature {
+  final String id;
+  final String label;
+  final IconData icon;
+  const _InAppFeature(this.id, this.label, this.icon);
 }
