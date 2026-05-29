@@ -20,6 +20,11 @@ class MeetingSuggestionState {
   final ProposalSource proposalSource;
   final List<MeetingProposal> proposals;
   final String? errorMessage;
+  /// True while more proposals are still streaming in (AI batches). UI can
+  /// show a "loading more…" indicator under the current results.
+  final bool isLoadingMore;
+  /// Progress through the day range while streaming, 0.0–1.0.
+  final double loadingProgress;
 
   const MeetingSuggestionState({
     this.step = MeetingSuggestionStep.selectFriends,
@@ -31,6 +36,8 @@ class MeetingSuggestionState {
     this.proposalSource = ProposalSource.algorithmic,
     this.proposals = const [],
     this.errorMessage,
+    this.isLoadingMore = false,
+    this.loadingProgress = 0.0,
   });
 
   MeetingSuggestionState copyWith({
@@ -43,6 +50,8 @@ class MeetingSuggestionState {
     ProposalSource? proposalSource,
     List<MeetingProposal>? proposals,
     String? errorMessage,
+    bool? isLoadingMore,
+    double? loadingProgress,
   }) {
     return MeetingSuggestionState(
       step: step ?? this.step,
@@ -55,6 +64,8 @@ class MeetingSuggestionState {
       proposalSource: proposalSource ?? this.proposalSource,
       proposals: proposals ?? this.proposals,
       errorMessage: errorMessage ?? this.errorMessage,
+      isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+      loadingProgress: loadingProgress ?? this.loadingProgress,
     );
   }
 }

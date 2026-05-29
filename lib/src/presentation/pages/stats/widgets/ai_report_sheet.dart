@@ -1,9 +1,10 @@
-import 'dart:convert';
 import 'dart:math' as math;
-import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter/material.dart';
 import '../../../providers/usage_stats_providers.dart';
+import '../../../../core/service_locator.dart';
+import '../../../../domain/entities/ai_report_request.dart';
 import '../../../../domain/entities/task_completion_status.dart';
+import '../../../../domain/usecases/generate_ai_report_use_case.dart';
 import '../models/app_category.dart';
 import '../models/enriched_usage_stats.dart';
 import '../models/hour_annotation.dart';
@@ -53,34 +54,15 @@ class _AiReportSheetState extends State<AiReportSheet> {
 
   Future<void> _generateReport() async {
     try {
-      final prompt = _buildPrompt();
-      final model = FirebaseAI.vertexAI().generativeModel(
-        model: 'gemini-2.0-flash',
-        generationConfig: GenerationConfig(
-          responseMimeType: 'application/json',
-          temperature: 0.4,
-        ),
-      );
-
-      final response = await model
-          .generateContent([Content.text(prompt)]).timeout(
-              const Duration(seconds: 30));
-
-      final text = response.text ?? '';
-      final json = jsonDecode(text) as Map<String, dynamic>;
+      final request = _buildRequest();
+      final report = await getIt<GenerateAiReportUseCase>().call(request);
 
       if (mounted) {
         setState(() {
-          _score = (json['score'] as num?)?.toInt() ?? 5;
-          _summary = json['summary'] as String? ?? '';
-          _insights = (json['insights'] as List<dynamic>?)
-                  ?.map((e) => e.toString())
-                  .toList() ??
-              [];
-          _tips = (json['tips'] as List<dynamic>?)
-                  ?.map((e) => e.toString())
-                  .toList() ??
-              [];
+          _score = report.score;
+          _summary = report.summary;
+          _insights = report.insights;
+          _tips = report.tips;
           _loading = false;
         });
       }
@@ -94,111 +76,87 @@ class _AiReportSheetState extends State<AiReportSheet> {
     }
   }
 
-  String _buildPrompt() {
-    final buf = StringBuffer();
-    buf.writeln(
-        'You are a digital wellbeing coach for the focus_mate app. Analyze this user\'s data and provide actionable insights.');
-    buf.writeln(
-        'IMPORTANT: focus_mate has NO app-limit / screen-time-limit feature. '
-        'The ONLY way to limit distractions is to create a task with a blocking template '
-        'attached — during that task, specific apps / keywords / websites are blocked '
-        '(or only a chosen allow-list is permitted). When suggesting actions, always '
-        'phrase them as "create a task with a blocking template covering [hour range]" '
-        'or "add [app] to the blocking template of your [task name] task". '
-        'Never suggest app timers, daily limits, screen-time caps, or schedules — those don\'t exist.');
-    buf.writeln('Give specific time-of-day advice. Reference the exact hour '
-        'ranges where the user is most/least productive.');
-    buf.writeln('');
-
+  AiReportRequest _buildRequest() {
     final data = widget.enrichedStats;
-    if (data != null) {
-      buf.writeln('SCREEN TIME:');
-      buf.writeln('- Total: ${formatMinutes(data.totalScreenTimeMinutes)}');
-      buf.writeln(
-          '- Focus time (during active blocking): ${formatMinutes(data.focusTimeMinutes)}');
-      buf.writeln(
-          '- Idle/general time: ${formatMinutes(data.idleTimeMinutes)}');
-      buf.writeln('');
+    final ts = widget.taskStats;
 
-      buf.writeln('BLOCKING STATS:');
-      buf.writeln('- Distractions prevented: ${data.preventedDistractions}');
-      buf.writeln('');
-
-      buf.writeln('APP CATEGORIES:');
-      buf.writeln('- Productive: ${formatMinutes(data.productiveMinutes)}');
-      buf.writeln('- Distracting: ${formatMinutes(data.distractingMinutes)}');
-      buf.writeln('- Neutral: ${formatMinutes(data.neutralMinutes)}');
-      buf.writeln('');
-
-      if (data.topApps.isNotEmpty) {
-        buf.writeln('TOP APPS:');
-        for (final app in data.topApps.take(5)) {
-          buf.writeln(
-              '  * ${app.appName} (${app.category.name}): ${formatMinutes(app.usageMinutes)}');
-        }
-        buf.writeln('');
-      }
-
-      final highTaskHours = data.hourAnnotations
-          .where((a) => a.hasTask && a.screenTimeLevel == ScreenTimeLevel.high)
-          .map((a) => '${a.hour}:00')
-          .toList();
-      final lowTaskHours = data.hourAnnotations
-          .where((a) => a.hasTask && a.screenTimeLevel == ScreenTimeLevel.low)
-          .map((a) => '${a.hour}:00')
-          .toList();
-
-      buf.writeln('TIME CORRELATIONS:');
-      buf.writeln('- Hours with tasks + HIGH screen time (distracted): '
-          '${highTaskHours.isEmpty ? "none" : highTaskHours.join(", ")}');
-      buf.writeln('- Hours with tasks + LOW screen time (focused): '
-          '${lowTaskHours.isEmpty ? "none" : lowTaskHours.join(", ")}');
-
-      int peakHour = 0;
-      for (int i = 1; i < data.hourlyUsage.length; i++) {
-        if (data.hourlyUsage[i] > data.hourlyUsage[peakHour]) peakHour = i;
-      }
-      buf.writeln('- Peak usage hour: $peakHour:00');
-      buf.writeln('');
+    final hourly = data?.hourlyUsage ?? const <int>[];
+    int peakHour = 0;
+    for (int i = 1; i < hourly.length; i++) {
+      if (hourly[i] > hourly[peakHour]) peakHour = i;
     }
 
-    buf.writeln('TASKS:');
-    buf.writeln(
-        '- Completed: ${widget.taskStats.completed} / ${widget.taskStats.total}');
-    buf.writeln('- Missed: ${widget.taskStats.missed}');
-    buf.writeln('- Best streak: ${widget.taskStats.bestStreak} days');
-    buf.writeln(
-        '- Completion rate: ${(widget.taskStats.completionRate * 100).round()}%');
-    buf.writeln('- Perfect days (last 30): ${widget.perfectDays}');
-    if (widget.taskStats.dominantRepeatType != null) {
-      buf.writeln(
-          '- Most common schedule pattern: ${widget.taskStats.dominantRepeatType!.name}');
-    }
-    if (widget.taskStats.perTask.isNotEmpty) {
-      buf.writeln('- Per-task breakdown:');
-      for (final t in widget.taskStats.perTask) {
-        buf.writeln(
-            '  * "${t.title}" — ${t.status.name}, streak: ${t.streak}${t.timeSlot.isNotEmpty ? ', time: ${t.timeSlot}' : ''}');
-      }
-    }
+    final highTaskHours = data == null
+        ? <int>[]
+        : data.hourAnnotations
+            .where((a) =>
+                a.hasTask && a.screenTimeLevel == ScreenTimeLevel.high)
+            .map((a) => a.hour)
+            .toList();
+    final lowTaskHours = data == null
+        ? <int>[]
+        : data.hourAnnotations
+            .where((a) =>
+                a.hasTask && a.screenTimeLevel == ScreenTimeLevel.low)
+            .map((a) => a.hour)
+            .toList();
 
-    buf.writeln('');
-    buf.writeln('Respond in this exact JSON format:');
-    buf.writeln('{');
-    buf.writeln(
-        '  "score": <1-10 integer, overall productivity/wellbeing score>,');
-    buf.writeln('  "summary": "<one short sentence overall assessment>",');
-    buf.writeln(
-        '  "insights": ["<screen-time insight>", "<distractions insight>", "<task habits insight>"],');
-    buf.writeln(
-        '  "tips": ["<tip about screen time trend>", "<tip about task habits>"]');
-    buf.writeln('}');
-    buf.writeln('');
-    buf.writeln(
-        'Keep each insight/tip ONE short sentence. Be specific (mention apps, '
-        'hours, days). Be encouraging but honest.');
+    AiReportAppCategory mapCat(AppCategory c) => switch (c) {
+          AppCategory.productive => AiReportAppCategory.productive,
+          AppCategory.distracting => AiReportAppCategory.distracting,
+          AppCategory.neutral => AiReportAppCategory.neutral,
+        };
 
-    return buf.toString();
+    return AiReportRequest(
+      totalScreenMinutes: data?.totalScreenTimeMinutes ?? 0,
+      focusMinutes: data?.focusTimeMinutes ?? 0,
+      idleMinutes: data?.idleTimeMinutes ?? 0,
+      productiveMinutes: data?.productiveMinutes ?? 0,
+      neutralMinutes: data?.neutralMinutes ?? 0,
+      distractingMinutes: data?.distractingMinutes ?? 0,
+      preventedDistractions: data?.preventedDistractions ?? 0,
+      topApps: data == null
+          ? const []
+          : data.topApps
+              .take(5)
+              .map((a) => AiReportTopApp(
+                    appName: a.appName,
+                    packageName: a.packageName,
+                    category: mapCat(a.category),
+                    minutes: a.usageMinutes,
+                  ))
+              .toList(),
+      hourlyUsage: hourly,
+      dailyBreakdown: data == null
+          ? const []
+          : data.dailyCategoryBreakdown
+              .map((d) => AiReportDayBreakdown(
+                    totalMinutes: d.totalMinutes,
+                    productiveMinutes: d.productiveMinutes,
+                    neutralMinutes: d.neutralMinutes,
+                    distractingMinutes: d.distractingMinutes,
+                  ))
+              .toList(),
+      highScreenTaskHours: highTaskHours,
+      lowScreenTaskHours: lowTaskHours,
+      peakUsageHour: peakHour,
+      trendPercentage: data?.trendPercentage,
+      completedTasks: ts.completed,
+      totalTasks: ts.total,
+      missedTasks: ts.missed,
+      bestStreak: ts.bestStreak,
+      completionRate: ts.completionRate,
+      perfectDays: widget.perfectDays,
+      dominantRepeatType: ts.dominantRepeatType?.name,
+      perTask: ts.perTask
+          .map((t) => AiReportTaskEntry(
+                title: t.title,
+                status: t.status.name,
+                streak: t.streak,
+                timeSlot: t.timeSlot,
+              ))
+          .toList(),
+    );
   }
 
   void _close() => Navigator.of(context).maybePop();
