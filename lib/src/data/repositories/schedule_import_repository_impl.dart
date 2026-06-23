@@ -24,12 +24,11 @@ class ScheduleImportRepositoryImpl implements ScheduleImportRepository {
       );
     } catch (e) {
       if (kDebugMode) debugPrint('🔥 Schedule import error: $e');
-      // Re-throw rate-limit messages as-is (they're already user-friendly)
-      if (e.toString().contains('Please wait')) rethrow;
-      throw Exception(
-        'Failed to analyse your schedule. '
-        'Please check your internet connection and try again.',
-      );
+      // The datasource already maps Firebase error codes to user-friendly,
+      // specific messages (rate-limits, connectivity, server failures).
+      // Re-throw them as-is instead of masking everything behind a generic
+      // "internet connection" message.
+      rethrow;
     }
   }
 }

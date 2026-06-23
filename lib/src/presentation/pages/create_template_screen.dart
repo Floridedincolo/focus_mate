@@ -145,19 +145,28 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen>
       return;
     }
 
+    // Normalize so we don't persist fields that have no effect in the chosen
+    // mode (keeps Firestore clean and the native service unambiguous):
+    //  • Lockdown  → type/apps/webs/keywords are all ignored device-wide.
+    //  • Whitelist → websites/keywords are always blocklists, not part of it.
+    final isLockdown = _mode == 'lockdown';
+    final dropWebKeywords = isLockdown || _isWhitelist;
+
     final template = AppBlockTemplate(
       id: widget.existingTemplate?.id ??
           DateTime.now().millisecondsSinceEpoch.toString(),
       name: name,
-      isWhitelist: _isWhitelist,
+      isWhitelist: isLockdown ? false : _isWhitelist,
       mode: _mode,
-      packages: _selectedPackages.toList(),
-      blockedWebsites: _blockedWebsites.toList(),
-      blockedKeywords: _blockedKeywords.toList(),
-      inAppBlocks: {
-        for (final e in _inAppBlocks.entries)
-          if (e.value.isNotEmpty) e.key: e.value.toList(),
-      },
+      packages: isLockdown ? const [] : _selectedPackages.toList(),
+      blockedWebsites: dropWebKeywords ? const [] : _blockedWebsites.toList(),
+      blockedKeywords: dropWebKeywords ? const [] : _blockedKeywords.toList(),
+      inAppBlocks: isLockdown
+          ? const {}
+          : {
+              for (final e in _inAppBlocks.entries)
+                if (e.value.isNotEmpty) e.key: e.value.toList(),
+            },
     );
 
     await getIt<BlockTemplateRepository>().saveTemplate(template);
@@ -254,48 +263,6 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen>
                 ),
                 const SizedBox(height: 16),
 
-                const Text('TYPE',
-                    style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.8)),
-                const SizedBox(height: 8),
-                Container(
-                  decoration: BoxDecoration(
-                      color: _card, borderRadius: BorderRadius.circular(12)),
-                  padding: const EdgeInsets.all(4),
-                  child: Row(
-                    children: [
-                      _typeToggle(
-                        label: 'Blacklist',
-                        icon: Icons.block,
-                        selected: !_isWhitelist,
-                        color: Colors.redAccent,
-                        onTap: () => setState(() => _isWhitelist = false),
-                      ),
-                      _typeToggle(
-                        label: 'Whitelist',
-                        icon: Icons.check_circle_outline,
-                        selected: _isWhitelist,
-                        color: Colors.greenAccent,
-                        onTap: () => setState(() => _isWhitelist = true),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Text(
-                    _isWhitelist
-                        ? 'Only selected apps will be ALLOWED. Everything else is blocked.'
-                        : 'Selected apps will be BLOCKED. Everything else is allowed.',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
                 const Text('MODE',
                     style: TextStyle(
                         color: Colors.white70,
@@ -345,15 +312,66 @@ class _CreateTemplateScreenState extends ConsumerState<CreateTemplateScreen>
                     style: TextStyle(color: Colors.grey[600], fontSize: 12),
                   ),
                 ),
+
+                // Blacklist/Whitelist only governs apps, so it's meaningless
+                // for Lockdown (device-wide) — hide it entirely in that mode.
+                if (_mode != 'lockdown') ...[
+                  const SizedBox(height: 16),
+                  const Text('TYPE',
+                      style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.8)),
+                  const SizedBox(height: 8),
+                  Container(
+                    decoration: BoxDecoration(
+                        color: _card, borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.all(4),
+                    child: Row(
+                      children: [
+                        _typeToggle(
+                          label: 'Blacklist',
+                          icon: Icons.block,
+                          selected: !_isWhitelist,
+                          color: Colors.redAccent,
+                          onTap: () => setState(() => _isWhitelist = false),
+                        ),
+                        _typeToggle(
+                          label: 'Whitelist',
+                          icon: Icons.check_circle_outline,
+                          selected: _isWhitelist,
+                          color: Colors.greenAccent,
+                          onTap: () => setState(() => _isWhitelist = true),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Text(
+                      _isWhitelist
+                          ? 'Only selected apps will be ALLOWED. Everything else is blocked.'
+                          : 'Selected apps will be BLOCKED. Everything else is allowed.',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 12),
               ],
             ),
           ),
 
-          // Tab bar + content (hidden entirely in Lockdown — the mode is
-          // device-wide and the apps/webs/keywords lists have no effect).
+          // Mode-dependent content:
+          //  • Lockdown  → device-wide, nothing to configure.
+          //  • Whitelist → apps only. Websites/keywords are always blocklists
+          //    in the native service, so a "whitelist of sites" makes no sense.
+          //  • Blacklist → apps + websites + keywords.
           if (_mode == 'lockdown')
             Expanded(child: _buildLockdownPlaceholder())
+          else if (_isWhitelist)
+            Expanded(child: _buildAppsTab())
           else ...[
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 16),

@@ -1,5 +1,10 @@
 import {onCall, HttpsError} from "firebase-functions/v2/https";
-import {VertexAI, SchemaType, ResponseSchema} from "@google-cloud/vertexai";
+import {
+  VertexAI,
+  SchemaType,
+  ResponseSchema,
+  GenerationConfig,
+} from "@google-cloud/vertexai";
 import * as admin from "firebase-admin";
 import {z} from "zod";
 
@@ -9,7 +14,19 @@ admin.initializeApp();
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
 const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const RATE_LIMIT_SECONDS = 5;
-const MODEL_NAME = "gemini-2.0-flash";
+const MODEL_NAME = "gemini-2.5-flash";
+
+// gemini-2.5-flash turns "thinking" on by default, which roughly doubles
+// latency. On the meeting fan-out (5 parallel calls) that pushed requests past
+// the 60s timeout → DEADLINE_EXCEEDED / "AI service is busy". We pin the
+// pre-2.5 @google-cloud/vertexai SDK (1.10.0), whose types don't declare
+// thinkingConfig, but it forwards unknown generationConfig fields verbatim to
+// the v1 API — so we disable thinking with a cast. Spread this into every
+// generationConfig for a 2.5 model.
+const NO_THINKING = {thinkingConfig: {thinkingBudget: 0}} as Record<
+  string,
+  unknown
+>;
 
 // ── System Prompt (editable here without an app update) ───────────────────
 const SYSTEM_PROMPT = `
@@ -166,7 +183,8 @@ export const extractSchedule = onCall(
       generationConfig: {
         responseMimeType: "application/json",
         temperature: 0.1,
-      },
+        ...NO_THINKING,
+      } as GenerationConfig,
     });
 
     let rawText: string;
@@ -192,6 +210,11 @@ export const extractSchedule = onCall(
         response.response?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+
+      // Surface the real Vertex AI failure in the function logs so we can
+      // diagnose root causes (model retirement, region availability, IAM /
+      // quota, etc.) instead of a blank error line.
+      console.error("extractSchedule Vertex AI call failed:", err);
 
       if (msg.includes("SAFETY") || msg.includes("blocked")) {
         throw new HttpsError(
@@ -249,7 +272,7 @@ function stripMarkdownFences(text: string): string {
 // Sliding window: up to 5 AI report generations per 15 minutes per user.
 const REPORT_MAX_PER_WINDOW = 5;
 const REPORT_WINDOW_SECONDS = 15 * 60;
-const REPORT_MODEL_NAME = "gemini-2.0-flash";
+const REPORT_MODEL_NAME = "gemini-2.5-flash";
 
 const WEEK_MINUTES_MAX = 60 * 24 * 7;
 
@@ -512,7 +535,8 @@ export const generateAiReport = onCall(
         responseMimeType: "application/json",
         responseSchema: REPORT_RESPONSE_SCHEMA,
         temperature: 0.4,
-      },
+        ...NO_THINKING,
+      } as GenerationConfig,
     });
 
     let rawText: string;
@@ -593,7 +617,7 @@ export const generateAiReport = onCall(
 // still blocking sustained abuse.
 const MEETING_MAX_PER_WINDOW = 30;
 const MEETING_WINDOW_SECONDS = 15 * 60;
-const MEETING_MODEL_NAME = "gemini-2.0-flash";
+const MEETING_MODEL_NAME = "gemini-2.5-flash";
 
 const MeetingTaskSchema = z.object({
   startTime: z.string().regex(/^\d{2}:\d{2}$/),
@@ -785,7 +809,7 @@ export const suggestMeetings = onCall(
   {
     region: "europe-west1",
     memory: "512MiB",
-    timeoutSeconds: 60,
+    timeoutSeconds: 120,
     invoker: "public",
   },
   async (request) => {
@@ -824,7 +848,8 @@ export const suggestMeetings = onCall(
         responseMimeType: "application/json",
         responseSchema: MEETING_RESPONSE_SCHEMA,
         temperature: 0.3,
-      },
+        ...NO_THINKING,
+      } as GenerationConfig,
     });
 
     // Vertex AI occasionally returns 429 / RESOURCE_EXHAUSTED when the

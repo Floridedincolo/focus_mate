@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import '../../dtos/schedule_import_result_dto.dart';
 import '../schedule_import_datasource.dart';
@@ -35,6 +35,16 @@ class CloudFunctionScheduleImportDataSource implements ScheduleImportDataSource 
         'mimeType': mimeType,
       });
     } on FirebaseFunctionsException catch (e) {
+      // Log the real error code/message/details so failures aren't hidden
+      // behind a generic message. (The repository previously re-wrapped
+      // everything into a misleading "internet connection" error.)
+      if (kDebugMode) {
+        debugPrint(
+          '🔥 extractSchedule failed — code: ${e.code}, '
+          'message: ${e.message}, details: ${e.details}',
+        );
+      }
+
       // Map Cloud Function error codes to user-friendly messages.
       switch (e.code) {
         case 'unauthenticated':
@@ -47,7 +57,16 @@ class CloudFunctionScheduleImportDataSource implements ScheduleImportDataSource 
           throw Exception(
             e.message ?? 'The image could not be processed. Please try another.',
           );
+        case 'unavailable':
+        case 'deadline-exceeded':
+          // Genuine connectivity / timeout problems.
+          throw Exception(
+            'Could not reach the server. '
+            'Please check your internet connection and try again.',
+          );
         default:
+          // Server-side failure (e.g. the AI call failed). The message is
+          // already user-friendly — surface it as-is rather than masking it.
           throw Exception(
             e.message ??
                 'Failed to analyse your schedule. Please try again later.',

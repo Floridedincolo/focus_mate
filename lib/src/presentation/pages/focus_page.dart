@@ -211,9 +211,16 @@ class _FocusPageState extends ConsumerState<FocusPage>
   }
 
   Widget _buildTemplateCard(AppBlockTemplate template) {
-    final typeLabel = template.isWhitelist ? 'Whitelist' : 'Blacklist';
-    final typeColor =
-        template.isWhitelist ? Colors.greenAccent : Colors.redAccent;
+    final isLockdown = template.mode == 'lockdown';
+    final typeLabel = isLockdown
+        ? 'Lockdown'
+        : (template.isWhitelist ? 'Whitelist' : 'Blacklist');
+    final typeColor = isLockdown
+        ? Colors.greenAccent
+        : (template.isWhitelist ? Colors.greenAccent : Colors.redAccent);
+    final typeIcon = isLockdown
+        ? Icons.shield_outlined
+        : (template.isWhitelist ? Icons.check_circle_outline : Icons.block);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -232,7 +239,7 @@ class _FocusPageState extends ConsumerState<FocusPage>
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
-              template.isWhitelist ? Icons.check_circle_outline : Icons.block,
+              typeIcon,
               color: typeColor,
             ),
           ),
@@ -268,7 +275,9 @@ class _FocusPageState extends ConsumerState<FocusPage>
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      '${template.packages.length} apps',
+                      isLockdown
+                          ? 'Device-wide'
+                          : '${template.packages.length} apps',
                       style: TextStyle(color: Colors.grey[500], fontSize: 12),
                     ),
                   ],

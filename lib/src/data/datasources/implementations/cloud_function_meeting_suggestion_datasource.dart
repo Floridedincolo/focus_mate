@@ -14,7 +14,7 @@ import '../meeting_suggestion_data_source.dart';
 /// Vertex AI credentials all live server-side.
 class CloudFunctionMeetingSuggestionDataSource
     implements MeetingSuggestionDataSource {
-  static const _kTimeoutDuration = Duration(seconds: 60);
+  static const _kTimeoutDuration = Duration(seconds: 120);
 
   final FirebaseFunctions _functions;
 
