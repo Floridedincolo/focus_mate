@@ -115,88 +115,137 @@ class MeetingSuggestionNotifier extends Notifier<MeetingSuggestionState> {
       final totalDays = endDate.difference(startDate).inDays + 1;
       final homes = _extractHomes(memberLocations);
 
-      final allCandidates = <MeetingProposal>[];
-
-      for (int dayOffset = 0; dayOffset < totalDays; dayOffset++) {
-        final targetDate = startDate.add(Duration(days: dayOffset));
-
-        try {
-          final List<MeetingProposal> dayProposals;
-
-          if (state.proposalSource == ProposalSource.algorithmic) {
-            final useCase = getIt<SuggestMeetingAlgorithmicUseCase>();
-            dayProposals = useCase(
-              memberSchedules: memberSchedules,
-              meetingDurationMinutes: state.meetingDurationMinutes,
-              targetDate: targetDate,
-              maxProposals: _maxPerDay,
-            );
-          } else {
-            final useCase = getIt<SuggestMeetingAiUseCase>();
-            dayProposals = await useCase(
-              memberSchedules: memberSchedules,
-              meetingDurationMinutes: state.meetingDurationMinutes,
-              targetDate: targetDate,
-              maxProposals: _maxPerDay,
-              memberLocations: memberLocations,
-            );
-          }
-
-          allCandidates.addAll(dayProposals);
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('No slots on ${targetDate.toIso8601String()}: $e');
-          }
-        }
-      }
-
-      // ── Score & rank candidates ──
-      // Filter out proposals outside 10:00–22:00 unless no normal-hour
-      // alternatives exist at all.
-      final normalHour = allCandidates
-          .where((p) => p.startTime.hour >= 10 && p.startTime.hour < 22)
-          .toList();
-      final pool = normalHour.isNotEmpty ? normalHour : allCandidates;
-
-      // Score each proposal (higher = better).
-      final scored = pool.map((p) {
-        final score = _scoreProposal(p, memberSchedules, homes, startDate);
-        return (proposal: p, score: score);
-      }).toList();
-
-      scored.sort((a, b) => b.score.compareTo(a.score));
-
-      final topProposals =
-          scored.take(_maxProposals).map((s) => s.proposal).toList();
-
       final currentUid = FirebaseAuth.instance.currentUser?.uid;
       final allMemberUids = [
         if (currentUid != null) currentUid,
         ...state.selectedFriendUids,
       ];
 
-      // ── Resolve locations for algorithmic proposals (TBD → real place) ──
-      final resolvedProposals = await _resolveAlgorithmicLocations(
-        topProposals,
-        memberLocations,
-        memberSchedules,
-      );
+      // Builds the final ranked + enriched list from an accumulating pool
+      // of raw candidates. Used both for progressive emits (AI streaming)
+      // and the single final emit (algorithmic).
+      Future<List<MeetingProposal>> rank(
+        List<MeetingProposal> pool,
+      ) async {
+        final normalHour = pool
+            .where((p) => p.startTime.hour >= 10 && p.startTime.hour < 22)
+            .toList();
+        final usable = normalHour.isNotEmpty ? normalHour : pool;
+        final scored = usable
+            .map((p) => (
+                  proposal: p,
+                  score: _scoreProposal(p, memberSchedules, homes, startDate),
+                ))
+            .toList()
+          ..sort((a, b) => b.score.compareTo(a.score));
+        final top = scored.take(_maxProposals).map((s) => s.proposal).toList();
+        final resolved = await _resolveAlgorithmicLocations(
+          top,
+          memberLocations,
+          memberSchedules,
+        );
+        final adjusted = await _adjustByTransitTime(
+          resolved,
+          memberSchedules,
+          homes,
+        );
+        return adjusted
+            .map((p) => p.copyWith(groupMemberUids: allMemberUids))
+            .toList();
+      }
 
-      // ── Adjust start times based on real travel time ──
-      final adjusted = await _adjustByTransitTime(
-        resolvedProposals,
-        memberSchedules,
-        homes,
-      );
+      final allCandidates = <MeetingProposal>[];
 
-      final enrichedProposals = adjusted
-          .map((p) => p.copyWith(groupMemberUids: allMemberUids))
-          .toList();
+      if (state.proposalSource == ProposalSource.algorithmic) {
+        // Algorithmic is purely local and instant — no point batching.
+        final useCase = getIt<SuggestMeetingAlgorithmicUseCase>();
+        for (int dayOffset = 0; dayOffset < totalDays; dayOffset++) {
+          final targetDate = startDate.add(Duration(days: dayOffset));
+          try {
+            allCandidates.addAll(useCase(
+              memberSchedules: memberSchedules,
+              meetingDurationMinutes: state.meetingDurationMinutes,
+              targetDate: targetDate,
+              maxProposals: _maxPerDay,
+            ));
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('No slots on ${targetDate.toIso8601String()}: $e');
+            }
+          }
+        }
+        state = state.copyWith(
+          proposals: await rank(allCandidates),
+          step: MeetingSuggestionStep.results,
+          isLoadingMore: false,
+          loadingProgress: 1.0,
+        );
+      } else {
+        // AI: fire days in parallel batches and stream partial results to
+        // the UI after each batch so the user sees proposals quickly while
+        // the rest keep loading in the background.
+        final aiUseCase = getIt<SuggestMeetingAiUseCase>();
+        const batchSize = 5;
+        var firstBatchEmitted = false;
 
-      state = state.copyWith(
-        proposals: enrichedProposals,
-        step: MeetingSuggestionStep.results,
-      );
+        for (int batchStart = 0;
+            batchStart < totalDays;
+            batchStart += batchSize) {
+          final batchEnd = (batchStart + batchSize).clamp(0, totalDays);
+          final batchFutures = <Future<List<MeetingProposal>>>[];
+          for (int i = batchStart; i < batchEnd; i++) {
+            final targetDate = startDate.add(Duration(days: i));
+            batchFutures.add(() async {
+              try {
+                return await aiUseCase(
+                  memberSchedules: memberSchedules,
+                  meetingDurationMinutes: state.meetingDurationMinutes,
+                  targetDate: targetDate,
+                  maxProposals: _maxPerDay,
+                  memberLocations: memberLocations,
+                );
+              } catch (e) {
+                if (kDebugMode) {
+                  debugPrint(
+                      'No slots on ${targetDate.toIso8601String()}: $e');
+                }
+                return const <MeetingProposal>[];
+              }
+            }());
+          }
+
+          final batchResults = await Future.wait(batchFutures);
+          for (final dayProposals in batchResults) {
+            allCandidates.addAll(dayProposals);
+          }
+
+          final isLast = batchEnd >= totalDays;
+          final progress = batchEnd / totalDays;
+          final ranked = await rank(allCandidates);
+
+          // Move to the results step on the first batch so the user sees
+          // partial results immediately; keep streaming flag on until done.
+          state = state.copyWith(
+            proposals: ranked,
+            step: firstBatchEmitted || isLast
+                ? state.step
+                : MeetingSuggestionStep.results,
+            isLoadingMore: !isLast,
+            loadingProgress: progress,
+          );
+          firstBatchEmitted = true;
+        }
+
+        // Final defensive emit in case the loop body didn't move us to
+        // results (e.g. totalDays == 0).
+        if (state.step != MeetingSuggestionStep.results) {
+          state = state.copyWith(
+            step: MeetingSuggestionStep.results,
+            isLoadingMore: false,
+            loadingProgress: 1.0,
+          );
+        }
+      }
     } catch (e) {
       state = state.copyWith(
         errorMessage: e.toString(),

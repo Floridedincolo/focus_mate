@@ -12,6 +12,11 @@ import '../domain/repositories/friend_repository.dart';
 import '../domain/repositories/meeting_suggestion_repository.dart';
 import '../domain/repositories/notification_repository.dart';
 import '../domain/repositories/block_template_repository.dart';
+import '../domain/repositories/ai_report_repository.dart';
+import '../domain/usecases/generate_ai_report_use_case.dart';
+import '../data/datasources/ai_report_data_source.dart';
+import '../data/datasources/implementations/cloud_function_ai_report_datasource.dart';
+import '../data/repositories/ai_report_repository_impl.dart';
 import '../domain/usecases/task_usecases.dart';
 import '../domain/usecases/app_usecases.dart';
 import '../domain/usecases/accessibility_usecases.dart';
@@ -49,7 +54,7 @@ import '../data/datasources/implementations/method_channel_accessibility_datasou
 import '../data/datasources/implementations/google_places_search_service.dart';
 import '../data/datasources/implementations/google_transit_route_service.dart';
 import '../data/datasources/implementations/firestore_friend_datasource.dart';
-import '../data/datasources/implementations/gemini_meeting_suggestion_datasource.dart';
+import '../data/datasources/implementations/cloud_function_meeting_suggestion_datasource.dart';
 import '../data/datasources/notification_service.dart';
 import '../data/datasources/implementations/flutter_local_notification_service.dart';
 import '../data/datasources/usage_stats_datasource.dart';
@@ -230,7 +235,9 @@ Future<void> setupServiceLocator() async {
   );
 
   getIt.registerSingleton<MeetingSuggestionDataSource>(
-    GeminiMeetingSuggestionDataSource(),
+    CloudFunctionMeetingSuggestionDataSource(
+      FirebaseFunctions.instanceFor(region: 'europe-west1'),
+    ),
   );
 
   // Repositories
@@ -243,6 +250,22 @@ Future<void> setupServiceLocator() async {
       getIt<MeetingSuggestionDataSource>(),
       getIt<LocationSearchService>(),
     ),
+  );
+
+  // ============ AI WEEKLY REPORT ============
+
+  getIt.registerSingleton<AiReportDataSource>(
+    CloudFunctionAiReportDataSource(
+      FirebaseFunctions.instanceFor(region: 'europe-west1'),
+    ),
+  );
+
+  getIt.registerSingleton<AiReportRepository>(
+    AiReportRepositoryImpl(getIt<AiReportDataSource>()),
+  );
+
+  getIt.registerSingleton<GenerateAiReportUseCase>(
+    GenerateAiReportUseCase(getIt<AiReportRepository>()),
   );
 
   // Friend use cases

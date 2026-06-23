@@ -99,6 +99,8 @@ class _PlanMeetingPageState extends ConsumerState<PlanMeetingPage> {
         return _ResultsStep(
           key: const ValueKey('results'),
           proposals: state.proposals,
+          isLoadingMore: state.isLoadingMore,
+          loadingProgress: state.loadingProgress,
         );
       case MeetingSuggestionStep.error:
         return _ErrorStep(
@@ -539,7 +541,14 @@ class _LoadingStep extends StatelessWidget {
 
 class _ResultsStep extends ConsumerStatefulWidget {
   final List<MeetingProposal> proposals;
-  const _ResultsStep({super.key, required this.proposals});
+  final bool isLoadingMore;
+  final double loadingProgress;
+  const _ResultsStep({
+    super.key,
+    required this.proposals,
+    this.isLoadingMore = false,
+    this.loadingProgress = 1.0,
+  });
 
   @override
   ConsumerState<_ResultsStep> createState() => _ResultsStepState();
@@ -625,6 +634,26 @@ class _ResultsStepState extends ConsumerState<_ResultsStep> {
   @override
   Widget build(BuildContext context) {
     if (widget.proposals.isEmpty) {
+      if (widget.isLoadingMore) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(color: Colors.blueAccent),
+                const SizedBox(height: 20),
+                const Text('Searching for available slots…',
+                    style: TextStyle(color: Colors.white70, fontSize: 15)),
+                const SizedBox(height: 6),
+                Text('${(widget.loadingProgress * 100).round()}%',
+                    style: const TextStyle(
+                        color: Colors.white38, fontSize: 12)),
+              ],
+            ),
+          ),
+        );
+      }
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(32),
@@ -646,6 +675,46 @@ class _ResultsStepState extends ConsumerState<_ResultsStep> {
 
     return Column(
       children: [
+        if (widget.isLoadingMore)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.blueAccent,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Looking for more options… ${(widget.loadingProgress * 100).round()}%',
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: widget.loadingProgress,
+                    minHeight: 3,
+                    backgroundColor: Colors.white.withValues(alpha: 0.08),
+                    valueColor: const AlwaysStoppedAnimation(
+                        Colors.blueAccent),
+                  ),
+                ),
+              ],
+            ),
+          ),
         Expanded(
           child: ListView.builder(
             padding: const EdgeInsets.symmetric(vertical: 12),
