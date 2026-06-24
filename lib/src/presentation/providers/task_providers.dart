@@ -8,6 +8,7 @@ import '../../domain/entities/task.dart';
 import '../../domain/entities/task_completion_status.dart';
 import '../../domain/entities/app_block_template.dart';
 import '../../domain/usecases/task_usecases.dart';
+import '../../domain/usecases/task_occurrence.dart';
 import '../../domain/usecases/notification_usecases.dart';
 import '../../core/service_locator.dart';
 import 'friend_providers.dart';
@@ -81,8 +82,9 @@ final currentActiveTaskProvider = Provider<Task?>((ref) {
         if (task.archived) continue;
         if (task.startTime == null || task.endTime == null) continue;
 
-        // Folosim verificarea tolerantă pentru zile
-        final occursToday = _taskOccursOnDate(task, now);
+        // Sursă unică de adevăr: aceeași verificare ca afișarea (respectă
+        // startDate + toleranță la formatul zilelor).
+        final occursToday = occursOnTask(task, now);
         debugPrint("🔍 DEBUG task: occursToday=$occursToday | startTime=${task.startTime} | endTime=${task.endTime} | archived=${task.archived}");
         if (!occursToday) continue;
 
@@ -99,58 +101,6 @@ final currentActiveTaskProvider = Provider<Task?>((ref) {
   );
 });
 
-// ─── LOGICĂ NOUĂ ȘI TOLERANTĂ PENTRU ZILELE SĂPTĂMÂNII ───
-
-// Returnează TOATE variantele posibile în care o zi ar putea fi salvată în Firebase
-List<String> _getPossibleDayKeys(int weekday) {
-  switch (weekday) {
-    case DateTime.monday:
-      return ['monday', 'Mon', 'mon', 'Monday'];
-    case DateTime.tuesday:
-      return ['tuesday', 'Tue', 'tue', 'Tuesday'];
-    case DateTime.wednesday:
-      return ['wednesday', 'Wed', 'wed', 'Wednesday'];
-    case DateTime.thursday:
-      return ['thursday', 'Thu', 'thu', 'Thursday'];
-    case DateTime.friday:
-      return ['friday', 'Fri', 'fri', 'Friday'];
-    case DateTime.saturday:
-      return ['saturday', 'Sat', 'sat', 'Saturday'];
-    case DateTime.sunday:
-      return ['sunday', 'Sun', 'sun', 'Sunday'];
-    default:
-      return [];
-  }
-}
-
-bool _taskOccursOnDate(Task task, DateTime date) {
-  if (task.oneTime) {
-    return task.startDate.year == date.year &&
-        task.startDate.month == date.month &&
-        task.startDate.day == date.day;
-  }
-
-  // Verificăm dacă există cel puțin o zi selectată ca fiind adevărată
-  final hasSpecificDays = task.days.values.any((value) => value == true);
-
-  if (hasSpecificDays) {
-    // Obținem toate formatele posibile pentru ziua curentă (ex: Luni -> 'Mon', 'monday', etc)
-    final possibleKeys = _getPossibleDayKeys(date.weekday);
-
-    // Verificăm dacă ORICARE dintre aceste chei există și are valoarea true
-    for (final key in possibleKeys) {
-      if (task.days[key] == true) {
-        return true;
-      }
-    }
-    // Dacă am căutat prin toate variantele și nu am găsit niciun true, nu e programat azi
-    return false;
-  }
-
-  // Dacă harta e goală SAU toate valorile sunt false (cazul Daily fallback)
-  return true;
-}
-
 // ─── GENERATORUL DE ORAR SINCRONIZAT PE DISK ───
 
 Future<void> syncFocusScheduleToNative(List<Task> tasks, List<AppBlockTemplate> templates) async {
@@ -164,8 +114,9 @@ Future<void> syncFocusScheduleToNative(List<Task> tasks, List<AppBlockTemplate> 
       for (final task in tasks) {
         if (task.archived || task.startTime == null || task.endTime == null || task.blockTemplateId == null) continue;
 
-        // Folosim noua funcție simplificată
-        if (_taskOccursOnDate(task, targetDate)) {
+        // Aceeași sursă de adevăr ca afișarea: respectă startDate, deci o
+        // fereastră nu se generează înainte de data de început a task-ului.
+        if (occursOnTask(task, targetDate)) {
           final template = templates.firstWhere(
                 (t) => t.id == task.blockTemplateId,
             orElse: () => AppBlockTemplate(id: 'dummy', name: 'dummy', packages: []),

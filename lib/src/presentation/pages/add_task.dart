@@ -95,10 +95,11 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
     if (!_oneTime) {
       if (_repeatType == null) return _showError('Choose a repeat type');
       if (_repeatType == RepeatType.weekly && _startDate != null) {
-        // Auto-set the day based on start date
-        const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-        final dayName = dayNames[_startDate!.weekday - 1];
-        _repeatDays = {for (final d in dayNames) d: d == dayName};
+        // Auto-set the day based on start date. Use the same 3-letter keys as
+        // ChooseRepeating / the schedule importer so occurrence checks match.
+        const dayAbbr = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        final day = dayAbbr[_startDate!.weekday - 1];
+        _repeatDays = {for (final d in dayAbbr) d: d == day};
       }
       if (_repeatType == RepeatType.custom &&
           !_repeatDays.containsValue(true)) {
@@ -304,6 +305,9 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
       origin.latitude!, origin.longitude!,
       destination.latitude!, destination.longitude!,
     );
+
+    // Same place as the adjacent task → no travel needed, so no warning.
+    if (distKm <= 0.15) return null;
 
     final results = <_TransitModeResult>[];
     bool anyExceeds = false;
@@ -768,10 +772,16 @@ class _AddTaskMenuState extends ConsumerState<AddTaskMenu> {
                 child: Row(
                   children: [
                     Icon(
-                      t.isWhitelist ? Icons.check_circle_outline : Icons.block,
-                      color: t.isWhitelist
+                      t.mode == 'lockdown'
+                          ? Icons.shield_outlined
+                          : (t.isWhitelist
+                              ? Icons.check_circle_outline
+                              : Icons.block),
+                      color: t.mode == 'lockdown'
                           ? Colors.greenAccent
-                          : Colors.redAccent,
+                          : (t.isWhitelist
+                              ? Colors.greenAccent
+                              : Colors.redAccent),
                       size: 16,
                     ),
                     const SizedBox(width: 8),

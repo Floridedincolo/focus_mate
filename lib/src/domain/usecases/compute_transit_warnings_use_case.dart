@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import '../../data/datasources/transit_route_service.dart';
 import '../entities/meeting_location.dart';
 import '../entities/task.dart';
@@ -8,6 +10,10 @@ class ComputeTransitWarningsUseCase {
   final TransitRouteService _transitService;
 
   const ComputeTransitWarningsUseCase(this._transitService);
+
+  /// Two consecutive tasks closer than this are treated as the *same place*,
+  /// so no travel (and no warning) is needed between them.
+  static const double _sameLocationKm = 0.15; // ~150 m
 
   /// Returns a map keyed by task-list index for every task where
   /// the travel time from the previous task exceeds the available gap.
@@ -53,17 +59,28 @@ class ComputeTransitWarningsUseCase {
 
           print('🚗 OK! Tranzit de la "${origin.name}" la "${destination.name}". Timp liber: $gap min.');
 
-          final transitMin = await _transitService.getTransitTimeMinutes(
-            origin: origin,
-            destination: destination,
-            mode: 'DRIVE',
+          // Same location → no travel needed, so don't query the API or warn.
+          // Otherwise Google returns ~1 min for identical coordinates and a
+          // 0-min gap produces a bogus "not enough time to travel".
+          final distKm = _haversineKm(
+            origin.latitude!, origin.longitude!,
+            destination.latitude!, destination.longitude!,
           );
+          if (distKm <= _sameLocationKm) {
+            print('📍 Aceeași locație (${(distKm * 1000).round()} m) — fără avertisment de tranzit.');
+          } else {
+            final transitMin = await _transitService.getTransitTimeMinutes(
+              origin: origin,
+              destination: destination,
+              mode: 'DRIVE',
+            );
 
-          print('⏱️ Google răspunde: $transitMin min.');
+            print('⏱️ Google răspunde: $transitMin min.');
 
-          if (transitMin != null && transitMin > gap) {
-            warnings[i] = (transitMin: transitMin, availableMin: gap, mode: 'DRIVE');
-            print('⚠️ AVERTISMENT SETAT!');
+            if (transitMin != null && transitMin > gap) {
+              warnings[i] = (transitMin: transitMin, availableMin: gap, mode: 'DRIVE');
+              print('⚠️ AVERTISMENT SETAT!');
+            }
           }
         } catch (e) {
           print('❌ Eroare API Google: $e');
@@ -77,5 +94,17 @@ class ComputeTransitWarningsUseCase {
 
     print('🏁 UseCase terminat.');
     return warnings;
+  }
+
+  /// Straight-line distance in kilometres between two coordinates.
+  static double _haversineKm(
+      double lat1, double lon1, double lat2, double lon2) {
+    const earthRadiusKm = 6371.0;
+    double toRad(double d) => d * pi / 180;
+    final dLat = toRad(lat2 - lat1);
+    final dLon = toRad(lon2 - lon1);
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(toRad(lat1)) * cos(toRad(lat2)) * sin(dLon / 2) * sin(dLon / 2);
+    return earthRadiusKm * 2 * atan2(sqrt(a), sqrt(1 - a));
   }
 }

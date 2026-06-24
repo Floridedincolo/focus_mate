@@ -115,6 +115,77 @@ void main() {
       // Before start date
       expect(occursOnTask(task, DateTime(2024, 2, 9)), isFalse);
     });
+
+    // Regression: a recurring task scheduled to start in the future must NOT be
+    // treated as active before its start date. This is what caused a lockdown
+    // task set for a later day to lock the device early.
+    test('daily task does not occur before its start date (future start)', () {
+      final startDate = DateTime(2026, 6, 18); // Thursday
+      final task = Task(
+        id: '5',
+        title: 'Future daily lockdown',
+        oneTime: false,
+        startDate: startDate,
+        repeatType: RepeatType.daily,
+      );
+
+      // Two days before start (Tuesday) – must be inactive.
+      expect(occursOnTask(task, DateTime(2026, 6, 16)), isFalse);
+      // On start date – active.
+      expect(occursOnTask(task, startDate), isTrue);
+    });
+
+    // Regression: day maps may store full weekday names ("Thursday") rather
+    // than 3-letter abbreviations. The occurrence check must recognise them so
+    // the task doesn't vanish from the list while still being enforced.
+    test('weekly task matches full-name day keys', () {
+      final startDate = DateTime(2026, 6, 18); // Thursday
+      final task = Task(
+        id: '6',
+        title: 'Full-name weekly',
+        oneTime: false,
+        startDate: startDate,
+        repeatType: RepeatType.weekly,
+        days: const {'Thursday': true},
+      );
+
+      // The start Thursday and the next Thursday both match.
+      expect(occursOnTask(task, startDate), isTrue);
+      expect(
+        occursOnTask(task, startDate.add(const Duration(days: 7))),
+        isTrue,
+      );
+      // A Friday does not.
+      expect(
+        occursOnTask(task, startDate.add(const Duration(days: 1))),
+        isFalse,
+      );
+    });
+
+    // A recurring task whose day map is empty/all-false falls back to occurring
+    // every day from its start date (matching the native scheduler behaviour).
+    test('weekly task with no flagged days falls back to daily from start', () {
+      final startDate = DateTime(2026, 6, 18);
+      final task = Task(
+        id: '7',
+        title: 'No-days weekly',
+        oneTime: false,
+        startDate: startDate,
+        repeatType: RepeatType.weekly,
+        days: const {'Mon': false, 'Tue': false},
+      );
+
+      expect(occursOnTask(task, startDate), isTrue);
+      expect(
+        occursOnTask(task, startDate.add(const Duration(days: 3))),
+        isTrue,
+      );
+      // Still gated by the start date.
+      expect(
+        occursOnTask(task, startDate.subtract(const Duration(days: 1))),
+        isFalse,
+      );
+    });
   });
 }
 

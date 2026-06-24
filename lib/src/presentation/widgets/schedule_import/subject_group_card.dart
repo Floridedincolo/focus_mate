@@ -74,10 +74,13 @@ class SubjectGroupCard extends StatelessWidget {
                       const Icon(Icons.edit_outlined,
                           size: 13, color: Colors.white24),
                       const SizedBox(width: 6),
-                      Text(
-                        '${c.day}  $start\u2013$end$roomSuffix',
-                        style: const TextStyle(
-                            color: Colors.white54, fontSize: 12),
+                      Flexible(
+                        child: Text(
+                          '${c.day}  $start\u2013$end$roomSuffix',
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: Colors.white54, fontSize: 12),
+                        ),
                       ),
                     ],
                   ),
