@@ -231,12 +231,12 @@ class _AiReportSheetState extends State<AiReportSheet> {
       _TasksHabitsPage(
         stats: ts,
         perfectDays: widget.perfectDays,
-        caption: _tips.isNotEmpty ? _tips[0] : null,
+        caption: _tips.length > 1 ? _tips[1] : null,
       ),
       if (topTask != null)
         _TopTaskPage(
           task: topTask,
-          caption: _tips.length > 1 ? _tips[1] : null,
+          caption: _tips.length > 2 ? _tips[2] : null,
           onDone: _close,
         )
       else
